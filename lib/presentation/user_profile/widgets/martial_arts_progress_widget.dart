@@ -3,12 +3,179 @@ import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../constants/app_constants.dart';
+import '../../../services/supabase_service.dart';
 
-class MartialArtsProgressWidget extends StatelessWidget {
+class MartialArtsProgressWidget extends StatefulWidget {
   const MartialArtsProgressWidget({Key? key}) : super(key: key);
 
   @override
+  State<MartialArtsProgressWidget> createState() =>
+      _MartialArtsProgressWidgetState();
+}
+
+class _MartialArtsProgressWidgetState extends State<MartialArtsProgressWidget> {
+  List<Map<String, dynamic>> _progressData = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProgressData();
+  }
+
+  Future<void> _loadProgressData() async {
+    try {
+      final client = SupabaseService.instance.client;
+      final user = client.auth.currentUser;
+
+      if (user == null) return;
+
+      // Load user subscription data which contains progress information
+      final subscriptions = await client
+          .from('user_subscriptions')
+          .select(
+              'subscription_plans(name, plan_type), entries_total, entries_remaining, is_active')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+
+      // Load instructor profile if user is instructor
+      final userProfile = await client
+          .from('user_profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+
+      List<Map<String, dynamic>> progressList = [];
+
+      if (userProfile['role'] == 'instructor' ||
+          userProfile['role'] == 'admin' ||
+          userProfile['role'] == 'principal_admin') {
+        // For instructors/admins, show instructor progress
+        try {
+          final instructorProfile = await client
+              .from('instructor_profiles')
+              .select('disciplines, years_experience, achievements')
+              .eq('user_id', user.id)
+              .single();
+
+          final disciplines = List<String>.from(
+              instructorProfile['disciplines'] ?? ['bjj', 'mma']);
+          final years = instructorProfile['years_experience'] ?? 0;
+          final achievements =
+              List<String>.from(instructorProfile['achievements'] ?? []);
+
+          for (String discipline in disciplines) {
+            progressList.add({
+              'discipline': _formatDiscipline(discipline),
+              'level': years > 10
+                  ? 'Esperto'
+                  : years > 5
+                      ? 'Avanzato'
+                      : 'Base',
+              'progress': (years * 10).clamp(0, 100).toDouble(),
+              'details': achievements.isNotEmpty
+                  ? achievements.first
+                  : 'Istruttore qualificato',
+            });
+          }
+        } catch (e) {
+          // If no instructor profile found, show basic progress
+          progressList.add({
+            'discipline': 'Team Ragnarok',
+            'level': 'Istruttore',
+            'progress': 100.0,
+            'details': 'Staff qualificato',
+          });
+        }
+      } else {
+        // For students, show subscription-based progress
+        if (subscriptions.isNotEmpty) {
+          for (var subscription in subscriptions) {
+            final planName =
+                subscription['subscription_plans']['name'] ?? 'Piano Base';
+            final total = subscription['entries_total'] ?? 0;
+            final remaining = subscription['entries_remaining'] ?? 0;
+            final used = total - remaining;
+
+            progressList.add({
+              'discipline': planName,
+              'level': used > 50
+                  ? 'Avanzato'
+                  : used > 20
+                      ? 'Intermedio'
+                      : 'Novizio',
+              'progress': total > 0 ? (used / total * 100).toDouble() : 0.0,
+              'details': 'Utilizzati $used di $total ingressi',
+            });
+          }
+        }
+      }
+
+      // If no specific progress, show default progress
+      if (progressList.isEmpty) {
+        progressList = [
+          {
+            'discipline': 'Brazilian Jiu-Jitsu',
+            'level': 'Novizio',
+            'progress': 25.0,
+            'details': 'Inizio del percorso di apprendimento',
+          },
+        ];
+      }
+
+      setState(() {
+        _progressData = progressList;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading progress data: $e');
+      setState(() {
+        _progressData = [
+          {
+            'discipline': 'Brazilian Jiu-Jitsu',
+            'level': 'Novizio',
+            'progress': 25.0,
+            'details': 'Dati non disponibili',
+          },
+        ];
+        _isLoading = false;
+      });
+    }
+  }
+
+  String _formatDiscipline(String discipline) {
+    switch (discipline.toLowerCase()) {
+      case 'bjj':
+        return 'Brazilian Jiu-Jitsu';
+      case 'mma':
+        return 'Mixed Martial Arts';
+      case 'sambo':
+        return 'SAMBO';
+      case 'grappling':
+        return 'Grappling';
+      case 'fitness':
+        return 'Prep. Atletica';
+      default:
+        return discipline.toUpperCase();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Container(
+        padding: EdgeInsets.all(5.w),
+        decoration: BoxDecoration(
+          color: Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(AppConstants.defaultBorderRadius),
+          border: Border.all(color: Colors.red.withAlpha(77)),
+        ),
+        child: Center(
+          child: CircularProgressIndicator(color: Colors.red),
+        ),
+      );
+    }
+
     return Container(
       padding: EdgeInsets.all(5.w),
       decoration: BoxDecoration(
@@ -20,7 +187,7 @@ class MartialArtsProgressWidget extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Progresso Arti Marziali',
+            'Progressi Arti Marziali',
             style: GoogleFonts.inter(
               color: Colors.white,
               fontSize: 14.sp,
@@ -28,126 +195,80 @@ class MartialArtsProgressWidget extends StatelessWidget {
             ),
           ),
           SizedBox(height: 3.h),
-          _buildDisciplineCard(
-              'BJJ', 'Cintura Blu', '156 ore', 0.6, Colors.blue),
-          SizedBox(height: 2.h),
-          _buildDisciplineCard(
-              'SAMBO', 'Livello Intermedio', '89 ore', 0.4, Colors.orange),
-          SizedBox(height: 2.h),
-          _buildDisciplineCard(
-              'MMA', 'Principiante Avanzato', '67 ore', 0.3, Colors.purple),
-          SizedBox(height: 2.h),
-          _buildDisciplineCard(
-              'GRAPPLING', 'Intermedio', '123 ore', 0.5, Colors.green),
-          SizedBox(height: 3.h),
-          _buildAchievementsBadges(),
+          ..._progressData.map((progress) => _buildProgressItem(progress)),
         ],
       ),
     );
   }
 
-  Widget _buildDisciplineCard(String discipline, String rank, String hours,
-      double progress, Color color) {
+  Widget _buildProgressItem(Map<String, dynamic> progress) {
     return Container(
-      padding: EdgeInsets.all(4.w),
-      decoration: BoxDecoration(
-        color: Color(0xFF2A2A2A),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withAlpha(77)),
-      ),
+      margin: EdgeInsets.only(bottom: 3.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                discipline,
-                style: GoogleFonts.inter(
-                  color: color,
-                  fontSize: 13.sp,
-                  fontWeight: FontWeight.w700,
+              Expanded(
+                child: Text(
+                  progress['discipline'],
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
-              Text(
-                hours,
-                style: GoogleFonts.inter(
-                  color: Colors.grey[400],
-                  fontSize: 10.sp,
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
+                decoration: BoxDecoration(
+                  color: _getLevelColor(progress['level']),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  progress['level'],
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: 9.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
           ),
           SizedBox(height: 1.h),
-          Text(
-            rank,
-            style: GoogleFonts.inter(
-              color: Colors.white,
-              fontSize: 11.sp,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          SizedBox(height: 1.h),
           LinearProgressIndicator(
-            value: progress,
+            value: progress['progress'] / 100,
             backgroundColor: Colors.grey[700],
-            valueColor: AlwaysStoppedAnimation<Color>(color),
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
+            minHeight: 6,
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAchievementsBadges() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Riconoscimenti',
-          style: GoogleFonts.inter(
-            color: Colors.white,
-            fontSize: 12.sp,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        SizedBox(height: 1.5.h),
-        Wrap(
-          spacing: 2.w,
-          runSpacing: 1.h,
-          children: [
-            _buildBadge('🥉', 'Primo Torneo', Colors.amber),
-            _buildBadge('🔥', '100 Lezioni', Colors.red),
-            _buildBadge('💪', 'Atleta del Mese', Colors.blue),
-            _buildBadge('🏆', 'Campionato Regionale', Colors.yellow),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBadge(String emoji, String title, Color color) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
-      decoration: BoxDecoration(
-        color: color.withAlpha(51),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withAlpha(128)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(emoji, style: TextStyle(fontSize: 12.sp)),
-          SizedBox(width: 1.w),
+          SizedBox(height: 0.5.h),
           Text(
-            title,
+            progress['details'],
             style: GoogleFonts.inter(
-              color: color,
-              fontSize: 9.sp,
-              fontWeight: FontWeight.w600,
+              color: Colors.grey[400],
+              fontSize: 10.sp,
             ),
           ),
         ],
       ),
     );
+  }
+
+  Color _getLevelColor(String level) {
+    switch (level.toLowerCase()) {
+      case 'novizio':
+        return Colors.blue;
+      case 'intermedio':
+        return Colors.orange;
+      case 'avanzato':
+        return Colors.green;
+      case 'esperto':
+        return Colors.purple;
+      default:
+        return Colors.grey;
+    }
   }
 }

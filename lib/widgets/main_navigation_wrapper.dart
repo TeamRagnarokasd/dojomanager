@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
 import '../core/app_export.dart';
+import '../services/auth_service.dart';
 
 class MainNavigationWrapper extends StatefulWidget {
   final Widget child;
@@ -19,6 +20,8 @@ class MainNavigationWrapper extends StatefulWidget {
 }
 
 class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
+  final AuthService _authService = AuthService.instance;
+
   final List<Map<String, dynamic>> _bottomNavItems = [
     {
       'label': 'Home',
@@ -42,13 +45,53 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
     },
   ];
 
-  void _handleBottomNavTap(int index) {
+  int _currentIndex = 0;
+
+  /// Handle bottom navigation tap with role-based home routing
+  void _handleBottomNavTap(int index) async {
     if (index == widget.currentIndex) return;
 
     HapticFeedback.selectionClick();
 
-    final route = _bottomNavItems[index]['route'] as String;
-    Navigator.pushReplacementNamed(context, route);
+    // Special handling for Home button (index 0) - route to appropriate dashboard based on user role
+    if (index == 0) {
+      await _navigateToRoleBasedDashboard();
+    } else {
+      final route = _bottomNavItems[index]['route'] as String;
+      Navigator.pushReplacementNamed(context, route);
+    }
+  }
+
+  /// Navigate to the appropriate dashboard based on user role
+  Future<void> _navigateToRoleBasedDashboard() async {
+    try {
+      // Get user role to determine correct dashboard
+      final userRole = await _authService.getUserRole();
+
+      String dashboardRoute;
+
+      // Determine dashboard route based on role
+      switch (userRole) {
+        case 'principal_admin':
+        case 'admin':
+          dashboardRoute = AppRoutes.enhancedAdminDashboard;
+          break;
+        case 'instructor':
+        case 'instructor_admin':
+          dashboardRoute = AppRoutes.instructorDashboard;
+          break;
+        case 'student':
+        default:
+          dashboardRoute = AppRoutes.dashboardHome;
+          break;
+      }
+
+      // Navigate to the appropriate dashboard
+      Navigator.pushReplacementNamed(context, dashboardRoute);
+    } catch (error) {
+      print('Error determining dashboard route: $error');
+      Navigator.pushReplacementNamed(context, AppRoutes.dashboardHome);
+    }
   }
 
   @override

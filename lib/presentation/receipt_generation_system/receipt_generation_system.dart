@@ -202,11 +202,14 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
     setState(() => _isLoading = true);
 
     try {
-      final receipt = await _receiptService.createReceiptForSumUp(
-        userId: user['id'],
-        subscriptionId: '', // SumUp has existing subscription
+      final receipt = await _receiptService.createReceipt(
+        description: data['type'] == 'monthly' ? 'Abbonamento Mensile' : 'Abbonamento Annuale',
         amount: data['amount'],
-        subscriptionType: data['type'],
+        createdBy: user['id'],
+        customerName: user['full_name'],
+        customerTaxCode: user['tax_code'],
+        customerAddress: user['address'],
+        paymentMethod: 'sumup',
       );
 
       setState(() {
@@ -237,10 +240,14 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
     setState(() => _isLoading = true);
 
     try {
-      final receipt = await _receiptService.createReceiptForSatispay(
-        userId: user['id'],
+      final receipt = await _receiptService.createReceipt(
+        description: data['type'] == 'monthly' ? 'Abbonamento Mensile' : 'Abbonamento Annuale',
         amount: data['amount'],
-        subscriptionType: data['type'],
+        createdBy: user['id'],
+        customerName: user['full_name'],
+        customerTaxCode: user['tax_code'],
+        customerAddress: user['address'],
+        paymentMethod: 'satispay',
       );
 
       setState(() {
@@ -675,11 +682,14 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
     try {
       for (final user in selectedUsers) {
         // For batch, assume monthly subscription with SumUp
-        final receipt = await _receiptService.createReceiptForSumUp(
-          userId: user['id'],
-          subscriptionId: '',
+        final receipt = await _receiptService.createReceipt(
+          description: 'Abbonamento Mensile',
           amount: 30.0,
-          subscriptionType: 'monthly',
+          createdBy: user['id'],
+          customerName: user['full_name'],
+          customerTaxCode: user['tax_code'],
+          customerAddress: user['address'],
+          paymentMethod: 'sumup',
         );
         results.add(receipt);
       }

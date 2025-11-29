@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -14,7 +15,8 @@ class SubscriptionPlanSelection extends StatefulWidget {
       _SubscriptionPlanSelectionState();
 }
 
-class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection> {
+class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
+    with WidgetsBindingObserver {
   bool _showSubscriptionOptions = false;
   bool _isLoading = false;
   int? _selectedPlanId;
@@ -190,18 +192,71 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection> {
     },
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.resumed) {
+      _checkPaymentConfirmation();
+    }
+  }
+
+  Future<void> _checkPaymentConfirmation() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isPaymentPending = prefs.getBool('isPaymentPending') ?? false;
+
+      if (isPaymentPending && mounted) {
+        // Navigate to payment history which will show the dialog
+        Navigator.pushReplacementNamed(context, AppRoutes.paymentHistory);
+      }
+    } catch (e) {
+      // Silent fail
+    }
+  }
+
   Future<void> _launchSumUpUrl(String url, String planTitle) async {
     setState(() {
       _isLoading = true;
     });
 
     try {
+      // Find the selected plan details
+      final selectedPlan = _subscriptionPlans.firstWhere(
+        (plan) => plan['title'] == planTitle,
+        orElse: () => {},
+      );
+
+      // Set payment pending flag before launching external URL
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isPaymentPending', true);
+      await prefs.setString('pendingPlanId', selectedPlan['id'].toString());
+      await prefs.setString('pendingPlanTitle', planTitle);
+      await prefs.setDouble(
+          'pendingPlanAmount', (selectedPlan['price'] as num).toDouble());
+      await prefs.setString('pendingPaymentMethod', 'sumup');
+
       final Uri uri = Uri.parse(url);
 
       // Show loading for better UX
       await Future.delayed(const Duration(milliseconds: 500));
 
       if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        // Clear pending flag if launch failed
+        await prefs.setBool('isPaymentPending', false);
+
         if (mounted) {
           Fluttertoast.showToast(
             msg: 'Impossibile aprire il link di pagamento',
@@ -223,6 +278,10 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection> {
         }
       }
     } catch (e) {
+      // Clear pending flag on error
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isPaymentPending', false);
+
       if (mounted) {
         Fluttertoast.showToast(
           msg: 'Errore durante il reindirizzamento: ${e.toString()}',

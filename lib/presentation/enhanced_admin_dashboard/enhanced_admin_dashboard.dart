@@ -4,11 +4,12 @@ import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/auth_service.dart';
+import '../../services/supabase_service.dart';
 import './widgets/enhanced_admin_header_widget.dart';
+import './widgets/instructor_management_widget.dart';
 import './widgets/management_cards_widget.dart';
-import './widgets/realtime_statistics_widget.dart';
-import './widgets/quick_actions_panel_widget.dart';
 import './widgets/notification_center_widget.dart';
+import './widgets/realtime_statistics_widget.dart';
 import './widgets/recent_activity_feed_widget.dart';
 import './widgets/security_status_widget.dart';
 
@@ -29,21 +30,22 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
   final ScrollController _scrollController = ScrollController();
 
   // Admin Dashboard Statistics
-  final Map<String, dynamic> _dashboardStats = {
-    'activeMemberships': 156,
-    'monthlyRevenue': 4250.00,
-    'pendingApprovals': 7,
-    'capacityMetrics': 85.5,
-    'totalEvents': 24,
-    'instructorCount': 8,
-    'disciplineCount': 5,
-    'systemHealth': 98.7,
+  Map<String, dynamic> _dashboardStats = {
+    'activeMemberships': 0,
+    'monthlyRevenue': 0.0,
+    'pendingApprovals': 0,
+    'capacityMetrics': 0.0,
+    'totalEvents': 0,
+    'instructorCount': 0,
+    'disciplineCount': 0,
+    'systemHealth': 0.0,
   };
 
   @override
   void initState() {
     super.initState();
     _loadAdminData();
+    _loadDashboardStatistics(); // Load real stats from Supabase
     _checkAuthState();
     _refreshController = AnimationController(
       duration: const Duration(milliseconds: 1000),
@@ -73,8 +75,9 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
     }
 
     try {
-      final profile = await AuthService.instance
-          .getUserProfile(AuthService.instance.currentUser!.id);
+      final profile = await AuthService.instance.getUserProfile(
+        AuthService.instance.currentUser!.id,
+      );
       final role = await AuthService.instance.getUserRole();
 
       // Verify admin privileges
@@ -106,6 +109,98 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
     }
   }
 
+  /// Load real-time statistics from Supabase database
+  Future<void> _loadDashboardStatistics() async {
+    try {
+      final client = SupabaseService.instance.client;
+
+      print('🔄 Starting dashboard statistics load...');
+      print('  📥 Calling get_dashboard_statistics function...');
+
+      // Use Supabase function to bypass RLS issues
+      final response = await client.rpc('get_dashboard_statistics');
+
+      print('  ✅ Function response received');
+
+      final stats = response as Map<String, dynamic>;
+
+      final activeMembersCount = stats['activeMemberships'] ?? 0;
+      final pendingApprovalsCount = stats['pendingApprovals'] ?? 0;
+      final totalEventsCount = stats['totalEvents'] ?? 0;
+      final instructorCount = stats['instructorCount'] ?? 0;
+      final sponsorCount = stats['sponsorCount'] ?? 0;
+      final monthlyRevenue = (stats['monthlyRevenue'] ?? 0).toDouble();
+
+      // Calculate capacity metrics (based on active users vs total capacity)
+      double capacityMetrics = activeMembersCount > 0
+          ? ((activeMembersCount / 200.0) * 100).clamp(0.0, 100.0)
+          : 0.0;
+
+      // System health (based on recent activity)
+      double systemHealth =
+          95.0 + (5.0 * (1.0 - (pendingApprovalsCount / 10.0).clamp(0.0, 1.0)));
+
+      print('📊 Dashboard Stats Summary:');
+      print('  ├─ Active Members: $activeMembersCount');
+      print('  ├─ Monthly Revenue: €${monthlyRevenue.toStringAsFixed(2)}');
+      print('  ├─ Pending Approvals: $pendingApprovalsCount');
+      print('  ├─ Total Events: $totalEventsCount');
+      print('  ├─ Instructors: $instructorCount');
+      print('  ├─ Sponsors: $sponsorCount');
+      print('  ├─ Capacity: ${capacityMetrics.toStringAsFixed(1)}%');
+      print('  └─ System Health: ${systemHealth.toStringAsFixed(1)}%');
+
+      if (mounted) {
+        setState(() {
+          _dashboardStats = {
+            'activeMemberships': activeMembersCount,
+            'monthlyRevenue': monthlyRevenue,
+            'pendingApprovals': pendingApprovalsCount,
+            'capacityMetrics': capacityMetrics,
+            'totalEvents': totalEventsCount,
+            'instructorCount': instructorCount,
+            'disciplineCount': sponsorCount,
+            'systemHealth': systemHealth,
+          };
+        });
+        print('✅ Dashboard stats updated in UI');
+      }
+    } catch (error, stackTrace) {
+      print('❌ Dashboard stats error: $error');
+      print('📍 Stack trace: $stackTrace');
+
+      // Show error to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Errore nel caricamento delle statistiche: ${error.toString()}',
+              style: TextStyle(color: Theme.of(context).colorScheme.onError),
+            ),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+
+      // Fallback to default values on error
+      if (mounted) {
+        setState(() {
+          _dashboardStats = {
+            'activeMemberships': 0,
+            'monthlyRevenue': 0.0,
+            'pendingApprovals': 0,
+            'capacityMetrics': 0.0,
+            'totalEvents': 0,
+            'instructorCount': 0,
+            'disciplineCount': 0,
+            'systemHealth': 0.0,
+          };
+        });
+      }
+    }
+  }
+
   Future<void> _handleRefresh() async {
     if (_isRefreshing) return;
 
@@ -113,7 +208,12 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
     HapticFeedback.mediumImpact();
     _refreshController.repeat();
 
-    await Future.delayed(const Duration(seconds: 2));
+    // Refresh both admin data and statistics
+    await Future.wait([
+      _loadAdminData(),
+      _loadDashboardStatistics(),
+      Future.delayed(const Duration(seconds: 2)), // Minimum loading time for UX
+    ]);
 
     _refreshController.stop();
     _refreshController.reset();
@@ -123,7 +223,7 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Dashboard amministrativo aggiornato',
+          'Dashboard amministrativo aggiornato con dati Supabase',
           style: TextStyle(color: Theme.of(context).colorScheme.onSecondary),
         ),
         backgroundColor: Theme.of(context).colorScheme.secondary,
@@ -275,29 +375,21 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
               ),
 
               // Management Cards Section
-              SliverToBoxAdapter(
-                child: ManagementCardsWidget(),
-              ),
+              SliverToBoxAdapter(child: ManagementCardsWidget()),
+
+              // Instructor Management Widget
+              SliverToBoxAdapter(child: InstructorManagementWidget()),
 
               // Real-time Statistics
               SliverToBoxAdapter(
                 child: RealtimeStatisticsWidget(stats: _dashboardStats),
               ),
 
-              // Quick Actions Panel
-              SliverToBoxAdapter(
-                child: QuickActionsPanelWidget(),
-              ),
-
               // Notification Center
-              SliverToBoxAdapter(
-                child: NotificationCenterWidget(),
-              ),
+              SliverToBoxAdapter(child: NotificationCenterWidget()),
 
               // Recent Activity Feed
-              SliverToBoxAdapter(
-                child: RecentActivityFeedWidget(),
-              ),
+              SliverToBoxAdapter(child: RecentActivityFeedWidget()),
 
               // Security Status
               SliverToBoxAdapter(
@@ -307,9 +399,7 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
               ),
 
               // Bottom padding for FAB
-              SliverToBoxAdapter(
-                child: SizedBox(height: 10.h),
-              ),
+              SliverToBoxAdapter(child: SizedBox(height: 10.h)),
             ],
           ),
         ),
@@ -319,10 +409,9 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: Theme.of(context)
-                  .colorScheme
-                  .secondary
-                  .withValues(alpha: 0.4),
+              color: Theme.of(
+                context,
+              ).colorScheme.secondary.withValues(alpha: 0.4),
               blurRadius: 20,
               spreadRadius: 2,
               offset: const Offset(0, 4),
@@ -373,28 +462,41 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
                     ),
               ),
               SizedBox(height: 3.h),
+
+              // Enhanced quick actions - removed registration management
               _buildQuickActionTile(
-                'Approva Registrazione',
-                Icons.how_to_reg,
-                () => Navigator.pushNamed(context, '/admin-management-system'),
+                'Gestione Istruttori',
+                Icons.person_4,
+                () => Navigator.pushNamed(
+                  context,
+                  '/instructor-management-system',
+                ),
               ),
               _buildQuickActionTile(
-                'Genera Ricevuta',
-                Icons.receipt_long,
+                'Gestione Ricevute',
+                Icons.receipt,
                 () =>
-                    Navigator.pushNamed(context, '/receipt-generation-system'),
+                    Navigator.pushNamed(context, '/italian-receipt-generation'),
               ),
               _buildQuickActionTile(
-                'Invia Comunicazione',
-                Icons.announcement,
-                () =>
-                    Navigator.pushNamed(context, '/automatic-reminder-system'),
+                'Gestione Sponsor',
+                Icons.business,
+                () => Navigator.pushNamed(context, '/admin-sponsor-management'),
               ),
               _buildQuickActionTile(
-                'Aggiorna Programma',
+                'Palinsesto Stagionale',
+                Icons.calendar_today,
+                () => Navigator.pushNamed(
+                  context,
+                  '/seasonal-schedule-management',
+                ),
+              ),
+              _buildQuickActionTile(
+                'Gestione Eventi',
                 Icons.event_note,
                 () => Navigator.pushNamed(context, '/admin-event-management'),
               ),
+
               SizedBox(height: 2.h),
             ],
           ),
@@ -404,7 +506,10 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
   }
 
   Widget _buildQuickActionTile(
-      String title, IconData icon, VoidCallback onTap) {
+    String title,
+    IconData icon,
+    VoidCallback onTap,
+  ) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -421,10 +526,9 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
               Container(
                 padding: EdgeInsets.all(3.w),
                 decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .secondary
-                      .withValues(alpha: 0.1),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.secondary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(

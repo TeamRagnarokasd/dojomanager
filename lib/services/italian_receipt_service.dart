@@ -1,3 +1,5 @@
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import '../models/receipt_model.dart';
 import '../services/supabase_service.dart';
 
@@ -28,23 +30,27 @@ class ItalianReceiptService {
     String? fiscalNotes,
   }) async {
     try {
-      final response = await client.rpc('create_italian_receipt', params: {
-        'p_created_by': createdBy,
-        'p_customer_name': customerName,
-        'p_description': description,
-        'p_customer_tax_code': customerTaxCode,
-        'p_customer_address': customerAddress,
-        'p_quantity': quantity,
-        'p_unit_price': unitPrice,
-        'p_discount_percentage': discountPercentage,
-        'p_vat_rate': vatRate,
-        'p_payment_method': paymentMethod,
-        'p_validity_start_date':
-            validityStartDate?.toIso8601String().split('T')[0],
-        'p_validity_end_date': validityEndDate?.toIso8601String().split('T')[0],
-        'p_notes': notes,
-        'p_fiscal_notes': fiscalNotes,
-      });
+      final response = await client.rpc(
+        'create_italian_receipt',
+        params: {
+          'p_created_by': createdBy,
+          'p_customer_name': customerName,
+          'p_description': description,
+          'p_customer_tax_code': customerTaxCode,
+          'p_customer_address': customerAddress,
+          'p_quantity': quantity,
+          'p_unit_price': unitPrice,
+          'p_discount_percentage': discountPercentage,
+          'p_vat_rate': vatRate,
+          'p_payment_method': paymentMethod,
+          'p_validity_start_date':
+              validityStartDate?.toIso8601String().split('T')[0],
+          'p_validity_end_date':
+              validityEndDate?.toIso8601String().split('T')[0],
+          'p_notes': notes,
+          'p_fiscal_notes': fiscalNotes,
+        },
+      );
 
       return response as String; // Returns receipt UUID
     } catch (error) {
@@ -83,7 +89,8 @@ class ItalianReceiptService {
 
   /// Get receipts created by specific user with organization info
   Future<List<Map<String, dynamic>>> getUserCreatedReceipts(
-      String userId) async {
+    String userId,
+  ) async {
     try {
       final response = await client
           .from('non_fiscal_receipts')
@@ -115,11 +122,12 @@ class ItalianReceiptService {
   /// Get receipt by ID with organization info
   Future<Map<String, dynamic>?> getReceiptById(String receiptId) async {
     try {
-      final response = await client
-          .from('non_fiscal_receipts')
-          .select('*, user_profiles(id, full_name, email)')
-          .eq('id', receiptId)
-          .single();
+      final response =
+          await client
+              .from('non_fiscal_receipts')
+              .select('*, user_profiles(id, full_name, email)')
+              .eq('id', receiptId)
+              .single();
 
       // Add organization info
       final organizationInfo = await getOrganizationInfo();
@@ -138,6 +146,280 @@ class ItalianReceiptService {
     }
   }
 
+  /// 🎨 FIX 2: BEAUTIFUL PDF GENERATOR (Red Header Version)
+  /// This is the "PDF Bello" that both Admin and Users should use
+  Future<pw.Document> generateBeautifulReceiptPDF(
+    Map<String, dynamic> receipt,
+  ) async {
+    final pdf = pw.Document();
+
+    // Get organization info
+    final orgInfo = await getOrganizationInfo();
+
+    final issueDate =
+        receipt['issue_date'] ?? DateTime.now().toIso8601String().split('T')[0];
+    final receiptNumber = receipt['receipt_number'] ?? '';
+    final customerName = receipt['customer_name'] ?? '';
+    final description = receipt['description'] ?? '';
+    final amount = (receipt['amount'] ?? 0.0) as double;
+    final paymentMethod = _getPaymentMethodText(
+      receipt['payment_method'] ?? 'cash',
+    );
+
+    // 🎯 FIX 3: SAFE TAX CODE HANDLING - Never crash if null
+    final customerTaxCode = receipt['customer_tax_code'] ?? 'NON DISPONIBILE';
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // 🔴 RED HEADER - TEAM RAGNAROK
+              pw.Container(
+                width: double.infinity,
+                padding: const pw.EdgeInsets.all(20),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.red700,
+                  borderRadius: pw.BorderRadius.circular(8),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      orgInfo.name.toUpperCase(),
+                      style: pw.TextStyle(
+                        fontSize: 24,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.white,
+                      ),
+                    ),
+                    pw.SizedBox(height: 8),
+                    pw.Text(
+                      orgInfo.address,
+                      style: const pw.TextStyle(
+                        fontSize: 12,
+                        color: PdfColors.white,
+                      ),
+                    ),
+                    pw.Text(
+                      'Codice Fiscale: ${orgInfo.taxCode}',
+                      style: const pw.TextStyle(
+                        fontSize: 12,
+                        color: PdfColors.white,
+                      ),
+                    ),
+                    if (orgInfo.phone != null)
+                      pw.Text(
+                        'Tel: ${orgInfo.phone}',
+                        style: const pw.TextStyle(
+                          fontSize: 12,
+                          color: PdfColors.white,
+                        ),
+                      ),
+                    if (orgInfo.email != null)
+                      pw.Text(
+                        'Email: ${orgInfo.email}',
+                        style: const pw.TextStyle(
+                          fontSize: 12,
+                          color: PdfColors.white,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 30),
+
+              // RECEIPT TITLE
+              pw.Center(
+                child: pw.Text(
+                  'RICEVUTA NON FISCALE',
+                  style: pw.TextStyle(
+                    fontSize: 20,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.grey800,
+                  ),
+                ),
+              ),
+              pw.SizedBox(height: 20),
+
+              // RECEIPT INFO BOX
+              pw.Container(
+                padding: const pw.EdgeInsets.all(15),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey400),
+                  borderRadius: pw.BorderRadius.circular(8),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      children: [
+                        pw.Text(
+                          'Ricevuta N°: $receiptNumber',
+                          style: pw.TextStyle(
+                            fontSize: 14,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                        pw.Text(
+                          'Data: $issueDate',
+                          style: const pw.TextStyle(fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 20),
+
+              // CUSTOMER DETAILS
+              pw.Text(
+                'DATI CLIENTE',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.grey800,
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Container(
+                padding: const pw.EdgeInsets.all(15),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                  borderRadius: pw.BorderRadius.circular(8),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      customerName,
+                      style: pw.TextStyle(
+                        fontSize: 14,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    // ✅ ALWAYS SHOW TAX CODE (with fallback)
+                    pw.Text(
+                      'CF: $customerTaxCode',
+                      style: const pw.TextStyle(fontSize: 12),
+                    ),
+                    if (receipt['customer_address'] != null)
+                      pw.Text(
+                        receipt['customer_address'],
+                        style: const pw.TextStyle(fontSize: 12),
+                      ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 20),
+
+              // PAYMENT DETAILS TABLE
+              pw.Text(
+                'DETTAGLI PAGAMENTO',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.grey800,
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Table(
+                border: pw.TableBorder.all(color: PdfColors.grey400),
+                children: [
+                  // Header
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(
+                      color: PdfColors.grey300,
+                    ),
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(
+                          'Descrizione',
+                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(
+                          'Importo',
+                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                          textAlign: pw.TextAlign.right,
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Data
+                  pw.TableRow(
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(description),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(
+                          '€ ${amount.toStringAsFixed(2).replaceAll('.', ',')}',
+                          textAlign: pw.TextAlign.right,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+
+              // PAYMENT METHOD
+              pw.Container(
+                padding: const pw.EdgeInsets.all(15),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.blue50,
+                  borderRadius: pw.BorderRadius.circular(8),
+                ),
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'Metodo di pagamento:',
+                      style: const pw.TextStyle(fontSize: 12),
+                    ),
+                    pw.Text(
+                      paymentMethod,
+                      style: pw.TextStyle(
+                        fontSize: 12,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              pw.Spacer(),
+
+              // FOOTER
+              pw.Divider(color: PdfColors.grey400),
+              pw.SizedBox(height: 10),
+              pw.Center(
+                child: pw.Text(
+                  'Grazie per aver scelto Team Ragnarok ASD',
+                  style: const pw.TextStyle(
+                    fontSize: 10,
+                    color: PdfColors.grey600,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    return pdf;
+  }
+
   /// Generate receipt PDF content (simplified version)
   String generateReceiptText(Map<String, dynamic> receipt) {
     final issueDate =
@@ -148,8 +430,9 @@ class ItalianReceiptService {
     final quantity = receipt['quantity'] ?? 1;
     final unitPrice = receipt['unit_price'] ?? 0.0;
     final amount = receipt['amount'] ?? 0.0;
-    final paymentMethod =
-        _getPaymentMethodText(receipt['payment_method'] ?? 'cash');
+    final paymentMethod = _getPaymentMethodText(
+      receipt['payment_method'] ?? 'cash',
+    );
     final notes = receipt['notes'] ?? '';
 
     return '''
@@ -234,14 +517,17 @@ Data: ${issueDate}
   }) async {
     try {
       final orgInfo = await getOrganizationInfo();
-      await client.from('organization_info').update({
-        'name': name,
-        'address': address,
-        'tax_code': taxCode,
-        'phone': phone,
-        'email': email,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', orgInfo.id);
+      await client
+          .from('organization_info')
+          .update({
+            'name': name,
+            'address': address,
+            'tax_code': taxCode,
+            'phone': phone,
+            'email': email,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', orgInfo.id);
     } catch (error) {
       throw Exception('Failed to update organization info: $error');
     }

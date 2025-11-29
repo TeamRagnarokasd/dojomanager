@@ -18,6 +18,8 @@ class UserCardWidget extends StatelessWidget {
   final VoidCallback onSendWelcomeEmail;
   final VoidCallback onResetPassword;
   final VoidCallback onGenerateReport;
+  final VoidCallback onDeleteUser;
+  final VoidCallback onFullProfileEdit;
 
   const UserCardWidget({
     super.key,
@@ -34,14 +36,14 @@ class UserCardWidget extends StatelessWidget {
     required this.onSendWelcomeEmail,
     required this.onResetPassword,
     required this.onGenerateReport,
+    required this.onDeleteUser,
+    required this.onFullProfileEdit,
   });
 
   @override
   Widget build(BuildContext context) {
     final role = user['role']?.toString() ?? 'student';
     final isActive = user['is_active'] == true;
-    final subscriptionStatus = _getSubscriptionStatus();
-    final lastActivity = _getLastActivity();
 
     return Container(
       margin: EdgeInsets.only(bottom: 12.h),
@@ -57,13 +59,15 @@ class UserCardWidget extends StatelessWidget {
             padding: EdgeInsets.all(16.w),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12.0),
-              border: isSelected
-                  ? Border.all(color: AppTheme.primaryColor, width: 2)
-                  : null,
+              border:
+                  isSelected
+                      ? Border.all(color: AppTheme.primaryColor, width: 2)
+                      : null,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // User header with avatar and basic info
                 Row(
                   children: [
                     GestureDetector(
@@ -72,17 +76,19 @@ class UserCardWidget extends StatelessWidget {
                         children: [
                           CircleAvatar(
                             backgroundColor: _getRoleColor(role).withAlpha(26),
-                            backgroundImage: user['profile_image_url'] != null
-                                ? NetworkImage(user['profile_image_url'])
-                                : null,
+                            backgroundImage:
+                                user['profile_image_url'] != null
+                                    ? NetworkImage(user['profile_image_url'])
+                                    : null,
                             radius: 28.w,
-                            child: user['profile_image_url'] == null
-                                ? Icon(
-                                    _getRoleIcon(role),
-                                    color: _getRoleColor(role),
-                                    size: 24.sp,
-                                  )
-                                : null,
+                            child:
+                                user['profile_image_url'] == null
+                                    ? Icon(
+                                      _getRoleIcon(role),
+                                      color: _getRoleColor(role),
+                                      size: 24.sp,
+                                    )
+                                    : null,
                           ),
                           if (isSelected)
                             Positioned(
@@ -136,113 +142,102 @@ class UserCardWidget extends StatelessWidget {
                         ],
                       ),
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                              horizontal: 8.w, vertical: 4.h),
-                          decoration: BoxDecoration(
-                            color: _getRoleColor(role).withAlpha(26),
-                            borderRadius: BorderRadius.circular(12.0),
-                          ),
-                          child: Text(
-                            _getRoleLabel(role),
-                            style: GoogleFonts.inter(
-                              fontSize: 10.sp,
-                              fontWeight: FontWeight.w500,
-                              color: _getRoleColor(role),
-                            ),
-                          ),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8.w,
+                        vertical: 4.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _getRoleColor(role).withAlpha(26),
+                        borderRadius: BorderRadius.circular(12.0),
+                      ),
+                      child: Text(
+                        _getRoleLabel(role),
+                        style: GoogleFonts.inter(
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.w500,
+                          color: _getRoleColor(role),
                         ),
-                        SizedBox(height: 4.h),
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                              horizontal: 8.w, vertical: 2.h),
-                          decoration: BoxDecoration(
-                            color: subscriptionStatus['color'].withAlpha(26),
-                            borderRadius: BorderRadius.circular(8.0),
-                          ),
-                          child: Text(
-                            subscriptionStatus['label'],
-                            style: GoogleFonts.inter(
-                              fontSize: 9.sp,
-                              fontWeight: FontWeight.w500,
-                              color: subscriptionStatus['color'],
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
+
                 SizedBox(height: 12.h),
+
+                // 🎯 REQUIREMENT 1: Status Badges - Medical Certificate & Subscription
                 Row(
                   children: [
-                    Icon(
-                      isActive ? Icons.check_circle : Icons.cancel,
-                      color: isActive ? Colors.green : Colors.red,
-                      size: 14.sp,
-                    ),
-                    SizedBox(width: 4.w),
-                    Text(
-                      isActive ? 'Attivo' : 'Disattivato',
-                      style: GoogleFonts.inter(
-                        fontSize: 12.sp,
-                        color: isActive ? Colors.green : Colors.red,
+                    // Medical Certificate Badge 🩺
+                    Expanded(
+                      child: _buildStatusBadge(
+                        _getMedicalCertificateBadgeData(),
+                        'Certificato 🩺',
                       ),
                     ),
-                    const Spacer(),
-                    Text(
-                      'Ultima attività: $lastActivity',
-                      style: GoogleFonts.inter(
-                        fontSize: 10.sp,
-                        color: AppTheme.textSecondaryLight,
+                    SizedBox(width: 8.w),
+                    // Subscription Badge 💰
+                    Expanded(
+                      child: _buildStatusBadge(
+                        _getSubscriptionBadgeData(),
+                        'Abbonamento 💰',
                       ),
                     ),
                   ],
                 ),
+
                 SizedBox(height: 12.h),
-                // Swipe actions row
+
+                // 🎯 REQUIREMENT 2: Redesigned Button Logic - "Modifica Veloce" & "Profilo Completo"
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
+                      // BUTTON 1: "Modifica Veloce" - Opens quick edit popup
                       _buildActionChip(
-                        label: 'Visualizza Profilo',
-                        icon: Icons.visibility,
-                        color: Colors.blue,
-                        onTap: onViewProfile,
+                        label: 'Modifica Veloce',
+                        icon: Icons.flash_on,
+                        color: Colors.orange,
+                        onTap: onLongPress, // Opens quick edit dialog
                       ),
-                      if (isPrincipalAdmin && role != 'principal_admin') ...[
+                      SizedBox(width: 8.w),
+                      // BUTTON 2: "Profilo Completo" - Navigates to full profile
+                      _buildActionChip(
+                        label: 'Profilo Completo',
+                        icon: Icons.person_outline,
+                        color: Colors.blue,
+                        onTap: onFullProfileEdit, // Opens full profile screen
+                      ),
+                      if ((isPrincipalAdmin ||
+                              user['role']?.toString() == 'admin' ||
+                              user['role']?.toString() == 'instructor_admin') &&
+                          user['email'] != 'lutadordeeliteravenna@gmail.com' &&
+                          user['role']?.toString() != 'principal_admin') ...[
                         SizedBox(width: 8.w),
                         _buildActionChip(
-                          label: 'Modifica Ruolo',
+                          label: 'Elimina',
+                          icon: Icons.delete,
+                          color: Colors.red,
+                          onTap: onDeleteUser,
+                        ),
+                      ],
+                      if (isPrincipalAdmin &&
+                          user['role']?.toString() != 'principal_admin') ...[
+                        SizedBox(width: 8.w),
+                        _buildActionChip(
+                          label: 'Ruolo',
                           icon: Icons.admin_panel_settings,
-                          color: Colors.orange,
+                          color: Colors.purple,
                           onTap: onChangeRole,
                         ),
                       ],
-                      SizedBox(width: 8.w),
-                      _buildActionChip(
-                        label: 'Invia Messaggio',
-                        icon: Icons.message,
-                        color: Colors.green,
-                        onTap: onSendMessage,
-                      ),
-                      SizedBox(width: 8.w),
-                      _buildActionChip(
-                        label:
-                            isActive ? 'Sospendi Account' : 'Riattiva Account',
-                        icon: isActive ? Icons.block : Icons.check_circle,
-                        color: isActive ? Colors.red : Colors.green,
-                        onTap: onSuspendAccount,
-                      ),
                     ],
                   ),
                 ),
+
                 SizedBox(height: 8.h),
-                // Quick actions panel
+
+                // Quick actions
                 Container(
                   width: double.infinity,
                   padding: EdgeInsets.all(8.w),
@@ -255,11 +250,25 @@ class UserCardWidget extends StatelessWidget {
                     runSpacing: 4.h,
                     children: [
                       _buildQuickAction(
-                          'Benvenuto', Icons.email, onSendWelcomeEmail),
+                        'Visualizza',
+                        Icons.visibility,
+                        onViewProfile,
+                      ),
                       _buildQuickAction(
-                          'Reset Password', Icons.lock_reset, onResetPassword),
+                        isActive ? 'Sospendi' : 'Riattiva',
+                        isActive ? Icons.block : Icons.check_circle,
+                        onSuspendAccount,
+                      ),
                       _buildQuickAction(
-                          'Genera Report', Icons.description, onGenerateReport),
+                        'Messaggio',
+                        Icons.message,
+                        onSendMessage,
+                      ),
+                      _buildQuickAction(
+                        'Report',
+                        Icons.description,
+                        onGenerateReport,
+                      ),
                     ],
                   ),
                 ),
@@ -267,6 +276,49 @@ class UserCardWidget extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(Map<String, dynamic> badgeData, String labelPrefix) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+      decoration: BoxDecoration(
+        color: badgeData['color'].withAlpha(26),
+        borderRadius: BorderRadius.circular(8.0),
+        border: Border.all(color: badgeData['color'].withAlpha(77), width: 1.5),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(badgeData['icon'], color: badgeData['color'], size: 16.sp),
+          SizedBox(width: 6.w),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  labelPrefix,
+                  style: GoogleFonts.inter(
+                    fontSize: 9.sp,
+                    fontWeight: FontWeight.w400,
+                    color: badgeData['color'].withAlpha(179),
+                  ),
+                ),
+                Text(
+                  badgeData['label'],
+                  style: GoogleFonts.inter(
+                    fontSize: 11.sp,
+                    fontWeight: FontWeight.w600,
+                    color: badgeData['color'],
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -283,23 +335,23 @@ class UserCardWidget extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16.0),
         child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+          padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
           decoration: BoxDecoration(
             color: color.withAlpha(26),
             borderRadius: BorderRadius.circular(16.0),
-            border: Border.all(color: color.withAlpha(77)),
+            border: Border.all(color: color.withAlpha(77), width: 1.5),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: color, size: 12.sp),
-              SizedBox(width: 4.w),
+              Icon(icon, color: color, size: 14.sp),
+              SizedBox(width: 6.w),
               Text(
                 label,
                 style: GoogleFonts.inter(
                   color: color,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 10.sp,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 11.sp,
                 ),
               ),
             ],
@@ -336,32 +388,124 @@ class UserCardWidget extends StatelessWidget {
     );
   }
 
-  Map<String, dynamic> _getSubscriptionStatus() {
-    // Mock subscription status logic
-    final isActive = user['is_active'] == true;
-    if (isActive) {
-      return {'label': 'Premium', 'color': Colors.green};
-    } else {
-      return {'label': 'Basic', 'color': Colors.orange};
+  /// 🩺 Medical Certificate Badge Logic
+  /// Status: Valido (Green) | Scaduto (Red) | Da Caricare (Grey)
+  Map<String, dynamic> _getMedicalCertificateBadgeData() {
+    final certificateUrl = user['medical_certificate_url'];
+    final certificateExpiry = user['medical_certificate_expiry'];
+    final hasCertificate =
+        certificateUrl != null && certificateUrl.toString().isNotEmpty;
+
+    if (!hasCertificate) {
+      return {
+        'label': 'Da Caricare',
+        'color': Colors.grey,
+        'icon': Icons.upload_file,
+      };
     }
+
+    if (certificateExpiry != null) {
+      try {
+        final expiryDate = DateTime.parse(certificateExpiry);
+        final daysUntilExpiry = expiryDate.difference(DateTime.now()).inDays;
+
+        if (daysUntilExpiry < 0) {
+          return {
+            'label': 'Scaduto',
+            'color': Colors.red,
+            'icon': Icons.error_outline,
+          };
+        } else if (daysUntilExpiry <= 60) {
+          return {
+            'label': 'In Scadenza',
+            'color': Colors.orange,
+            'icon': Icons.warning_amber_outlined,
+          };
+        } else {
+          return {
+            'label': 'Valido',
+            'color': Colors.green,
+            'icon': Icons.check_circle_outline,
+          };
+        }
+      } catch (e) {
+        return {
+          'label': 'Errore',
+          'color': Colors.grey,
+          'icon': Icons.error_outline,
+        };
+      }
+    }
+
+    return {
+      'label': 'Caricato',
+      'color': Colors.blue,
+      'icon': Icons.description_outlined,
+    };
   }
 
-  String _getLastActivity() {
-    // Mock last activity logic
-    final createdAt =
-        DateTime.parse(user['created_at'] ?? DateTime.now().toIso8601String());
-    final now = DateTime.now();
-    final difference = now.difference(createdAt);
+  /// 💰 Subscription Badge Logic
+  /// Status: Attivo (Green) | Inattivo/Scaduto (Red)
+  Map<String, dynamic> _getSubscriptionBadgeData() {
+    final subscriptionData = user['subscription_data'] as Map<String, dynamic>?;
 
-    if (difference.inDays > 7) {
-      return '${difference.inDays} giorni fa';
-    } else if (difference.inDays > 0) {
-      return '${difference.inDays} giorni fa';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours} ore fa';
-    } else {
-      return 'Oggi';
+    if (subscriptionData == null) {
+      return {
+        'label': 'Nessuno',
+        'color': Colors.grey,
+        'icon': Icons.cancel_outlined,
+      };
     }
+
+    final isActive = subscriptionData['is_active'] == true;
+    final expiresAt = subscriptionData['expires_at'];
+
+    if (!isActive) {
+      return {
+        'label': 'Inattivo',
+        'color': Colors.grey,
+        'icon': Icons.cancel_outlined,
+      };
+    }
+
+    if (expiresAt != null) {
+      try {
+        final expiryDate = DateTime.parse(expiresAt);
+        final daysUntilExpiry = expiryDate.difference(DateTime.now()).inDays;
+
+        if (daysUntilExpiry < 0) {
+          return {
+            'label': 'Scaduto',
+            'color': Colors.red,
+            'icon': Icons.error_outline,
+          };
+        } else if (daysUntilExpiry <= 7) {
+          return {
+            'label': 'In Scadenza',
+            'color': Colors.orange,
+            'icon': Icons.warning_amber_outlined,
+          };
+        } else {
+          return {
+            'label': 'Attivo',
+            'color': Colors.green,
+            'icon': Icons.check_circle_outline,
+          };
+        }
+      } catch (e) {
+        return {
+          'label': 'Errore',
+          'color': Colors.grey,
+          'icon': Icons.error_outline,
+        };
+      }
+    }
+
+    return {
+      'label': 'Attivo',
+      'color': Colors.green,
+      'icon': Icons.check_circle_outline,
+    };
   }
 
   Color _getRoleColor(String role) {

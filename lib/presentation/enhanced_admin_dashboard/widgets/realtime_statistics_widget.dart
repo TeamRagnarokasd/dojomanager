@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../../theme/app_theme.dart';
+import '../../../widgets/custom_icon_widget.dart';
 
 class RealtimeStatisticsWidget extends StatefulWidget {
   final Map<String, dynamic> stats;
@@ -14,134 +18,102 @@ class RealtimeStatisticsWidget extends StatefulWidget {
       _RealtimeStatisticsWidgetState();
 }
 
-class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _progressAnimation;
+class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
+  bool _isLoading = true;
+
+  // 🔧 FIX 3: Real data instead of fake data
+  double _monthlyRevenue = 0.0;
+  int _totalStudents = 0;
+  int _activeSubscriptions = 0;
+  int _totalReceipts = 0;
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    );
-    _progressAnimation = Tween<double>(
-      begin: 0.0,
-      end: widget.stats['capacityMetrics'] / 100.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    ));
-    _animationController.forward();
+    _loadRealStatistics();
   }
 
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
+  // 🎯 FIX 3: Load real statistics from non_fiscal_receipts table
+  Future<void> _loadRealStatistics() async {
+    try {
+      setState(() => _isLoading = true);
+
+      // Get current month's revenue from non_fiscal_receipts
+      final now = DateTime.now();
+      final startOfMonth = DateTime(now.year, now.month, 1);
+      final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+
+      final receiptsResponse = await Supabase.instance.client
+          .from('non_fiscal_receipts')
+          .select('amount')
+          .gte('created_at', startOfMonth.toIso8601String())
+          .lte('created_at', endOfMonth.toIso8601String());
+
+      // Calculate monthly revenue
+      double monthlyRevenue = 0.0;
+      for (final receipt in receiptsResponse) {
+        monthlyRevenue += (receipt['amount'] as num).toDouble();
+      }
+
+      // Get total students (approved users with student role)
+      final studentsResponse = await Supabase.instance.client
+          .from('user_profiles')
+          .select('id')
+          .eq('role', 'student')
+          .eq('status', 'approved')
+          .count();
+
+      final totalStudents = studentsResponse.count;
+
+      // Get active subscriptions
+      final subsResponse = await Supabase.instance.client
+          .from('user_subscriptions')
+          .select('id')
+          .eq('is_active', true)
+          .count();
+
+      final activeSubscriptions = subsResponse.count;
+
+      // Get total receipts count
+      final totalReceiptsResponse = await Supabase.instance.client
+          .from('non_fiscal_receipts')
+          .select('id')
+          .count();
+
+      final totalReceipts = totalReceiptsResponse.count;
+
+      if (mounted) {
+        setState(() {
+          _monthlyRevenue = monthlyRevenue;
+          _totalStudents = totalStudents;
+          _activeSubscriptions = activeSubscriptions;
+          _totalReceipts = totalReceipts;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Statistiche in Tempo Reale',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-          SizedBox(height: 1.h),
-          Text(
-            'Dati aggiornati e metriche di capacità con tema scuro',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-          SizedBox(height: 3.h),
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-          // Statistics Cards
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatisticCard(
-                  context,
-                  'Iscrizioni Attive',
-                  '${widget.stats['activeMemberships']}',
-                  Icons.people_alt,
-                  Theme.of(context).colorScheme.secondary,
-                  '+12% vs mese scorso',
-                  true,
-                ),
-              ),
-              SizedBox(width: 3.w),
-              Expanded(
-                child: _buildStatisticCard(
-                  context,
-                  'Entrate Mensili',
-                  '€${(widget.stats['monthlyRevenue'] as double).toStringAsFixed(0)}',
-                  Icons.euro_symbol,
-                  Colors.green,
-                  '+8% crescita',
-                  true,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 2.h),
-
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatisticCard(
-                  context,
-                  'Approvazioni',
-                  '${widget.stats['pendingApprovals']}',
-                  Icons.pending_actions,
-                  Colors.orange,
-                  'In attesa',
-                  false,
-                ),
-              ),
-              SizedBox(width: 3.w),
-              Expanded(
-                child: _buildCapacityMetricCard(context),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatisticCard(
-    BuildContext context,
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-    String trend,
-    bool isPositive,
-  ) {
     return Container(
       padding: EdgeInsets.all(4.w),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
-          width: 1,
-        ),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).shadowColor.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -150,153 +122,117 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget>
         children: [
           Row(
             children: [
-              Container(
-                padding: EdgeInsets.all(2.w),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: 20,
-                ),
+              CustomIconWidget(
+                iconName: 'analytics',
+                color: AppTheme.lightTheme.colorScheme.primary,
+                size: 24,
               ),
-              const Spacer(),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
-                decoration: BoxDecoration(
-                  color: (isPositive ? Colors.green : Colors.grey)
-                      .withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isPositive ? Icons.trending_up : Icons.remove,
-                      size: 12,
-                      color: isPositive ? Colors.green : Colors.grey,
-                    ),
-                    SizedBox(width: 1.w),
-                    Text(
-                      trend,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: isPositive ? Colors.green : Colors.grey,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 2.h),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-          SizedBox(height: 0.5.h),
-          Text(
-            title,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCapacityMetricCard(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(4.w),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).shadowColor.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(2.w),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.analytics,
-                  color: Colors.blue,
-                  size: 20,
-                ),
-              ),
-              const Spacer(),
+              SizedBox(width: 2.w),
               Text(
-                '${widget.stats['capacityMetrics']}%',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface,
+                'Statistiche in Tempo Reale',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
               ),
             ],
           ),
+          SizedBox(height: 3.h),
+
+          // Monthly Revenue Card
+          _buildStatCard(
+            context,
+            icon: 'euro',
+            label: 'Entrate Mese',
+            value: '€${_monthlyRevenue.toStringAsFixed(2)}',
+            color: Colors.green,
+          ),
           SizedBox(height: 2.h),
 
-          // Animated Progress Bar
-          AnimatedBuilder(
-            animation: _progressAnimation,
-            builder: (context, child) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    height: 0.8.h,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .outline
-                          .withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: _progressAnimation.value,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.blue,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
+          // Students Card
+          _buildStatCard(
+            context,
+            icon: 'people',
+            label: 'Studenti Attivi',
+            value: _totalStudents.toString(),
+            color: Colors.blue,
+          ),
+          SizedBox(height: 2.h),
+
+          // Active Subscriptions Card
+          _buildStatCard(
+            context,
+            icon: 'card_membership',
+            label: 'Abbonamenti Attivi',
+            value: _activeSubscriptions.toString(),
+            color: Colors.orange,
+          ),
+          SizedBox(height: 2.h),
+
+          // Total Receipts Card
+          _buildStatCard(
+            context,
+            icon: 'receipt_long',
+            label: 'Ricevute Totali',
+            value: _totalReceipts.toString(),
+            color: Colors.purple,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard(
+    BuildContext context, {
+    required String icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: EdgeInsets.all(3.w),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(2.w),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: CustomIconWidget(
+              iconName: icon,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+          SizedBox(width: 3.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
-                    ),
-                  ),
-                  SizedBox(height: 1.h),
-                  Text(
-                    'Metriche Capacità',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
-                ],
-              );
-            },
+                ),
+                SizedBox(height: 0.5.h),
+                Text(
+                  value,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                      ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

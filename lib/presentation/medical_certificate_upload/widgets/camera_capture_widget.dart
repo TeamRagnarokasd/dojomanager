@@ -10,10 +10,7 @@ import '../../../core/app_export.dart';
 class CameraCaptureWidget extends StatefulWidget {
   final Function(XFile) onImageCaptured;
 
-  const CameraCaptureWidget({
-    super.key,
-    required this.onImageCaptured,
-  });
+  const CameraCaptureWidget({super.key, required this.onImageCaptured});
 
   @override
   State<CameraCaptureWidget> createState() => _CameraCaptureWidgetState();
@@ -68,16 +65,16 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
         return;
       }
 
-      final camera = kIsWeb
-          ? _cameras.firstWhere(
-              (c) => c.lensDirection == CameraLensDirection.front,
-              orElse: () => _cameras.first)
-          : _cameras.firstWhere(
-              (c) => c.lensDirection == CameraLensDirection.back,
-              orElse: () => _cameras.first);
+      // FIXED: Always prefer rear camera for certificate capture
+      final camera = _cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => _cameras.first,
+      );
 
       _cameraController = CameraController(
-          camera, kIsWeb ? ResolutionPreset.medium : ResolutionPreset.high);
+        camera,
+        kIsWeb ? ResolutionPreset.medium : ResolutionPreset.high,
+      );
 
       await _cameraController!.initialize();
       await _applySettings();
@@ -177,9 +174,7 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
 
     return Stack(
       children: [
-        Positioned.fill(
-          child: CameraPreview(_cameraController!),
-        ),
+        Positioned.fill(child: CameraPreview(_cameraController!)),
         Positioned(
           bottom: 4.h,
           left: 0,
@@ -284,8 +279,9 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
           width: 12.w,
           height: 12.w,
           decoration: BoxDecoration(
-            color:
-                AppTheme.lightTheme.colorScheme.surface.withValues(alpha: 0.9),
+            color: AppTheme.lightTheme.colorScheme.surface.withValues(
+              alpha: 0.9,
+            ),
             shape: BoxShape.circle,
           ),
           child: IconButton(

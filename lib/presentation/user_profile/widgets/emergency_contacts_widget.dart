@@ -3,6 +3,7 @@ import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../constants/app_constants.dart';
+import '../../../services/user_profile_service.dart';
 
 class EmergencyContactsWidget extends StatefulWidget {
   const EmergencyContactsWidget({Key? key}) : super(key: key);
@@ -13,18 +14,42 @@ class EmergencyContactsWidget extends StatefulWidget {
 }
 
 class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
-  List<Map<String, String>> emergencyContacts = [
-    {
-      'name': 'Maria Rossi',
-      'relationship': 'Moglie',
-      'phone': '+39 339 123 4567'
-    },
-    {
-      'name': 'Dr. Luigi Bianchi',
-      'relationship': 'Medico di Famiglia',
-      'phone': '+39 06 123 4567'
-    },
-  ];
+  bool _isLoading = true;
+  Map<String, dynamic>? _userProfile;
+  String _emergencyContact = '';
+  String _emergencyPhone = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    try {
+      setState(() => _isLoading = true);
+
+      final profile = await UserProfileService().getCurrentUserProfile();
+
+      if (profile != null) {
+        setState(() {
+          _userProfile = profile;
+          _emergencyContact = profile['emergency_contact'] ?? '';
+          _emergencyPhone = profile['emergency_phone'] ?? '';
+        });
+      }
+    } catch (e) {
+      print('Error loading user profile: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Errore nel caricamento dei dati profilo'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +67,7 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Contatti di Emergenza',
+                'Contatto di Emergenza',
                 style: GoogleFonts.inter(
                   color: Colors.white,
                   fontSize: 14.sp,
@@ -50,25 +75,72 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
                 ),
               ),
               IconButton(
-                onPressed: _showAddContactDialog,
-                icon: Icon(Icons.add, color: Colors.red),
+                onPressed: _isLoading ? null : _showEditContactDialog,
+                icon: Icon(
+                  _emergencyContact.isEmpty ? Icons.add : Icons.edit,
+                  color: Colors.red,
+                ),
               ),
             ],
           ),
           SizedBox(height: 2.h),
-          ...emergencyContacts.asMap().entries.map((entry) {
-            int index = entry.key;
-            Map<String, String> contact = entry.value;
-            return _buildContactCard(contact, index);
-          }).toList(),
+          if (_isLoading)
+            Center(
+              child: CircularProgressIndicator(
+                color: Colors.red,
+                strokeWidth: 2,
+              ),
+            )
+          else if (_emergencyContact.isEmpty && _emergencyPhone.isEmpty)
+            _buildEmptyState()
+          else
+            _buildContactCard(),
         ],
       ),
     );
   }
 
-  Widget _buildContactCard(Map<String, String> contact, int index) {
+  Widget _buildEmptyState() {
     return Container(
-      margin: EdgeInsets.only(bottom: 2.h),
+      width: double.infinity,
+      padding: EdgeInsets.all(4.w),
+      decoration: BoxDecoration(
+        color: Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.withAlpha(77)),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.contact_emergency_outlined,
+            color: Colors.grey[600],
+            size: 8.w,
+          ),
+          SizedBox(height: 2.h),
+          Text(
+            'Nessun contatto di emergenza configurato',
+            style: GoogleFonts.inter(
+              color: Colors.grey[400],
+              fontSize: 12.sp,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 1.h),
+          Text(
+            'Tocca + per aggiungere un contatto',
+            style: GoogleFonts.inter(
+              color: Colors.grey[500],
+              fontSize: 10.sp,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContactCard() {
+    return Container(
       padding: EdgeInsets.all(4.w),
       decoration: BoxDecoration(
         color: Color(0xFF2A2A2A),
@@ -97,7 +169,9 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  contact['name'] ?? '',
+                  _emergencyContact.isNotEmpty
+                      ? _emergencyContact
+                      : 'Nome non specificato',
                   style: GoogleFonts.inter(
                     color: Colors.white,
                     fontSize: 12.sp,
@@ -105,25 +179,26 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
                   ),
                 ),
                 Text(
-                  contact['relationship'] ?? '',
+                  'Contatto di Emergenza',
                   style: GoogleFonts.inter(
                     color: Colors.grey[400],
                     fontSize: 10.sp,
                   ),
                 ),
-                Row(
-                  children: [
-                    Icon(Icons.phone, color: Colors.red, size: 3.w),
-                    SizedBox(width: 1.w),
-                    Text(
-                      contact['phone'] ?? '',
-                      style: GoogleFonts.inter(
-                        color: Colors.grey[300],
-                        fontSize: 10.sp,
+                if (_emergencyPhone.isNotEmpty)
+                  Row(
+                    children: [
+                      Icon(Icons.phone, color: Colors.red, size: 3.w),
+                      SizedBox(width: 1.w),
+                      Text(
+                        _emergencyPhone,
+                        style: GoogleFonts.inter(
+                          color: Colors.grey[300],
+                          fontSize: 10.sp,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -132,25 +207,26 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
             icon: Icon(Icons.more_vert, color: Colors.grey),
             onSelected: (value) {
               if (value == 'edit') {
-                _showEditContactDialog(contact, index);
+                _showEditContactDialog();
+              } else if (value == 'call' && _emergencyPhone.isNotEmpty) {
+                _callContact(_emergencyPhone);
               } else if (value == 'delete') {
-                _deleteContact(index);
-              } else if (value == 'call') {
-                _callContact(contact['phone'] ?? '');
+                _deleteContact();
               }
             },
             itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'call',
-                child: Row(
-                  children: [
-                    Icon(Icons.call, color: Colors.green, size: 4.w),
-                    SizedBox(width: 2.w),
-                    Text('Chiama',
-                        style: GoogleFonts.inter(color: Colors.white)),
-                  ],
+              if (_emergencyPhone.isNotEmpty)
+                PopupMenuItem(
+                  value: 'call',
+                  child: Row(
+                    children: [
+                      Icon(Icons.call, color: Colors.green, size: 4.w),
+                      SizedBox(width: 2.w),
+                      Text('Chiama',
+                          style: GoogleFonts.inter(color: Colors.white)),
+                    ],
+                  ),
                 ),
-              ),
               PopupMenuItem(
                 value: 'edit',
                 child: Row(
@@ -168,7 +244,7 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
                   children: [
                     Icon(Icons.delete, color: Colors.red, size: 4.w),
                     SizedBox(width: 2.w),
-                    Text('Elimina',
+                    Text('Rimuovi',
                         style: GoogleFonts.inter(color: Colors.white)),
                   ],
                 ),
@@ -180,35 +256,28 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
     );
   }
 
-  void _showAddContactDialog() {
-    _showContactDialog('Aggiungi Contatto di Emergenza', {}, -1);
-  }
-
-  void _showEditContactDialog(Map<String, String> contact, int index) {
-    _showContactDialog('Modifica Contatto di Emergenza', contact, index);
-  }
-
-  void _showContactDialog(
-      String title, Map<String, String> contact, int index) {
-    final nameController = TextEditingController(text: contact['name'] ?? '');
-    final relationshipController =
-        TextEditingController(text: contact['relationship'] ?? '');
-    final phoneController = TextEditingController(text: contact['phone'] ?? '');
+  void _showEditContactDialog() {
+    final nameController = TextEditingController(text: _emergencyContact);
+    final phoneController = TextEditingController(text: _emergencyPhone);
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Color(0xFF1E1E1E),
-        title: Text(title, style: GoogleFonts.inter(color: Colors.white)),
+        title: Text(
+          _emergencyContact.isEmpty
+              ? 'Aggiungi Contatto di Emergenza'
+              : 'Modifica Contatto di Emergenza',
+          style: GoogleFonts.inter(color: Colors.white),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildDialogTextField('Nome', nameController, Icons.person),
+            _buildDialogTextField(
+                'Nome e Cognome', nameController, Icons.person),
             SizedBox(height: 2.h),
-            _buildDialogTextField('Parentela/Ruolo', relationshipController,
-                Icons.family_restroom),
-            SizedBox(height: 2.h),
-            _buildDialogTextField('Telefono', phoneController, Icons.phone),
+            _buildDialogTextField(
+                'Numero di Telefono', phoneController, Icons.phone),
           ],
         ),
         actions: [
@@ -218,21 +287,11 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
                 Text('Annulla', style: GoogleFonts.inter(color: Colors.grey)),
           ),
           TextButton(
-            onPressed: () {
-              final newContact = {
-                'name': nameController.text,
-                'relationship': relationshipController.text,
-                'phone': phoneController.text,
-              };
-
-              setState(() {
-                if (index == -1) {
-                  emergencyContacts.add(newContact);
-                } else {
-                  emergencyContacts[index] = newContact;
-                }
-              });
-
+            onPressed: () async {
+              await _updateEmergencyContact(
+                nameController.text.trim(),
+                phoneController.text.trim(),
+              );
               Navigator.pop(context);
             },
             child: Text('Salva', style: GoogleFonts.inter(color: Colors.red)),
@@ -263,18 +322,85 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
     );
   }
 
-  void _deleteContact(int index) {
-    setState(() {
-      emergencyContacts.removeAt(index);
-    });
+  Future<void> _updateEmergencyContact(String name, String phone) async {
+    try {
+      final success = await UserProfileService().updateProfile(
+        emergencyContact: name.isEmpty ? null : name,
+        emergencyPhone: phone.isEmpty ? null : phone,
+      );
+
+      if (success) {
+        setState(() {
+          _emergencyContact = name;
+          _emergencyPhone = phone;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Contatto di emergenza aggiornato con successo'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore nell\'aggiornamento del contatto'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Errore: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteContact() async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Color(0xFF1E1E1E),
+        title: Text(
+          'Rimuovi Contatto',
+          style: GoogleFonts.inter(color: Colors.white),
+        ),
+        content: Text(
+          'Sei sicuro di voler rimuovere il contatto di emergenza?',
+          style: GoogleFonts.inter(color: Colors.grey[300]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child:
+                Text('Annulla', style: GoogleFonts.inter(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('Rimuovi', style: GoogleFonts.inter(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete == true) {
+      await _updateEmergencyContact('', '');
+    }
   }
 
   void _callContact(String phone) {
-    // In a real app, you would use url_launcher to make a phone call
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Chiamando $phone...'),
         backgroundColor: Colors.green,
+        action: SnackBarAction(
+          label: 'OK',
+          textColor: Colors.white,
+          onPressed: () {},
+        ),
       ),
     );
   }

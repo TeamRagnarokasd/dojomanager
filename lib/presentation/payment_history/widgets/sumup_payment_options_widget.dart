@@ -1,34 +1,83 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/app_export.dart';
 
-class SumUpPaymentOptionsWidget extends StatelessWidget {
+class SumUpPaymentOptionsWidget extends StatefulWidget {
   const SumUpPaymentOptionsWidget({Key? key}) : super(key: key);
 
+  @override
+  _SumUpPaymentOptionsWidgetState createState() =>
+      _SumUpPaymentOptionsWidgetState();
+}
+
+class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
+  bool _isLoading = false;
+
   Future<void> _launchSatispayUrl() async {
-    const String satispayUrl =
-        'https://www.satispay.com/app/pay/shops/58875f70-d796-4596-a2f6-12fe91a8c202';
-    final Uri url = Uri.parse(satispayUrl);
+    setState(() {
+      _isLoading = true;
+    });
 
     try {
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
+      const satispayUrl = 'https://pay.satispay.com/ragnarokteam';
+      final Uri uri = Uri.parse(satispayUrl);
+
+      // Set payment pending flag before launching
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isPaymentPending', true);
+      await prefs.setString('pendingPaymentMethod', 'satispay');
+
+      // Show loading for better UX
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        // Clear pending flag if launch failed
+        await prefs.setBool('isPaymentPending', false);
+
+        if (mounted) {
+          Fluttertoast.showToast(
+            msg: 'Impossibile aprire Satispay',
+            toastLength: Toast.LENGTH_SHORT,
+            gravity: ToastGravity.BOTTOM,
+            backgroundColor: Colors.red,
+            textColor: Colors.white,
+          );
+        }
       } else {
-        Fluttertoast.showToast(
-          msg: "Impossibile aprire il link Satispay",
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.BOTTOM,
-        );
+        if (mounted) {
+          Fluttertoast.showToast(
+            msg: 'Reindirizzamento a Satispay',
+            toastLength: Toast.LENGTH_SHORT,
+            gravity: ToastGravity.BOTTOM,
+            backgroundColor: AppTheme.lightTheme.colorScheme.primary,
+            textColor: Colors.white,
+          );
+        }
       }
     } catch (e) {
-      Fluttertoast.showToast(
-        msg: "Errore durante l'apertura del link",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-      );
+      // Clear pending flag on error
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isPaymentPending', false);
+
+      if (mounted) {
+        Fluttertoast.showToast(
+          msg: 'Errore durante il reindirizzamento',
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 

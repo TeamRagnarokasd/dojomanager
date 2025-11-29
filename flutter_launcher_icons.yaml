@@ -1,0 +1,27 @@
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  web:
+    generate: true
+    image_path: "assets/images/img_app_logo.svg"
+    background_color: "#ffffff"
+    theme_color: "#0175C2"
+  image_path: "assets/images/img_app_logo.svg"
+  min_sdk_android: 21
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: "assets/images/img_app_logo.svg"
+  remove_alpha_ios: true
+  
+  # Icon sizes for different platforms
+  android_adaptive_icon:
+    foreground: "assets/images/img_app_logo.svg"
+    background: "#ffffff"
+  
+  # iOS specific settings
+  ios_content_scaling: "aspect-fill"
+  
+  # Web manifest settings
+  web_config:
+    generate: true
+    background_color: "#ffffff"
+    theme_color: "#0175C2"

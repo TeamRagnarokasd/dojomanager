@@ -8,45 +8,104 @@ class ManagementCardsWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final List<Map<String, dynamic>> managementOptions = [
+      // Row 1: Core Management
       {
-        'title': 'Gestione Utenti',
-        'subtitle': 'Controllo ruoli e assegnazioni',
-        'icon': Icons.group,
-        'color': Theme.of(context).colorScheme.secondary,
-        'route': '/admin-management-system',
-        'description': 'Amministra utenti, ruoli e permessi',
+        'title': 'Gestione Sponsor',
+        'subtitle': 'Aziende partner e collaborazioni',
+        'icon': Icons.business,
+        'color': Colors.purple,
+        'route': '/admin-sponsor-management',
+        'description': 'Gestisci sponsor e partnership commerciali',
+        'status': 'Funzionale',
+        'badgeColor': Colors.blue,
+        'category': 'core',
+      },
+
+      // Row 2: Financial Management
+      {
+        'title': 'Gestione Ricevute',
+        'subtitle': 'Sistema ricevute italiane integrato',
+        'icon': Icons.receipt,
+        'color': Colors.blue,
+        'route': '/italian-receipt-generation',
+        'description':
+            'Sistema completo per ricevute fiscali italiane con integrazione Supabase',
         'status': 'Funzionale',
         'badgeColor': Colors.green,
+        'category': 'financial',
       },
       {
-        'title': 'Generazione Ricevute',
-        'subtitle': 'Elaborazione automatizzata',
-        'icon': Icons.receipt_long,
-        'color': Colors.green,
-        'route': '/receipt-generation-system',
-        'description': 'Sistema automatico di fatturazione',
-        'status': 'Attivo',
-        'badgeColor': Colors.blue,
+        'title': 'Gestione Istruttori',
+        'subtitle': 'Profili, foto e corsi associati',
+        'icon': Icons.person_4,
+        'color': Colors.deepOrange,
+        'route': '/instructor-management-system',
+        'description': 'Modifica descrizioni, foto e corsi di ogni istruttore',
+        'status': 'Operativo',
+        'badgeColor': Colors.deepOrange,
+        'category': 'personnel',
+      },
+
+      // Row 3: Schedule & Events Management
+      {
+        'title': 'Palinsesto Stagionale',
+        'subtitle': 'Programmazione corsi e calendari',
+        'icon': Icons.calendar_today,
+        'color': Colors.indigo,
+        'route': '/seasonal-schedule-management',
+        'description': 'Gestisci programmazione stagionale completa',
+        'status': 'Configurato',
+        'badgeColor': Colors.indigo,
+        'category': 'scheduling',
       },
       {
         'title': 'Gestione Eventi',
-        'subtitle': 'Seminari e stage programmatici',
+        'subtitle': 'Seminari, stage e competizioni',
         'icon': Icons.event_note,
         'color': Colors.blue,
         'route': '/admin-event-management',
-        'description': 'Organizza seminari, stage e eventi',
+        'description': 'Organizza seminari, stage e eventi speciali',
         'status': 'Disponibile',
         'badgeColor': Colors.orange,
+        'category': 'scheduling',
       },
+
+      // Row 4: Discipline & Admin Management (REMOVED Communication Center)
       {
-        'title': 'Programmazione Discipline',
-        'subtitle': 'Assegnazioni istruttori',
+        'title': 'Gestione Discipline',
+        'subtitle': 'BJJ, MMA, SAMBO e istruttori',
         'icon': Icons.sports_martial_arts,
-        'color': Colors.orange,
+        'color': Colors.deepPurple,
         'route': '/admin-discipline-management',
-        'description': 'Gestisci BJJ, MMA, SAMBO e istruttori',
+        'description': 'Amministra discipline e assegnazioni istruttori',
         'status': 'Configurato',
         'badgeColor': Colors.purple,
+        'category': 'disciplines',
+      },
+      // NEW: Profilo Card - Added next to Lista utenti
+      {
+        'title': 'Profilo',
+        'subtitle': 'Dati amministratore principale',
+        'icon': Icons.account_circle,
+        'color': Colors.teal,
+        'route': '/admin-profile',
+        'description': 'Visualizza e modifica il tuo profilo amministratore',
+        'status': 'Attivo',
+        'badgeColor': Colors.teal,
+        'category': 'admin',
+      },
+
+      // Row 5: Admin Management
+      {
+        'title': 'Lista utenti e comunicazioni',
+        'subtitle': 'Controllo accessi e sicurezza',
+        'icon': Icons.admin_panel_settings,
+        'color': Colors.red,
+        'route': '/admin-management-system',
+        'description': 'Gestisci amministratori e permessi sistema',
+        'status': 'Sicuro',
+        'badgeColor': Colors.red,
+        'category': 'admin',
       },
     ];
 
@@ -55,60 +114,118 @@ class ManagementCardsWidget extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.dashboard,
-                color: Theme.of(context).colorScheme.secondary,
-                size: 24,
-              ),
-              SizedBox(width: 2.w),
-              Text(
-                'Gestione dei Sistemi Amministrativi',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-            ],
-          ),
-          SizedBox(height: 1.h),
+          // Header with enhanced design
           Container(
-            padding: EdgeInsets.all(3.w),
+            padding: EdgeInsets.all(4.w),
             decoration: BoxDecoration(
-              color: Theme.of(context)
-                  .colorScheme
-                  .secondary
-                  .withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
+              gradient: LinearGradient(
+                colors: [
+                  Theme.of(
+                    context,
+                  ).colorScheme.secondary.withValues(alpha: 0.1),
+                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: Theme.of(context)
-                    .colorScheme
-                    .secondary
-                    .withValues(alpha: 0.3),
+                color: Theme.of(
+                  context,
+                ).colorScheme.secondary.withValues(alpha: 0.3),
               ),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.info_outline,
-                  color: Theme.of(context).colorScheme.secondary,
-                  size: 16,
+                Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(2.w),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.secondary,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.dashboard,
+                        color: Theme.of(context).colorScheme.onSecondary,
+                        size: 24,
+                      ),
+                    ),
+                    SizedBox(width: 3.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Pannello di Controllo Amministrativo',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.headlineSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          Text(
+                            'Tutti i sistemi sono integrati con Supabase e operativi. Navigazione ottimizzata per amministratori.',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(
+                              color:
+                                  Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(width: 2.w),
-                Expanded(
-                  child: Text(
-                    'Navigazione completamente ricostruita e funzionale per tutti i sistemi Team Ragnarok',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.secondary,
-                          fontWeight: FontWeight.w500,
+                SizedBox(height: 2.h),
+                Container(
+                  padding: EdgeInsets.all(3.w),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.secondary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.secondary.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: Theme.of(context).colorScheme.secondary,
+                        size: 16,
+                      ),
+                      SizedBox(width: 2.w),
+                      Expanded(
+                        child: Text(
+                          'Tutti i sistemi sono integrati con Supabase e operativi. Navigazione ottimizzata per amministratori.',
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.secondary,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
+
           SizedBox(height: 3.h),
+
+          // Management Cards Grid - Enhanced Layout
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -116,7 +233,8 @@ class ManagementCardsWidget extends StatelessWidget {
               crossAxisCount: 2,
               crossAxisSpacing: 3.w,
               mainAxisSpacing: 2.h,
-              childAspectRatio: 0.82,
+              childAspectRatio:
+                  0.75, // Slightly taller cards for better content
             ),
             itemCount: managementOptions.length,
             itemBuilder: (context, index) {
@@ -130,14 +248,16 @@ class ManagementCardsWidget extends StatelessWidget {
   }
 
   Widget _buildEnhancedManagementCard(
-      BuildContext context, Map<String, dynamic> option) {
+    BuildContext context,
+    Map<String, dynamic> option,
+  ) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
           HapticFeedback.mediumImpact();
 
-          // Show loading indicator briefly
+          // Enhanced loading feedback
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Row(
@@ -147,24 +267,35 @@ class ManagementCardsWidget extends StatelessWidget {
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Theme.of(context).colorScheme.onSecondary,
+                      ),
                     ),
                   ),
                   SizedBox(width: 3.w),
-                  Text('Caricamento ${option['title']}...'),
+                  Expanded(
+                    child: Text(
+                      'Caricamento ${option['title']}...',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
                 ],
               ),
               backgroundColor: Theme.of(context).colorScheme.secondary,
-              duration: Duration(seconds: 2),
+              duration: Duration(seconds: 1),
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
               ),
+              margin: EdgeInsets.all(4.w),
             ),
           );
 
-          // Navigate to the route
-          Future.delayed(Duration(milliseconds: 300), () {
+          // Navigate after brief delay for better UX
+          Future.delayed(Duration(milliseconds: 400), () {
             Navigator.pushNamed(context, option['route']);
           });
         },
@@ -176,32 +307,47 @@ class ManagementCardsWidget extends StatelessWidget {
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Theme.of(context)
-                  .colorScheme
-                  .secondary
-                  .withValues(alpha: 0.2),
+              color: (option['color'] as Color).withValues(alpha: 0.3),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Theme.of(context).shadowColor.withValues(alpha: 0.15),
-                blurRadius: 15,
-                offset: const Offset(0, 5),
-                spreadRadius: 1,
+                color: Theme.of(context).shadowColor.withValues(alpha: 0.1),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+                spreadRadius: 2,
+              ),
+              BoxShadow(
+                color: (option['color'] as Color).withValues(alpha: 0.05),
+                blurRadius: 40,
+                offset: const Offset(0, 16),
+                spreadRadius: 4,
               ),
             ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Status Badge and Icon Row
+              // Header with Icon and Status Badge
               Row(
                 children: [
                   Container(
                     padding: EdgeInsets.all(3.w),
                     decoration: BoxDecoration(
-                      color: (option['color'] as Color).withValues(alpha: 0.15),
+                      gradient: LinearGradient(
+                        colors: [
+                          (option['color'] as Color).withValues(alpha: 0.15),
+                          (option['color'] as Color).withValues(alpha: 0.08),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: (option['color'] as Color).withValues(
+                          alpha: 0.2,
+                        ),
+                      ),
                     ),
                     child: Icon(
                       option['icon'],
@@ -211,22 +357,33 @@ class ManagementCardsWidget extends StatelessWidget {
                   ),
                   const Spacer(),
                   Container(
-                    padding:
-                        EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 2.w,
+                      vertical: 0.8.h,
+                    ),
                     decoration: BoxDecoration(
-                      color: (option['badgeColor'] as Color)
-                          .withValues(alpha: 0.1),
+                      gradient: LinearGradient(
+                        colors: [
+                          (option['badgeColor'] as Color).withValues(
+                            alpha: 0.15,
+                          ),
+                          (option['badgeColor'] as Color).withValues(
+                            alpha: 0.08,
+                          ),
+                        ],
+                      ),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: (option['badgeColor'] as Color)
-                            .withValues(alpha: 0.3),
+                        color: (option['badgeColor'] as Color).withValues(
+                          alpha: 0.4,
+                        ),
                       ),
                     ),
                     child: Text(
                       option['status'],
                       style: TextStyle(
-                        fontSize: 8.sp,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 9.sp,
+                        fontWeight: FontWeight.w700,
                         color: option['badgeColor'],
                       ),
                     ),
@@ -239,85 +396,96 @@ class ManagementCardsWidget extends StatelessWidget {
               Text(
                 option['title'],
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontWeight: FontWeight.w700,
+                  height: 1.2,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
-              SizedBox(height: 0.5.h),
+              SizedBox(height: 0.8.h),
 
               // Subtitle
               Text(
                 option['subtitle'],
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
               SizedBox(height: 1.h),
 
               // Description
-              Text(
-                option['description'],
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 10,
-                      height: 1.3,
-                    ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const Spacer(),
-
-              // Action Row with enhanced visual feedback
-              Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 3.w,
-                  vertical: 1.h,
+              Expanded(
+                child: Text(
+                  option['description'],
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 10.sp,
+                    height: 1.4,
+                    fontWeight: FontWeight.w400,
+                  ),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                 ),
+              ),
+
+              // Action Button with Enhanced Design
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.2.h),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      Theme.of(context)
-                          .colorScheme
-                          .secondary
-                          .withValues(alpha: 0.1),
-                      Theme.of(context)
-                          .colorScheme
-                          .secondary
-                          .withValues(alpha: 0.05),
+                      (option['color'] as Color).withValues(alpha: 0.12),
+                      (option['color'] as Color).withValues(alpha: 0.06),
                     ],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
                   ),
                   borderRadius: BorderRadius.circular(25),
+                  border: Border.all(
+                    color: (option['color'] as Color).withValues(alpha: 0.2),
+                  ),
                 ),
                 child: Row(
                   children: [
                     Icon(
-                      Icons.launch,
-                      color: Theme.of(context).colorScheme.secondary,
-                      size: 14,
+                      Icons.launch_rounded,
+                      color: option['color'],
+                      size: 16,
                     ),
                     SizedBox(width: 2.w),
-                    Text(
-                      'Accedi al Sistema',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.secondary,
-                            fontWeight: FontWeight.w600,
-                          ),
+                    Expanded(
+                      child: Text(
+                        'Accedi al Sistema',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: option['color'],
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11.sp,
+                        ),
+                      ),
                     ),
-                    const Spacer(),
                     Container(
-                      padding: EdgeInsets.all(1.w),
+                      padding: EdgeInsets.all(1.2.w),
                       decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .secondary
-                            .withValues(alpha: 0.2),
+                        color: (option['color'] as Color).withValues(
+                          alpha: 0.15,
+                        ),
                         shape: BoxShape.circle,
+                        border: Border.all(
+                          color: (option['color'] as Color).withValues(
+                            alpha: 0.3,
+                          ),
+                        ),
                       ),
                       child: Icon(
-                        Icons.arrow_forward_ios,
-                        color: Theme.of(context).colorScheme.secondary,
-                        size: 12,
+                        Icons.arrow_forward_ios_rounded,
+                        color: option['color'],
+                        size: 10,
                       ),
                     ),
                   ],

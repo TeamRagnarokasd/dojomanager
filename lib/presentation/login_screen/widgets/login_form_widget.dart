@@ -12,6 +12,8 @@ class LoginFormWidget extends StatefulWidget {
   final VoidCallback onForgotPassword;
   final String? emailError;
   final String? passwordError;
+  final bool rememberMe;
+  final ValueChanged<bool> onRememberMeChanged;
 
   const LoginFormWidget({
     Key? key,
@@ -22,6 +24,8 @@ class LoginFormWidget extends StatefulWidget {
     required this.onForgotPassword,
     this.emailError,
     this.passwordError,
+    required this.rememberMe,
+    required this.onRememberMeChanged,
   }) : super(key: key);
 
   @override
@@ -103,9 +107,10 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
               child: Padding(
                 padding: EdgeInsets.all(3.w),
                 child: CustomIconWidget(
-                  iconName: widget.isPasswordVisible
-                      ? 'visibility'
-                      : 'visibility_off',
+                  iconName:
+                      widget.isPasswordVisible
+                          ? 'visibility'
+                          : 'visibility_off',
                   color: AppTheme.textSecondaryLight,
                   size: 20,
                 ),
@@ -125,7 +130,37 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
         ),
         SizedBox(height: 2.h),
 
-        // Forgot Password Link
+        // Remember Me Checkbox - Separate Row for Better Visibility
+        Row(
+          children: [
+            SizedBox(
+              height: 24,
+              width: 24,
+              child: Checkbox(
+                value: widget.rememberMe,
+                onChanged: (value) {
+                  HapticFeedback.lightImpact();
+                  widget.onRememberMeChanged(value ?? false);
+                },
+                activeColor: AppTheme.primaryLight,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            SizedBox(width: 2.w),
+            Text(
+              'Ricordami',
+              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                color: AppTheme.textPrimaryLight,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 2.h),
+
+        // Forgot Password Link - Separate Row
         Align(
           alignment: Alignment.centerRight,
           child: GestureDetector(

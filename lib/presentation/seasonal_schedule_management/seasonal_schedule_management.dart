@@ -6,9 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/auth_service.dart';
 import './widgets/season_configuration_widget.dart';
-import './widgets/weekly_template_builder_widget.dart';
 import './widgets/holiday_management_widget.dart';
-import './widgets/schedule_preview_widget.dart';
 import './widgets/bulk_operations_widget.dart';
 
 class SeasonalScheduleManagement extends StatefulWidget {
@@ -37,7 +35,7 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _checkAdminAccess();
   }
 
@@ -82,10 +80,7 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
 
   Future<void> _loadInitialData() async {
     try {
-      await Future.wait([
-        _loadCurrentSeason(),
-        _loadInstructors(),
-      ]);
+      await Future.wait([_loadCurrentSeason(), _loadInstructors()]);
 
       if (_currentSeason != null) {
         await Future.wait([
@@ -95,24 +90,63 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
         ]);
       }
 
-      setState(() => _isLoading = false);
+      // Force UI refresh
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     } catch (error) {
-      setState(() => _isLoading = false);
-      _showErrorSnackBar('Errore nel caricamento dati palinsesto');
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showErrorSnackBar('Errore nel caricamento dati palinsesto');
+      }
     }
   }
 
   Future<void> _loadCurrentSeason() async {
-    final response = await _supabase
+    // Load the most recent schedule (prioritize draft, then active, then others)
+    final draftResponse = await _supabase
         .from('seasonal_schedules')
         .select('*')
         .eq('status', 'draft')
         .order('created_at', ascending: false)
         .limit(1);
 
-    if (response.isNotEmpty) {
+    if (draftResponse.isNotEmpty) {
       setState(() {
-        _currentSeason = response.first;
+        _currentSeason = draftResponse.first;
+      });
+      return;
+    }
+
+    // If no draft, load the most recent active schedule
+    final activeResponse = await _supabase
+        .from('seasonal_schedules')
+        .select('*')
+        .eq('status', 'active')
+        .order('created_at', ascending: false)
+        .limit(1);
+
+    if (activeResponse.isNotEmpty) {
+      setState(() {
+        _currentSeason = activeResponse.first;
+      });
+      return;
+    }
+
+    // If no active, load the most recent schedule of any status
+    final anyResponse = await _supabase
+        .from('seasonal_schedules')
+        .select('*')
+        .order('created_at', ascending: false)
+        .limit(1);
+
+    if (anyResponse.isNotEmpty) {
+      setState(() {
+        _currentSeason = anyResponse.first;
+      });
+    } else {
+      setState(() {
+        _currentSeason = null;
       });
     }
   }
@@ -181,14 +215,15 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
 
   Future<void> _createNewSeason(Map<String, dynamic> seasonData) async {
     try {
-      final response = await _supabase
-          .from('seasonal_schedules')
-          .insert({
-            ...seasonData,
-            'created_by': AuthService.instance.currentUser!.id,
-          })
-          .select()
-          .single();
+      final response =
+          await _supabase
+              .from('seasonal_schedules')
+              .insert({
+                ...seasonData,
+                'created_by': AuthService.instance.currentUser!.id,
+              })
+              .select()
+              .single();
 
       setState(() {
         _currentSeason = response;
@@ -196,6 +231,9 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
         _holidays.clear();
         _scheduleInstances.clear();
       });
+
+      // Force reload all data to ensure consistency
+      await _loadInitialData();
 
       _showSuccessSnackBar('Nuova stagione creata con successo');
     } catch (error) {
@@ -209,10 +247,10 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
     try {
       HapticFeedback.mediumImpact();
 
-      final response =
-          await _supabase.rpc('generate_seasonal_schedule_instances', params: {
-        'schedule_id': _currentSeason!['id'],
-      });
+      final response = await _supabase.rpc(
+        'generate_seasonal_schedule_instances',
+        params: {'schedule_id': _currentSeason!['id']},
+      );
 
       await _loadScheduleInstances();
       _showSuccessSnackBar('${response} lezioni generate automaticamente');
@@ -224,19 +262,99 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
   Future<void> _activateSeason() async {
     if (_currentSeason == null) return;
 
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text('Attiva Palinsesto'),
+            content: Text(
+              'Sei sicuro di voler attivare questo palinsesto? Una volta attivato, sarà visibile a tutti gli utenti e diventerà il palinsesto ufficiale.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('Annulla'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.secondary,
+                ),
+                child: Text('Attiva'),
+              ),
+            ],
+          ),
+    );
+
+    if (confirmed != true) return;
+
     try {
+      // First deactivate any existing active schedules
       await _supabase
           .from('seasonal_schedules')
-          .update({'status': 'active'}).eq('id', _currentSeason!['id']);
+          .update({'status': 'completed'})
+          .eq('status', 'active');
+
+      // Then activate the current schedule
+      await _supabase
+          .from('seasonal_schedules')
+          .update({'status': 'active'})
+          .eq('id', _currentSeason!['id']);
 
       setState(() {
         _currentSeason!['status'] = 'active';
       });
 
-      _showSuccessSnackBar('Stagione attivata e pubblicata');
+      _showSuccessSnackBar('Palinsesto attivato con successo!');
+
+      // Show success dialog with option to go home
+      _showActivationSuccessDialog();
     } catch (error) {
-      _showErrorSnackBar('Errore nell\'attivazione stagione');
+      _showErrorSnackBar('Errore nell\'attivazione palinsesto');
     }
+  }
+
+  void _showActivationSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green, size: 28),
+                SizedBox(width: 2.w),
+                Text('Palinsesto Attivato'),
+              ],
+            ),
+            content: Text(
+              'Il palinsesto è stato attivato con successo e ora è visibile a tutti gli utenti dell\'applicazione.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: Text('Continua qui'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  Navigator.pushReplacementNamed(context, '/dashboard-home');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.secondary,
+                ),
+                child: Text('Torna alla Home'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  void _goHome() {
+    Navigator.pushReplacementNamed(context, '/dashboard-home');
   }
 
   void _showErrorSnackBar(String message) {
@@ -266,7 +384,7 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
       case 'draft':
         return 'Bozza';
       case 'active':
-        return 'Attiva';
+        return 'Applicato';
       case 'completed':
         return 'Completata';
       case 'cancelled':
@@ -283,9 +401,9 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
       case 'draft':
         return Colors.orange;
       case 'active':
-        return Theme.of(context).colorScheme.secondary;
-      case 'completed':
         return Colors.green;
+      case 'completed':
+        return Colors.blue;
       case 'cancelled':
         return Colors.red;
       default:
@@ -302,6 +420,11 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
           title: Text('Gestione Palinsesto Stagionale'),
           backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
           foregroundColor: Theme.of(context).appBarTheme.foregroundColor,
+          leading: IconButton(
+            icon: Icon(Icons.home),
+            onPressed: _goHome,
+            tooltip: 'Torna alla Home',
+          ),
         ),
         body: Center(
           child: Column(
@@ -329,12 +452,53 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
         title: Text('Palinsesto Stagionale'),
         backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         foregroundColor: Theme.of(context).appBarTheme.foregroundColor,
+        leading: IconButton(
+          icon: Icon(Icons.home),
+          onPressed: _goHome,
+          tooltip: 'Torna alla Home Admin',
+        ),
         actions: [
           if (_currentSeason != null && _currentSeason!['status'] == 'draft')
-            IconButton(
-              onPressed: _activateSeason,
-              icon: Icon(Icons.publish),
-              tooltip: 'Attiva Stagione',
+            Container(
+              margin: EdgeInsets.only(right: 2.w),
+              child: ElevatedButton.icon(
+                onPressed: _activateSeason,
+                icon: Icon(Icons.publish, size: 18),
+                label: Text('Attiva Palinsesto'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+              ),
+            ),
+          // Show current status for active schedules
+          if (_currentSeason != null && _currentSeason!['status'] == 'active')
+            Container(
+              margin: EdgeInsets.only(right: 2.w),
+              padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.green, width: 1),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green, size: 16),
+                  SizedBox(width: 1.w),
+                  Text(
+                    'Applicato al Sistema',
+                    style: TextStyle(
+                      color: Colors.green,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
             ),
           IconButton(
             onPressed: () => _showQuickActionsMenu(),
@@ -365,8 +529,9 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
                             vertical: 1.h,
                           ),
                           decoration: BoxDecoration(
-                            color:
-                                _getSeasonStatusColor().withValues(alpha: 0.1),
+                            color: _getSeasonStatusColor().withValues(
+                              alpha: 0.1,
+                            ),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: _getSeasonStatusColor(),
@@ -408,9 +573,10 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
                           Text(
                             '${DateFormat('dd/MM').format(DateTime.parse(_currentSeason!['start_date']))} - ${DateFormat('dd/MM/yyyy').format(DateTime.parse(_currentSeason!['end_date']))}',
                             style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
+                              color:
+                                  Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                               fontSize: 12,
                             ),
                           ),
@@ -423,13 +589,12 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
                         alignment: Alignment.centerLeft,
                         child: Text(
                           _currentSeason!['title'] ?? 'Stagione senza titolo',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurface,
-                                fontWeight: FontWeight.w600,
-                              ),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
@@ -446,10 +611,8 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
                     Theme.of(context).colorScheme.onSurfaceVariant,
                 indicatorColor: Theme.of(context).colorScheme.secondary,
                 tabs: [
-                  Tab(text: 'Configurazione'),
                   Tab(text: 'Schema Orari'),
                   Tab(text: 'Festività'),
-                  Tab(text: 'Anteprima'),
                   Tab(text: 'Operazioni'),
                 ],
               ),
@@ -460,19 +623,14 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
       body: TabBarView(
         controller: _tabController,
         children: [
-          // Season Configuration Tab
+          // Season Configuration Tab (Schema Orari)
           SeasonConfigurationWidget(
             currentSeason: _currentSeason,
             onSeasonCreated: _createNewSeason,
-            onSeasonUpdated: () => _loadCurrentSeason(),
-          ),
-
-          // Weekly Template Builder Tab
-          WeeklyTemplateBuilderWidget(
-            currentSeason: _currentSeason,
-            weeklyTemplates: _weeklyTemplates,
-            instructors: _instructors,
-            onTemplatesUpdated: _loadWeeklyTemplates,
+            onSeasonUpdated: () async {
+              await _loadCurrentSeason();
+              await _loadWeeklyTemplates();
+            },
           ),
 
           // Holiday Management Tab
@@ -480,14 +638,6 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
             currentSeason: _currentSeason,
             holidays: _holidays,
             onHolidaysUpdated: _loadHolidays,
-          ),
-
-          // Schedule Preview Tab
-          SchedulePreviewWidget(
-            currentSeason: _currentSeason,
-            scheduleInstances: _scheduleInstances,
-            holidays: _holidays,
-            onGenerateSchedule: _generateScheduleInstances,
           ),
 
           // Bulk Operations Tab
@@ -509,67 +659,65 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
-        padding: EdgeInsets.all(6.w),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 12.w,
-              height: 0.5.h,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.outline,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            SizedBox(height: 3.h),
-            Text(
-              'Azioni Rapide Palinsesto',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+      builder:
+          (context) => Container(
+            padding: EdgeInsets.all(6.w),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 12.w,
+                  height: 0.5.h,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.outline,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                SizedBox(height: 3.h),
+                Text(
+                  'Azioni Rapide Palinsesto',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     color: Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w600,
                   ),
+                ),
+                SizedBox(height: 3.h),
+                _buildQuickActionTile(
+                  'Genera Automatico',
+                  Icons.auto_awesome,
+                  _currentSeason != null && _weeklyTemplates.isNotEmpty
+                      ? () {
+                        Navigator.pop(context);
+                        _generateScheduleInstances();
+                      }
+                      : null,
+                ),
+                _buildQuickActionTile(
+                  'Attiva Palinsesto',
+                  Icons.publish,
+                  _currentSeason != null && _currentSeason!['status'] == 'draft'
+                      ? () {
+                        Navigator.pop(context);
+                        _activateSeason();
+                      }
+                      : null,
+                ),
+                _buildQuickActionTile('Torna alla Home', Icons.home, () {
+                  Navigator.pop(context);
+                  _goHome();
+                }),
+                SizedBox(height: 2.h),
+              ],
             ),
-            SizedBox(height: 3.h),
-            _buildQuickActionTile(
-              'Genera Automatico',
-              Icons.auto_awesome,
-              _currentSeason != null && _weeklyTemplates.isNotEmpty
-                  ? () {
-                      Navigator.pop(context);
-                      _generateScheduleInstances();
-                    }
-                  : null,
-            ),
-            _buildQuickActionTile(
-              'Attiva Stagione',
-              Icons.publish,
-              _currentSeason != null && _currentSeason!['status'] == 'draft'
-                  ? () {
-                      Navigator.pop(context);
-                      _activateSeason();
-                    }
-                  : null,
-            ),
-            _buildQuickActionTile(
-              'Duplica Template',
-              Icons.content_copy,
-              _currentSeason != null && _weeklyTemplates.isNotEmpty
-                  ? () {
-                      Navigator.pop(context);
-                      _showDuplicateTemplateDialog();
-                    }
-                  : null,
-            ),
-            SizedBox(height: 2.h),
-          ],
-        ),
-      ),
+          ),
     );
   }
 
   Widget _buildQuickActionTile(
-      String title, IconData icon, VoidCallback? onTap) {
+    String title,
+    IconData icon,
+    VoidCallback? onTap,
+  ) {
     final isEnabled = onTap != null;
 
     return Material(
@@ -585,25 +733,24 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
               Container(
                 padding: EdgeInsets.all(3.w),
                 decoration: BoxDecoration(
-                  color: isEnabled
-                      ? Theme.of(context)
-                          .colorScheme
-                          .secondary
-                          .withValues(alpha: 0.1)
-                      : Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.05),
+                  color:
+                      isEnabled
+                          ? Theme.of(
+                            context,
+                          ).colorScheme.secondary.withValues(alpha: 0.1)
+                          : Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   icon,
-                  color: isEnabled
-                      ? Theme.of(context).colorScheme.secondary
-                      : Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.4),
+                  color:
+                      isEnabled
+                          ? Theme.of(context).colorScheme.secondary
+                          : Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.4),
                   size: 24,
                 ),
               ),
@@ -611,47 +758,29 @@ class _SeasonalScheduleManagementState extends State<SeasonalScheduleManagement>
               Text(
                 title,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: isEnabled
+                  color:
+                      isEnabled
                           ? Theme.of(context).colorScheme.onSurface
-                          : Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.4),
-                      fontWeight: FontWeight.w500,
-                    ),
+                          : Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.4),
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               Spacer(),
               Icon(
                 Icons.arrow_forward_ios,
-                color: isEnabled
-                    ? Theme.of(context).colorScheme.onSurfaceVariant
-                    : Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.4),
+                color:
+                    isEnabled
+                        ? Theme.of(context).colorScheme.onSurfaceVariant
+                        : Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.4),
                 size: 16,
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  void _showDuplicateTemplateDialog() {
-    // Implementation for template duplication
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Duplica Template'),
-        content:
-            Text('Funzionalità di duplicazione template sarà implementata'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Ok'),
-          ),
-        ],
       ),
     );
   }

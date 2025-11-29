@@ -19,76 +19,46 @@ class BookingModalWidget extends StatefulWidget {
 }
 
 class _BookingModalWidgetState extends State<BookingModalWidget> {
-  bool _isLoading = false;
-
-  Color _getClassTypeColor(String type) {
-    switch (type.toLowerCase()) {
-      case 'karate':
-        return const Color(0xFF2196F3);
-      case 'judo':
-        return const Color(0xFF4CAF50);
-      case 'taekwondo':
-        return const Color(0xFFF44336);
-      default:
-        return Theme.of(context).primaryColor;
-    }
-  }
-
-  Future<void> _confirmBooking() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Simulate booking process
-    await Future.delayed(const Duration(seconds: 2));
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    widget.onBookingConfirmed();
-    Navigator.pop(context);
-  }
+  bool _isBooking = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final classType = widget.classData['type'] as String? ?? '';
-    final instructor = widget.classData['instructor'] as String? ?? '';
-    final time = widget.classData['time'] as String? ?? '';
-    final date = widget.classData['date'] as String? ?? '';
-    final capacity = widget.classData['capacity'] as int? ?? 0;
-    final enrolled = widget.classData['enrolled'] as int? ?? 0;
-    final description = widget.classData['description'] as String? ?? '';
-    final instructorBio = widget.classData['instructorBio'] as String? ?? '';
-    final isAvailable = enrolled < capacity;
+    final isBooked = widget.classData['isBooked'] ?? false;
+    final capacity = widget.classData['capacity'] ?? 20;
+    final enrolled = widget.classData['enrolled'] ?? 0;
+    final availableSpots = capacity - enrolled;
 
     return Container(
-      decoration: const BoxDecoration(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Handle bar
-          Container(
-            margin: EdgeInsets.only(top: 2.h),
-            width: 12.w,
-            height: 0.5.h,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(2),
+          Center(
+            child: Container(
+              margin: EdgeInsets.only(top: 1.h, bottom: 2.h),
+              width: 12.w,
+              height: 0.5.h,
+              decoration: BoxDecoration(
+                color:
+                    theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
 
           // Content
-          Flexible(
+          Expanded(
             child: SingleChildScrollView(
-              padding: EdgeInsets.all(4.w),
+              padding: EdgeInsets.symmetric(horizontal: 6.w),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Class header
+                  // Class type and status
                   Row(
                     children: [
                       Container(
@@ -97,150 +67,245 @@ class _BookingModalWidgetState extends State<BookingModalWidget> {
                           vertical: 1.h,
                         ),
                         decoration: BoxDecoration(
-                          color: _getClassTypeColor(classType),
+                          color:
+                              _getTypeColor(widget.classData['type'] ?? 'BJJ'),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          classType.toUpperCase(),
+                          widget.classData['type'] ?? 'BJJ',
                           style: theme.textTheme.labelMedium!.copyWith(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5,
                           ),
                         ),
                       ),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: CustomIconWidget(
-                          iconName: 'close',
-                          color: theme.colorScheme.onSurfaceVariant,
-                          size: 24,
+                      SizedBox(width: 2.w),
+                      if (isBooked)
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 3.w,
+                            vertical: 1.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CustomIconWidget(
+                                iconName: 'check_circle',
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                              SizedBox(width: 1.w),
+                              Text(
+                                'Prenotato',
+                                style: theme.textTheme.labelSmall!.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
                     ],
                   ),
 
                   SizedBox(height: 3.h),
 
                   // Class details
-                  _buildDetailRow('access_time', 'Orario', '$time - $date'),
-                  SizedBox(height: 2.h),
-                  _buildDetailRow('person', 'Istruttore', instructor),
-                  SizedBox(height: 2.h),
                   _buildDetailRow(
-                    'group',
+                    context,
+                    'Istruttore',
+                    widget.classData['instructor'] ?? 'Da definire',
+                    'person',
+                  ),
+                  _buildDetailRow(
+                    context,
+                    'Orario',
+                    widget.classData['time'] ?? '',
+                    'schedule',
+                  ),
+                  _buildDetailRow(
+                    context,
+                    'Data',
+                    widget.classData['date'] ?? '',
+                    'calendar_today',
+                  ),
+                  _buildDetailRow(
+                    context,
                     'Posti disponibili',
-                    '${capacity - enrolled}/$capacity',
+                    '$availableSpots/$capacity',
+                    'people',
+                    valueColor: availableSpots > 0 ? Colors.green : Colors.red,
                   ),
 
-                  if (description.isNotEmpty) ...[
-                    SizedBox(height: 3.h),
+                  SizedBox(height: 3.h),
+
+                  // Capacity indicator
+                  _buildCapacityIndicator(context, enrolled, capacity),
+
+                  SizedBox(height: 3.h),
+
+                  // Description
+                  if (widget.classData['description'] != null &&
+                      widget.classData['description'].isNotEmpty) ...[
                     Text(
-                      'Descrizione del corso',
+                      'Descrizione',
                       style: theme.textTheme.titleMedium!.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     SizedBox(height: 1.h),
                     Text(
-                      description,
+                      widget.classData['description'],
                       style: theme.textTheme.bodyMedium!.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                         height: 1.5,
                       ),
                     ),
+                    SizedBox(height: 3.h),
                   ],
 
-                  if (instructorBio.isNotEmpty) ...[
-                    SizedBox(height: 3.h),
+                  // Instructor bio
+                  if (widget.classData['instructorBio'] != null &&
+                      widget.classData['instructorBio'].isNotEmpty) ...[
                     Text(
-                      'Informazioni sull\'istruttore',
+                      'Istruttore',
                       style: theme.textTheme.titleMedium!.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     SizedBox(height: 1.h),
                     Text(
-                      instructorBio,
+                      widget.classData['instructorBio'],
                       style: theme.textTheme.bodyMedium!.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                         height: 1.5,
                       ),
                     ),
+                    SizedBox(height: 3.h),
                   ],
 
-                  SizedBox(height: 4.h),
+                  // Important note
+                  if (!isBooked) ...[
+                    Container(
+                      padding: EdgeInsets.all(3.w),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color:
+                              theme.colorScheme.primary.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          CustomIconWidget(
+                            iconName: 'info',
+                            color: theme.primaryColor,
+                            size: 20,
+                          ),
+                          SizedBox(width: 3.w),
+                          Expanded(
+                            child: Text(
+                              'La prenotazione può essere cancellata fino al giorno precedente la lezione.',
+                              style: theme.textTheme.bodySmall!.copyWith(
+                                color: theme.primaryColor,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 3.h),
+                  ],
+                ],
+              ),
+            ),
+          ),
 
-                  // Booking button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 6.h,
-                    child: ElevatedButton(
-                      onPressed:
-                          isAvailable && !_isLoading ? _confirmBooking : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            isAvailable
-                                ? theme.primaryColor
-                                : theme.colorScheme.onSurfaceVariant,
+          // Action buttons
+          Container(
+            padding: EdgeInsets.all(6.w),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              border: Border(
+                top: BorderSide(
+                  color: theme.colorScheme.outline.withValues(alpha: 0.2),
+                ),
+              ),
+            ),
+            child: SafeArea(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        padding: EdgeInsets.symmetric(vertical: 2.h),
+                        side: BorderSide(
+                          color: theme.colorScheme.outline,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child:
-                          _isLoading
-                              ? SizedBox(
-                                width: 5.w,
-                                height: 5.w,
-                                child: CircularProgressIndicator(
-                                  color: theme.colorScheme.onPrimary,
-                                  strokeWidth: 2,
-                                ),
-                              )
-                              : Text(
-                                isAvailable
-                                    ? 'Prenota Posto'
-                                    : 'Classe Completa',
-                                style: theme.textTheme.titleMedium!.copyWith(
-                                  color: theme.colorScheme.onPrimary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                    ),
-                  ),
-
-                  if (!isAvailable) ...[
-                    SizedBox(height: 2.h),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 6.h,
-                      child: OutlinedButton(
-                        onPressed:
-                            _isLoading
-                                ? null
-                                : () {
-                                  // Add to waitlist functionality
-                                  Navigator.pop(context);
-                                },
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: theme.primaryColor),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          'Aggiungi alla Lista d\'Attesa',
-                          style: theme.textTheme.titleMedium!.copyWith(
-                            color: theme.primaryColor,
-                            fontWeight: FontWeight.w600,
-                          ),
+                      child: Text(
+                        'Chiudi',
+                        style: theme.textTheme.titleSmall!.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
-                  ],
-
-                  SizedBox(height: 2.h),
+                  ),
+                  SizedBox(width: 4.w),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton(
+                      onPressed: _isBooking || availableSpots <= 0
+                          ? null
+                          : () => _handleBooking(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isBooked
+                            ? Colors.red
+                            : availableSpots > 0
+                                ? theme.primaryColor
+                                : theme.colorScheme.onSurfaceVariant,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(vertical: 2.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: _isBooking
+                          ? SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              isBooked
+                                  ? 'Cancella Prenotazione'
+                                  : availableSpots > 0
+                                      ? 'Prenota Classe'
+                                      : 'Classe Piena',
+                              style: theme.textTheme.titleSmall!.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -250,40 +315,154 @@ class _BookingModalWidgetState extends State<BookingModalWidget> {
     );
   }
 
-  Widget _buildDetailRow(String iconName, String label, String value) {
+  Widget _buildDetailRow(
+    BuildContext context,
+    String label,
+    String value,
+    String iconName, {
+    Color? valueColor,
+  }) {
     final theme = Theme.of(context);
 
-    return Row(
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 1.h),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(2.w),
+            decoration: BoxDecoration(
+              color: theme.primaryColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: CustomIconWidget(
+              iconName: iconName,
+              color: theme.primaryColor,
+              size: 18,
+            ),
+          ),
+          SizedBox(width: 4.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.bodySmall!.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                SizedBox(height: 0.5.h),
+                Text(
+                  value,
+                  style: theme.textTheme.bodyMedium!.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: valueColor ?? theme.colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCapacityIndicator(
+    BuildContext context,
+    int enrolled,
+    int capacity,
+  ) {
+    final theme = Theme.of(context);
+    final percentage = capacity > 0 ? enrolled / capacity : 0.0;
+
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CustomIconWidget(
-          iconName: iconName,
-          color: theme.colorScheme.onSurfaceVariant,
-          size: 20,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Partecipanti',
+              style: theme.textTheme.titleSmall!.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              '$enrolled/$capacity',
+              style: theme.textTheme.bodyMedium!.copyWith(
+                fontWeight: FontWeight.w600,
+                color: percentage > 0.8 ? Colors.red : theme.primaryColor,
+              ),
+            ),
+          ],
         ),
-        SizedBox(width: 3.w),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: theme.textTheme.bodySmall!.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w500,
-                ),
+        SizedBox(height: 1.h),
+        Container(
+          height: 1.h,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: FractionallySizedBox(
+            widthFactor: percentage,
+            alignment: Alignment.centerLeft,
+            child: Container(
+              decoration: BoxDecoration(
+                color: percentage > 0.8
+                    ? Colors.red
+                    : percentage > 0.6
+                        ? Colors.orange
+                        : theme.primaryColor,
+                borderRadius: BorderRadius.circular(4),
               ),
-              SizedBox(height: 0.5.h),
-              Text(
-                value,
-                style: theme.textTheme.bodyMedium!.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ],
     );
+  }
+
+  Future<void> _handleBooking(BuildContext context) async {
+    if (_isBooking) return;
+
+    setState(() {
+      _isBooking = true;
+    });
+
+    try {
+      // Add a small delay for better UX
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      widget.onBookingConfirmed();
+
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBooking = false;
+        });
+      }
+    }
+  }
+
+  Color _getTypeColor(String type) {
+    switch (type.toLowerCase()) {
+      case 'bjj':
+      case 'brazilian jiu-jitsu':
+        return const Color(0xFF2196F3); // Blue
+      case 'mma':
+        return const Color(0xFFFF5722); // Deep Orange
+      case 'sambo':
+        return const Color(0xFF795548); // Brown
+      case 'grappling':
+        return const Color(0xFF9C27B0); // Purple
+      case 'prep. atletica':
+      case 'fitness':
+        return const Color(0xFF4CAF50); // Green
+      default:
+        return const Color(0xFF607D8B); // Blue Grey
+    }
   }
 }

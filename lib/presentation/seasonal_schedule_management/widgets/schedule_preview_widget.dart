@@ -83,10 +83,13 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
 
   Map<String, dynamic> get _scheduleStats {
     final total = widget.scheduleInstances.length;
-    final cancelled = widget.scheduleInstances
-        .where((i) =>
-            i['is_cancelled'] == true || i['is_holiday_affected'] == true)
-        .length;
+    final cancelled =
+        widget.scheduleInstances
+            .where(
+              (i) =>
+                  i['is_cancelled'] == true || i['is_holiday_affected'] == true,
+            )
+            .length;
     final active = total - cancelled;
 
     final byDiscipline = <String, int>{};
@@ -110,51 +113,98 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
       return _buildNoSeasonWidget();
     }
 
-    return Column(
-      children: [
-        _buildPreviewHeader(),
-        SizedBox(height: 2.h),
-        Expanded(
-          child: TabBarView(
-            controller: _previewTabController,
-            children: [
-              _buildOverviewTab(),
-              _buildWeeklyPreviewTab(),
-              _buildStatisticsTab(),
-            ],
+    // Show content immediately, even if empty
+    return Container(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Column(
+        children: [
+          _buildPreviewHeader(),
+          SizedBox(height: 2.h),
+          Expanded(
+            child: TabBarView(
+              controller: _previewTabController,
+              children: [
+                _buildOverviewTab(),
+                _buildWeeklyPreviewTab(),
+                _buildStatisticsTab(),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildNoSeasonWidget() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.preview,
-            size: 64,
-            color:
-                Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3),
+    return Container(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Center(
+        child: Card(
+          margin: EdgeInsets.all(6.w),
+          color: Theme.of(context).cardColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
-          SizedBox(height: 2.h),
-          Text(
-            'Nessuna Stagione Configurata',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface,
+          child: Padding(
+            padding: EdgeInsets.all(8.w),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.preview,
+                  size: 64,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.secondary.withValues(alpha: 0.6),
                 ),
-          ),
-          SizedBox(height: 1.h),
-          Text(
-            'Configura prima una stagione per visualizzare l\'anteprima',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                SizedBox(height: 2.h),
+                Text(
+                  'Nessuna Stagione Configurata',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: 1.h),
+                Text(
+                  'Prima di visualizzare l\'anteprima, configura una stagione nella sezione "Schema Orari"',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                SizedBox(height: 3.h),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    // Switch to first tab (Schema Orari)
+                    final parentTabController =
+                        context.findAncestorStateOfType<State>() as dynamic;
+                    if (parentTabController?.mounted == true) {
+                      try {
+                        parentTabController._tabController.animateTo(0);
+                      } catch (e) {
+                        // Fallback - just show message
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Vai alla sezione "Schema Orari" per configurare la stagione',
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  icon: Icon(Icons.settings),
+                  label: Text('Configura Stagione'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.secondary,
+                    foregroundColor: Theme.of(context).colorScheme.onSecondary,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -173,10 +223,9 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
                 Container(
                   padding: EdgeInsets.all(3.w),
                   decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .secondary
-                        .withValues(alpha: 0.1),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.secondary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -192,17 +241,18 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
                     children: [
                       Text(
                         'Anteprima Palinsesto',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface,
-                              fontWeight: FontWeight.w600,
-                            ),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       SizedBox(height: 0.5.h),
                       Text(
-                        'Visualizza il calendario completo prima della pubblicazione',
+                        widget.scheduleInstances.isEmpty
+                            ? 'Genera il palinsesto per visualizzare l\'anteprima'
+                            : 'Visualizza il calendario completo prima della pubblicazione',
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 12,
@@ -248,21 +298,24 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
   }
 
   Widget _buildOverviewTab() {
-    return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: 4.w),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (widget.scheduleInstances.isEmpty)
-            _buildEmptyScheduleWidget()
-          else ...[
-            _buildQuickStatsRow(),
-            SizedBox(height: 3.h),
-            _buildFilterChips(),
-            SizedBox(height: 2.h),
-            _buildInstancesList(),
+    return Container(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.symmetric(horizontal: 4.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.scheduleInstances.isEmpty)
+              _buildEmptyScheduleWidget()
+            else ...[
+              _buildQuickStatsRow(),
+              SizedBox(height: 3.h),
+              _buildFilterChips(),
+              SizedBox(height: 2.h),
+              _buildInstancesList(),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -284,13 +337,13 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
             Text(
               'Palinsesto da Generare',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontWeight: FontWeight.w600,
-                  ),
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             SizedBox(height: 1.h),
             Text(
-              'Genera automaticamente tutto il palinsesto stagionale basato sui template orari configurati',
+              'Genera automaticamente tutto il palinsesto stagionale basato sui template orari configurati nella sezione "Schema Orari"',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -355,15 +408,17 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
   }
 
   Widget _buildStatCard(
-      String label, String value, IconData icon, Color color) {
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Container(
       padding: EdgeInsets.all(3.w),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withValues(alpha: 0.3),
-        ),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [
@@ -421,9 +476,9 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
         Text(
           'Prossime Lezioni (${_filteredInstances.length})',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
+            color: Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         SizedBox(height: 2.h),
         ListView.builder(
@@ -460,7 +515,8 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
       DateFormat('HH:mm:ss').parse(instance['end_time']),
     );
     final discipline = instance['discipline'];
-    final isCancelled = instance['is_cancelled'] == true ||
+    final isCancelled =
+        instance['is_cancelled'] == true ||
         instance['is_holiday_affected'] == true;
 
     return Card(
@@ -469,10 +525,12 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: isCancelled
-              ? Colors.red.withValues(alpha: 0.3)
-              : (_disciplineColors[discipline] ?? Colors.grey)
-                  .withValues(alpha: 0.3),
+          color:
+              isCancelled
+                  ? Colors.red.withValues(alpha: 0.3)
+                  : (_disciplineColors[discipline] ?? Colors.grey).withValues(
+                    alpha: 0.3,
+                  ),
         ),
       ),
       child: Padding(
@@ -484,9 +542,10 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
               width: 4,
               height: 6.h,
               decoration: BoxDecoration(
-                color: isCancelled
-                    ? Colors.red
-                    : (_disciplineColors[discipline] ?? Colors.grey),
+                color:
+                    isCancelled
+                        ? Colors.red
+                        : (_disciplineColors[discipline] ?? Colors.grey),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -593,14 +652,17 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
   }
 
   Widget _buildWeeklyPreviewTab() {
-    return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: 4.w),
-      child: Column(
-        children: [
-          _buildWeekSelector(),
-          SizedBox(height: 3.h),
-          _buildWeeklySchedule(),
-        ],
+    return Container(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.symmetric(horizontal: 4.w),
+        child: Column(
+          children: [
+            _buildWeekSelector(),
+            SizedBox(height: 3.h),
+            _buildWeeklySchedule(),
+          ],
+        ),
       ),
     );
   }
@@ -626,9 +688,9 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
                 '${DateFormat('d MMM', 'it_IT').format(_getWeekStart(_selectedWeek))} - ${DateFormat('d MMM yyyy', 'it_IT').format(_getWeekStart(_selectedWeek).add(Duration(days: 6)))}',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
             IconButton(
@@ -647,36 +709,46 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
 
   Widget _buildWeeklySchedule() {
     final weekDays = List.generate(
-        7, (index) => _getWeekStart(_selectedWeek).add(Duration(days: index)));
+      7,
+      (index) => _getWeekStart(_selectedWeek).add(Duration(days: index)),
+    );
 
     return Column(
-      children: weekDays.map((day) {
-        final dayInstances = _weekInstances
-            .where((instance) =>
-                isSameDay(DateTime.parse(instance['class_date']), day))
-            .toList();
+      children:
+          weekDays.map((day) {
+            final dayInstances =
+                _weekInstances
+                    .where(
+                      (instance) => isSameDay(
+                        DateTime.parse(instance['class_date']),
+                        day,
+                      ),
+                    )
+                    .toList();
 
-        return _buildDaySchedule(day, dayInstances);
-      }).toList(),
+            return _buildDaySchedule(day, dayInstances);
+          }).toList(),
     );
   }
 
   Widget _buildDaySchedule(DateTime day, List<Map<String, dynamic>> instances) {
     final isToday = isSameDay(day, DateTime.now());
     final hasHoliday = widget.holidays.any(
-        (holiday) => isSameDay(DateTime.parse(holiday['holiday_date']), day));
+      (holiday) => isSameDay(DateTime.parse(holiday['holiday_date']), day),
+    );
 
     return Card(
       margin: EdgeInsets.only(bottom: 2.h),
       color: Theme.of(context).cardColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: isToday
-            ? BorderSide(
-                color: Theme.of(context).colorScheme.secondary,
-                width: 2,
-              )
-            : BorderSide.none,
+        side:
+            isToday
+                ? BorderSide(
+                  color: Theme.of(context).colorScheme.secondary,
+                  width: 2,
+                )
+                : BorderSide.none,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -685,13 +757,13 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
             width: double.infinity,
             padding: EdgeInsets.all(4.w),
             decoration: BoxDecoration(
-              color: hasHoliday
-                  ? Colors.orange.withValues(alpha: 0.1)
-                  : isToday
-                      ? Theme.of(context)
-                          .colorScheme
-                          .secondary
-                          .withValues(alpha: 0.1)
+              color:
+                  hasHoliday
+                      ? Colors.orange.withValues(alpha: 0.1)
+                      : isToday
+                      ? Theme.of(
+                        context,
+                      ).colorScheme.secondary.withValues(alpha: 0.1)
                       : Theme.of(context).cardColor,
               borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
             ),
@@ -700,20 +772,24 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
                 Text(
                   DateFormat('EEEE d', 'it_IT').format(day),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: hasHoliday
+                    color:
+                        hasHoliday
                             ? Colors.orange
                             : isToday
-                                ? Theme.of(context).colorScheme.secondary
-                                : Theme.of(context).colorScheme.onSurface,
-                        fontWeight: FontWeight.w600,
-                      ),
+                            ? Theme.of(context).colorScheme.secondary
+                            : Theme.of(context).colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 Spacer(),
                 if (hasHoliday)
                   Icon(Icons.celebration, color: Colors.orange, size: 16)
                 else if (isToday)
-                  Icon(Icons.today,
-                      color: Theme.of(context).colorScheme.secondary, size: 16),
+                  Icon(
+                    Icons.today,
+                    color: Theme.of(context).colorScheme.secondary,
+                    size: 16,
+                  ),
                 SizedBox(width: 2.w),
                 Text(
                   '${instances.length} lezioni',
@@ -755,7 +831,8 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
       DateFormat('HH:mm:ss').parse(instance['end_time']),
     );
     final discipline = instance['discipline'];
-    final isCancelled = instance['is_cancelled'] == true ||
+    final isCancelled =
+        instance['is_cancelled'] == true ||
         instance['is_holiday_affected'] == true;
 
     return Container(
@@ -773,9 +850,10 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
             width: 4,
             height: 4.h,
             decoration: BoxDecoration(
-              color: isCancelled
-                  ? Colors.red
-                  : (_disciplineColors[discipline] ?? Colors.grey),
+              color:
+                  isCancelled
+                      ? Colors.red
+                      : (_disciplineColors[discipline] ?? Colors.grey),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -792,8 +870,10 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
                 ),
                 SizedBox(width: 4.w),
                 Container(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 2.w,
+                    vertical: 0.5.h,
+                  ),
                   decoration: BoxDecoration(
                     color: (_disciplineColors[discipline] ?? Colors.grey)
                         .withValues(alpha: 0.1),
@@ -831,23 +911,26 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
   Widget _buildStatisticsTab() {
     final stats = _scheduleStats;
 
-    return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: 4.w),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Statistiche Palinsesto',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-          SizedBox(height: 3.h),
-          _buildStatsOverview(stats),
-          SizedBox(height: 3.h),
-          _buildDisciplineBreakdown(stats['byDiscipline']),
-        ],
+    return Container(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.symmetric(horizontal: 4.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Statistiche Palinsesto',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 3.h),
+            _buildStatsOverview(stats),
+            SizedBox(height: 3.h),
+            _buildDisciplineBreakdown(stats['byDiscipline']),
+          ],
+        ),
       ),
     );
   }
@@ -864,20 +947,26 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
             Text(
               'Panoramica Generale',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontWeight: FontWeight.w600,
-                  ),
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             SizedBox(height: 3.h),
             Row(
               children: [
                 Expanded(
                   child: _buildStatRow(
-                      'Lezioni Totali', '${stats['total']}', Icons.event),
+                    'Lezioni Totali',
+                    '${stats['total']}',
+                    Icons.event,
+                  ),
                 ),
                 Expanded(
                   child: _buildStatRow(
-                      'Attive', '${stats['active']}', Icons.check_circle),
+                    'Attive',
+                    '${stats['active']}',
+                    Icons.check_circle,
+                  ),
                 ),
               ],
             ),
@@ -885,12 +974,18 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
             Row(
               children: [
                 Expanded(
-                  child: _buildStatRow('Cancellate/Festività',
-                      '${stats['cancelled']}', Icons.cancel),
+                  child: _buildStatRow(
+                    'Cancellate/Festività',
+                    '${stats['cancelled']}',
+                    Icons.cancel,
+                  ),
                 ),
                 Expanded(
-                  child: _buildStatRow('Giorni Festivi', '${stats['holidays']}',
-                      Icons.celebration),
+                  child: _buildStatRow(
+                    'Giorni Festivi',
+                    '${stats['holidays']}',
+                    Icons.celebration,
+                  ),
                 ),
               ],
             ),
@@ -945,9 +1040,9 @@ class _SchedulePreviewWidgetState extends State<SchedulePreviewWidget>
             Text(
               'Distribuzione per Disciplina',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontWeight: FontWeight.w600,
-                  ),
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             SizedBox(height: 3.h),
             ...byDiscipline.entries.map((entry) {

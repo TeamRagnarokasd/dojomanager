@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 
 class DisciplineEditorWidget extends StatefulWidget {
   final Map<String, dynamic>? discipline;
+  final List<Map<String, dynamic>> instructorProfiles;
   final Function(Map<String, dynamic>) onSave;
   final VoidCallback onCancel;
 
   const DisciplineEditorWidget({
     super.key,
     this.discipline,
+    required this.instructorProfiles,
     required this.onSave,
     required this.onCancel,
   });
@@ -16,590 +18,365 @@ class DisciplineEditorWidget extends StatefulWidget {
   State<DisciplineEditorWidget> createState() => _DisciplineEditorWidgetState();
 }
 
-class _DisciplineEditorWidgetState extends State<DisciplineEditorWidget>
-    with TickerProviderStateMixin {
-  late TabController _tabController;
-
-  // Form controllers
-  final _nameController = TextEditingController();
-  final _noteController = TextEditingController();
-
-  // Form data
-  bool _isActive = true;
-  Color _selectedColor = const Color(0xFF2196F3);
-  List<String> _instructors = [];
-  List<String> _locations = [];
-  Map<String, List<Map<String, dynamic>>> _schedule = {};
-
-  // Available options
-  final List<String> _availableInstructors = [
-    'Marco Silva',
-    'Elena Rossi',
-    'Dmitri Volkov',
-    'Ana Santos',
-    'Igor Petrov',
-    'Carlos Mendez',
-    'Sofia Andersson',
-  ];
-
-  final List<String> _availableLocations = [
-    'Palestra principale',
-    'Sala BJJ secondo piano',
-    'Gabbia MMA',
-    'Tatami sambo',
-    'Sala grappling',
-  ];
-
-  final List<Color> _availableColors = [
-    const Color(0xFF2196F3), // Blue
-    const Color(0xFFFF5722), // Orange
-    const Color(0xFF4CAF50), // Green
-    const Color(0xFF9C27B0), // Purple
-    const Color(0xFFFFC107), // Amber
-    const Color(0xFFE91E63), // Pink
-    const Color(0xFF00BCD4), // Cyan
-    const Color(0xFF795548), // Brown
-  ];
+class _DisciplineEditorWidgetState extends State<DisciplineEditorWidget> {
+  late Map<String, dynamic> _disciplineData;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _initializeForm();
-  }
-
-  void _initializeForm() {
-    if (widget.discipline != null) {
-      final discipline = widget.discipline!;
-      _nameController.text = discipline['name'] ?? '';
-      _isActive = discipline['isActive'] ?? true;
-      _selectedColor = discipline['color'] ?? _availableColors.first;
-      _instructors = List<String>.from(discipline['instructors'] ?? []);
-      _locations = List<String>.from(discipline['locations'] ?? []);
-      _schedule = Map<String, List<Map<String, dynamic>>>.from(
-        discipline['schedule']?.map<String, List<Map<String, dynamic>>>(
-              (key, value) => MapEntry(
-                key,
-                List<Map<String, dynamic>>.from(
-                  value.map((item) => Map<String, dynamic>.from(item)),
-                ),
-              ),
-            ) ??
-            {},
-      );
-    } else {
-      // Initialize empty schedule for new discipline
-      _schedule = {
-        'Lunedì': [],
-        'Martedì': [],
-        'Mercoledì': [],
-        'Giovedì': [],
-        'Venerdì': [],
-        'Sabato': [],
-        'Domenica': [],
-      };
-    }
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    _nameController.dispose();
-    _noteController.dispose();
-    super.dispose();
+    _disciplineData = widget.discipline != null
+        ? Map<String, dynamic>.from(widget.discipline!)
+        : {
+            'id': '',
+            'name': '',
+            'isActive': true,
+            'color': const Color(0xFF2196F3),
+            'instructors': <String>[],
+            'locations': <String>[],
+            'schedule': <String, dynamic>{},
+          };
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isEditing = widget.discipline != null;
 
     return Container(
-      height: MediaQuery.of(context).size.height * 0.9,
+      height: MediaQuery.of(context).size.height * 0.85,
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        color: theme.scaffoldBackgroundColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Handle bar
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.only(top: 12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.onSurface.withAlpha(77),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-
           // Header
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.discipline == null
-                        ? 'Nuova Disciplina'
-                        : 'Modifica Disciplina',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: widget.onCancel,
-                  icon: const Icon(Icons.close),
-                ),
-              ],
-            ),
-          ),
-
-          // Tab bar
-          TabBar(
-            controller: _tabController,
-            tabs: const [
-              Tab(icon: Icon(Icons.info), text: 'Info Base'),
-              Tab(icon: Icon(Icons.schedule), text: 'Orari'),
-              Tab(icon: Icon(Icons.note), text: 'Note'),
-            ],
-            labelColor: _selectedColor,
-            indicatorColor: _selectedColor,
-          ),
-
-          // Tab content
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildInfoTab(),
-                _buildScheduleTab(),
-                _buildNotesTab(),
-              ],
-            ),
-          ),
-
-          // Save/Cancel buttons
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              border: Border(
-                top: BorderSide(
-                  color: theme.colorScheme.outline.withAlpha(51),
+          Row(
+            children: [
+              Icon(
+                Icons.sports_martial_arts,
+                color: theme.primaryColor,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                isEditing
+                    ? 'Dettagli ${_disciplineData['name']}'
+                    : 'Nuova Disciplina',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
                 ),
               ),
+              const Spacer(),
+              IconButton(
+                onPressed: widget.onCancel,
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Content
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isEditing) ...[
+                    _buildInfoSection(),
+                    const SizedBox(height: 24),
+                    _buildInstructorsSection(),
+                    const SizedBox(height: 24),
+                    _buildScheduleSection(),
+                    const SizedBox(height: 24),
+                    _buildLocationsSection(),
+                  ] else
+                    _buildNewDisciplineInfo(),
+                ],
+              ),
             ),
-            child: Row(
+          ),
+
+          // Actions
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: widget.onCancel,
+                  child: const Text('Annulla'),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed:
+                      isEditing ? _navigateToManagement : _navigateToCreate,
+                  child: Text(isEditing ? 'Gestisci' : 'Crea'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoSection() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Informazioni Disciplina',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 16),
+            Row(
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: widget.onCancel,
-                    child: const Text('Annulla'),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: _disciplineData['color'],
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
                 const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _saveDiscipline,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _selectedColor,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _disciplineData['name'],
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
                     ),
-                    child: const Text('Salva'),
-                  ),
+                    Text(
+                      'Disciplina ${_disciplineData['isActive'] ? 'attiva' : 'inattiva'}',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: _disciplineData['isActive']
+                                ? Colors.green
+                                : Colors.orange,
+                          ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildInfoTab() {
-    final theme = Theme.of(context);
+  Widget _buildInstructorsSection() {
+    final instructors = List<String>.from(_disciplineData['instructors']);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Name field
-          TextField(
-            controller: _nameController,
-            decoration: const InputDecoration(
-              labelText: 'Nome Disciplina *',
-              hintText: 'Es: BJJ, MMA, Sambo, Grappling',
-              border: OutlineInputBorder(),
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // Active toggle
-          SwitchListTile(
-            title: const Text('Disciplina Attiva'),
-            subtitle: const Text('La disciplina è visibile e prenotabile'),
-            value: _isActive,
-            onChanged: (value) => setState(() => _isActive = value),
-            activeColor: _selectedColor,
-          ),
-
-          const SizedBox(height: 20),
-
-          // Color picker
-          Text(
-            'Colore Disciplina',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            children: _availableColors.map((color) {
-              final isSelected = color == _selectedColor;
-              return GestureDetector(
-                onTap: () => setState(() => _selectedColor = color),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                    border: isSelected
-                        ? Border.all(
-                            color: theme.colorScheme.onSurface, width: 3)
-                        : null,
-                  ),
-                  child: isSelected
-                      ? const Icon(Icons.check, color: Colors.white)
-                      : null,
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Istruttori',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
-              );
-            }).toList(),
-          ),
-
-          const SizedBox(height: 20),
-
-          // Instructors
-          Text(
-            'Istruttori',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () =>
+                      Navigator.pushNamed(context, '/instructor-management'),
+                  icon: const Icon(Icons.edit, size: 16),
+                  label: const Text('Gestisci'),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _availableInstructors.map((instructor) {
-              final isSelected = _instructors.contains(instructor);
-              return FilterChip(
-                label: Text(instructor),
-                selected: isSelected,
-                onSelected: (selected) {
-                  setState(() {
-                    if (selected) {
-                      _instructors.add(instructor);
-                    } else {
-                      _instructors.remove(instructor);
-                    }
-                  });
-                },
-                selectedColor: _selectedColor.withAlpha(51),
-                checkmarkColor: _selectedColor,
-              );
-            }).toList(),
-          ),
-
-          const SizedBox(height: 20),
-
-          // Locations
-          Text(
-            'Luoghi di Allenamento',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _availableLocations.map((location) {
-              final isSelected = _locations.contains(location);
-              return FilterChip(
-                label: Text(location),
-                selected: isSelected,
-                onSelected: (selected) {
-                  setState(() {
-                    if (selected) {
-                      _locations.add(location);
-                    } else {
-                      _locations.remove(location);
-                    }
-                  });
-                },
-                selectedColor: _selectedColor.withAlpha(51),
-                checkmarkColor: _selectedColor,
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildScheduleTab() {
-    final theme = Theme.of(context);
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Orari Settimanali',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Configura gli orari per ogni giorno della settimana',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withAlpha(153),
-            ),
-          ),
-          const SizedBox(height: 16),
-          ..._schedule.entries.map((entry) {
-            final day = entry.key;
-            final classes = entry.value;
-
-            return Card(
-              margin: const EdgeInsets.only(bottom: 16),
-              child: ExpansionTile(
-                title: Text(day),
-                subtitle: Text('${classes.length} lezioni'),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
+            const SizedBox(height: 12),
+            if (instructors.isEmpty)
+              Text(
+                'Nessun istruttore assegnato',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withAlpha(128),
+                    ),
+              )
+            else
+              ...instructors.map((instructor) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
                       children: [
-                        ...classes.asMap().entries.map((classEntry) {
-                          final index = classEntry.key;
-                          final classInfo = classEntry.value;
-
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextField(
-                                          decoration: const InputDecoration(
-                                            labelText: 'Orario',
-                                            hintText: '20:30-21:30',
-                                            border: OutlineInputBorder(),
-                                          ),
-                                          onChanged: (value) {
-                                            classInfo['time'] = value;
-                                          },
-                                          controller: TextEditingController(
-                                            text: classInfo['time'] ?? '',
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      IconButton(
-                                        onPressed: () =>
-                                            _removeClass(day, index),
-                                        icon: const Icon(Icons.delete,
-                                            color: Colors.red),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 12),
-                                  DropdownButtonFormField<String>(
-                                    value: _instructors
-                                            .contains(classInfo['instructor'])
-                                        ? classInfo['instructor']
-                                        : null,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Istruttore',
-                                      border: OutlineInputBorder(),
-                                    ),
-                                    items: _instructors.map((instructor) {
-                                      return DropdownMenuItem(
-                                        value: instructor,
-                                        child: Text(instructor),
-                                      );
-                                    }).toList(),
-                                    onChanged: (value) {
-                                      if (value != null) {
-                                        classInfo['instructor'] = value;
-                                      }
-                                    },
-                                  ),
-                                  const SizedBox(height: 12),
-                                  DropdownButtonFormField<String>(
-                                    value: _locations
-                                            .contains(classInfo['location'])
-                                        ? classInfo['location']
-                                        : null,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Luogo',
-                                      border: OutlineInputBorder(),
-                                    ),
-                                    items: _locations.map((location) {
-                                      return DropdownMenuItem(
-                                        value: location,
-                                        child: Text(location),
-                                      );
-                                    }).toList(),
-                                    onChanged: (value) {
-                                      if (value != null) {
-                                        classInfo['location'] = value;
-                                      }
-                                    },
-                                  ),
-                                  const SizedBox(height: 12),
-                                  TextField(
-                                    decoration: const InputDecoration(
-                                      labelText: 'Nota (opzionale)',
-                                      hintText:
-                                          'Es: principianti, focus guard work',
-                                      border: OutlineInputBorder(),
-                                    ),
-                                    onChanged: (value) {
-                                      classInfo['note'] = value;
-                                    },
-                                    controller: TextEditingController(
-                                      text: classInfo['note'] ?? '',
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
-
-                        // Add class button
-                        OutlinedButton.icon(
-                          onPressed: () => _addClass(day),
-                          icon: const Icon(Icons.add),
-                          label: const Text('Aggiungi Lezione'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: _selectedColor,
-                            side: BorderSide(color: _selectedColor),
-                          ),
-                        ),
+                        const Icon(Icons.person, size: 16),
+                        const SizedBox(width: 8),
+                        Text(instructor),
                       ],
                     ),
+                  )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScheduleSection() {
+    final schedule = Map<String, dynamic>.from(_disciplineData['schedule']);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Orari',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => Navigator.pushNamed(
+                    context,
+                    '/seasonal-schedule-management',
+                    arguments: {'disciplineFilter': _disciplineData['id']},
                   ),
-                ],
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNotesTab() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Note Aggiuntive',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
+                  icon: const Icon(Icons.edit, size: 16),
+                  label: const Text('Modifica'),
                 ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Aggiungi informazioni extra sulla disciplina',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
-                ),
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: TextField(
-              controller: _noteController,
-              maxLines: null,
-              expands: true,
-              decoration: const InputDecoration(
-                hintText:
-                    'Es: Equipaggiamento necessario, prerequisiti, regole speciali...',
-                border: OutlineInputBorder(),
-                alignLabelWithHint: true,
-              ),
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            if (schedule.isEmpty)
+              Text(
+                'Nessun orario programmato',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withAlpha(128),
+                    ),
+              )
+            else
+              ...schedule.entries.map((dayEntry) {
+                final dayName = dayEntry.key;
+                final sessions =
+                    List<Map<String, dynamic>>.from(dayEntry.value);
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        dayName,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      ...sessions.map((session) => Padding(
+                            padding: const EdgeInsets.only(left: 16, top: 2),
+                            child: Text(
+                              '${session['time']} - ${session['location']} (${session['instructor']})',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          )),
+                    ],
+                  ),
+                );
+              }),
+          ],
+        ),
       ),
     );
   }
 
-  void _addClass(String day) {
-    setState(() {
-      _schedule[day]!.add({
-        'time': '',
-        'instructor': _instructors.isNotEmpty ? _instructors.first : '',
-        'location': _locations.isNotEmpty ? _locations.first : '',
-        'note': '',
-      });
-    });
+  Widget _buildLocationsSection() {
+    final locations = List<String>.from(_disciplineData['locations']);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Locations',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: locations
+                  .map((location) => Chip(
+                        label: Text(location),
+                        avatar: const Icon(Icons.place, size: 16),
+                      ))
+                  .toList(),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  void _removeClass(String day, int index) {
-    setState(() {
-      _schedule[day]!.removeAt(index);
-    });
+  Widget _buildNewDisciplineInfo() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Icon(
+              Icons.info_outline,
+              size: 48,
+              color: Theme.of(context).primaryColor,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Le discipline vengono create automaticamente',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Per aggiungere una nuova disciplina:\n\n'
+              '• Crea un profilo istruttore con quella disciplina\n'
+              '• Aggiungi la disciplina a un palinsesto stagionale\n'
+              '• La disciplina apparirà automaticamente nella lista',
+              style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  void _saveDiscipline() {
-    if (_nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Il nome della disciplina è obbligatorio')),
-      );
-      return;
-    }
+  void _navigateToManagement() {
+    widget.onCancel();
+    Navigator.pushNamed(context, '/instructor-management');
+  }
 
-    if (_instructors.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Seleziona almeno un istruttore')),
-      );
-      return;
-    }
-
-    if (_locations.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Seleziona almeno un luogo')),
-      );
-      return;
-    }
-
-    final disciplineData = {
-      'id': widget.discipline?['id'] ??
-          _nameController.text.toLowerCase().replaceAll(' ', '_'),
-      'name': _nameController.text.trim(),
-      'isActive': _isActive,
-      'color': _selectedColor,
-      'instructors': _instructors,
-      'locations': _locations,
-      'schedule': _schedule,
-      'notes': _noteController.text.trim(),
-    };
-
-    widget.onSave(disciplineData);
+  void _navigateToCreate() {
+    widget.onCancel();
+    Navigator.pushNamed(context, '/seasonal-schedule-management');
   }
 }

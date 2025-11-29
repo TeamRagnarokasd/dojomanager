@@ -288,25 +288,28 @@ class _DocumentPreviewWidgetState extends State<DocumentPreviewWidget> {
           onPressed: isEnabled ? onPressed : null,
           icon: CustomIconWidget(
             iconName: icon,
-            color: isEnabled
-                ? AppTheme.lightTheme.colorScheme.primary
-                : AppTheme.lightTheme.colorScheme.outline,
+            color:
+                isEnabled
+                    ? AppTheme.lightTheme.colorScheme.primary
+                    : AppTheme.lightTheme.colorScheme.outline,
             size: 16,
           ),
           label: Text(
             label,
             style: AppTheme.lightTheme.textTheme.labelMedium?.copyWith(
-              color: isEnabled
-                  ? AppTheme.lightTheme.colorScheme.primary
-                  : AppTheme.lightTheme.colorScheme.outline,
+              color:
+                  isEnabled
+                      ? AppTheme.lightTheme.colorScheme.primary
+                      : AppTheme.lightTheme.colorScheme.outline,
             ),
           ),
           style: OutlinedButton.styleFrom(
             padding: EdgeInsets.symmetric(vertical: 1.h),
             side: BorderSide(
-              color: isEnabled
-                  ? AppTheme.lightTheme.colorScheme.primary
-                  : AppTheme.lightTheme.colorScheme.outline,
+              color:
+                  isEnabled
+                      ? AppTheme.lightTheme.colorScheme.primary
+                      : AppTheme.lightTheme.colorScheme.outline,
               width: 1,
             ),
           ),
@@ -318,40 +321,51 @@ class _DocumentPreviewWidgetState extends State<DocumentPreviewWidget> {
   void _showImageDetails() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Dettagli Immagine',
-          style: AppTheme.lightTheme.textTheme.titleLarge,
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildDetailRow('Nome:', widget.capturedImage!.name),
-            SizedBox(height: 1.h),
-            _buildDetailRow(
-                'Percorso:', widget.capturedImage!.path.split('/').last),
-            SizedBox(height: 1.h),
-            FutureBuilder<int>(
-              future: widget.capturedImage!.length(),
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  final sizeInMB =
-                      (snapshot.data! / (1024 * 1024)).toStringAsFixed(2);
-                  return _buildDetailRow('Dimensione:', '\$sizeInMB MB');
-                }
-                return _buildDetailRow('Dimensione:', 'Calcolando...');
-              },
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+            title: Text(
+              'Dettagli Immagine',
+              style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onSurface,
+              ),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('Chiudi'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildDetailRow('Nome:', widget.capturedImage!.name),
+                SizedBox(height: 1.h),
+                _buildDetailRow(
+                  'Percorso:',
+                  widget.capturedImage!.path.split('/').last,
+                ),
+                SizedBox(height: 1.h),
+                FutureBuilder<int>(
+                  future: widget.capturedImage!.length(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasData) {
+                      final sizeInMB = (snapshot.data! / (1024 * 1024))
+                          .toStringAsFixed(2);
+                      return _buildDetailRow('Dimensione:', '$sizeInMB MB');
+                    }
+                    return _buildDetailRow('Dimensione:', 'Calcolando...');
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  'Chiudi',
+                  style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                    color: AppTheme.lightTheme.colorScheme.primary,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
@@ -365,13 +379,16 @@ class _DocumentPreviewWidgetState extends State<DocumentPreviewWidget> {
             label,
             style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w600,
+              color: AppTheme.lightTheme.colorScheme.onSurface,
             ),
           ),
         ),
         Expanded(
           child: Text(
             value,
-            style: AppTheme.lightTheme.textTheme.bodyMedium,
+            style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+              color: AppTheme.lightTheme.colorScheme.onSurface,
+            ),
             overflow: TextOverflow.ellipsis,
             maxLines: 2,
           ),

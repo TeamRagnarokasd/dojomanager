@@ -6,20 +6,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 import 'package:universal_html/html.dart' as html;
 
 import '../../core/app_export.dart';
+import '../../services/payment_service.dart';
 import '../../widgets/custom_icon_widget.dart';
 import '../../widgets/main_navigation_wrapper.dart';
 import './widgets/empty_payment_state.dart';
 import './widgets/monthly_group_header.dart';
+import './widgets/payment_confirmation_dialog.dart';
 import './widgets/payment_filter_chips.dart';
 import './widgets/payment_search_bar.dart';
 import './widgets/payment_transaction_card.dart';
+import './widgets/subscription_plans_widget.dart';
 import './widgets/subscription_status_card.dart';
 import './widgets/sumup_payment_options_widget.dart';
-import './widgets/subscription_plans_widget.dart';
 
 class PaymentHistory extends StatefulWidget {
   const PaymentHistory({Key? key}) : super(key: key);
@@ -29,7 +32,7 @@ class PaymentHistory extends StatefulWidget {
 }
 
 class _PaymentHistoryState extends State<PaymentHistory>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey =
       GlobalKey<RefreshIndicatorState>();
@@ -39,73 +42,11 @@ class _PaymentHistoryState extends State<PaymentHistory>
   String _selectedFilter = 'Tutti';
   String _searchQuery = '';
   final Map<String, bool> _expandedMonths = {};
-  Map<String, dynamic>? _selectedPlan; // Add this to store selected plan
+  Map<String, dynamic>? _selectedPlan;
 
-  // Mock data
-  final Map<String, dynamic> _subscriptionData = {
-    "planName": "Piano Premium Mensile",
-    "renewalDate": "15/09/2024",
-    "autoPayment": true,
-    "status": "active",
-  };
-
-  final List<Map<String, dynamic>> _paymentTransactions = [
-    {
-      "id": 1,
-      "description": "Abbonamento Premium - Settembre 2024",
-      "amount": "€89,00",
-      "date": "01/09/2024",
-      "status": "completato",
-      "paymentMethod": "Carta di Credito",
-      "type": "Abbonamento",
-      "month": "Settembre 2024",
-      "receiptId": "RCP-2024-09-001",
-    },
-    {
-      "id": 2,
-      "description": "Classe Singola - Karate Avanzato",
-      "amount": "€25,00",
-      "date": "28/08/2024",
-      "status": "completato",
-      "paymentMethod": "PayPal",
-      "type": "Classe Singola",
-      "month": "Agosto 2024",
-      "receiptId": "RCP-2024-08-015",
-    },
-    {
-      "id": 4,
-      "description": "Abbonamento Premium - Agosto 2024",
-      "amount": "€89,00",
-      "date": "01/08/2024",
-      "status": "completato",
-      "paymentMethod": "Carta di Credito",
-      "type": "Abbonamento",
-      "month": "Agosto 2024",
-      "receiptId": "RCP-2024-08-001",
-    },
-    {
-      "id": 5,
-      "description": "Classe Singola - Judo Principianti",
-      "amount": "€20,00",
-      "date": "15/07/2024",
-      "status": "fallito",
-      "paymentMethod": "Carta di Credito",
-      "type": "Classe Singola",
-      "month": "Luglio 2024",
-      "receiptId": "RCP-2024-07-008",
-    },
-    {
-      "id": 6,
-      "description": "Abbonamento Premium - Luglio 2024",
-      "amount": "€89,00",
-      "date": "01/07/2024",
-      "status": "completato",
-      "paymentMethod": "PayPal",
-      "type": "Abbonamento",
-      "month": "Luglio 2024",
-      "receiptId": "RCP-2024-07-001",
-    },
-  ];
+  // Replace mock data with real data from Supabase
+  Map<String, dynamic> _subscriptionData = {};
+  List<Map<String, dynamic>> _paymentTransactions = [];
 
   final List<String> _filterOptions = [
     'Tutti',
@@ -113,18 +54,71 @@ class _PaymentHistoryState extends State<PaymentHistory>
     'Classe Singola',
   ];
 
+  // 🎨 FIX 2: Replace ugly text PDF with beautiful graphic PDF
+  Map<String, bool> _isLoadingPDF = {};
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this, initialIndex: 1);
-    _initializeExpandedMonths();
+    WidgetsBinding.instance.addObserver(this);
     _loadPaymentData();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.resumed) {
+      _checkPaymentConfirmation();
+    }
+  }
+
+  Future<void> _checkPaymentConfirmation() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isPaymentPending = prefs.getBool('isPaymentPending') ?? false;
+
+      if (isPaymentPending) {
+        // Clear flag to prevent duplicate dialogs
+        await prefs.setBool('isPaymentPending', false);
+
+        // Get pending payment data
+        final planId = prefs.getString('pendingPlanId');
+        final planTitle = prefs.getString('pendingPlanTitle');
+        final planAmount = prefs.getDouble('pendingPlanAmount');
+        final paymentMethod = prefs.getString('pendingPaymentMethod');
+
+        if (planId != null && mounted) {
+          // Show confirmation dialog
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => PaymentConfirmationDialog(
+              planData: {
+                'plan_id': planId,
+                'plan_title': planTitle,
+                'amount': planAmount,
+                'payment_method': paymentMethod,
+              },
+              onConfirmed: () {
+                // Refresh payment data
+                _loadPaymentData();
+              },
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Silent fail - don't disrupt user experience
+    }
   }
 
   void _initializeExpandedMonths() {
@@ -233,13 +227,33 @@ class _PaymentHistoryState extends State<PaymentHistory>
       _isLoading = true;
     });
 
-    // Simulate network delay
-    await Future.delayed(const Duration(milliseconds: 1500));
+    try {
+      // Load real data from Supabase
+      final subscriptionStatus = await PaymentService.getSubscriptionStatus();
+      final transactions = await PaymentService.getPaymentTransactions();
 
-    setState(() {
-      _isLoading = false;
-      _isOfflineMode = false;
-    });
+      setState(() {
+        _subscriptionData = subscriptionStatus;
+        _paymentTransactions = transactions;
+        _isLoading = false;
+        _isOfflineMode = false;
+      });
+
+      _initializeExpandedMonths();
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _isOfflineMode = true;
+        // Keep existing subscription data structure for offline mode
+        _subscriptionData = {
+          "planName": "Piano Premium Mensile",
+          "renewalDate": "15/09/2024",
+          "autoPayment": true,
+          "status": "active",
+        };
+        _paymentTransactions = []; // Empty transactions in offline mode
+      });
+    }
   }
 
   Future<void> _refreshPaymentData() async {
@@ -809,7 +823,7 @@ Grazie per aver scelto DojoManager!
       return Container(
         color: Theme.of(
           context,
-        ).scaffoldBackgroundColor, // Ensure consistent dark background
+        ).scaffoldBackgroundColor,
         child: Column(
           children: [
             SubscriptionStatusCard(
@@ -843,7 +857,7 @@ Grazie per aver scelto DojoManager!
       return Container(
         color: Theme.of(
           context,
-        ).scaffoldBackgroundColor, // Ensure consistent dark background
+        ).scaffoldBackgroundColor,
         child: Column(
           children: [
             SubscriptionStatusCard(
@@ -878,7 +892,7 @@ Grazie per aver scelto DojoManager!
     return Container(
       color: Theme.of(
         context,
-      ).scaffoldBackgroundColor, // Ensure consistent dark background
+      ).scaffoldBackgroundColor,
       child: RefreshIndicator(
         key: _refreshIndicatorKey,
         onRefresh: _refreshPaymentData,
@@ -931,7 +945,7 @@ Grazie per aver scelto DojoManager!
                             SizedBox(width: 2.w),
                             Expanded(
                               child: Text(
-                                'Modalità offline - Dati memorizzati localmente',
+                                'Modalità offline - Connessione richiesta per i dati di pagamento',
                                 style: Theme.of(context)
                                     .textTheme
                                     .bodySmall
@@ -1010,11 +1024,11 @@ Grazie per aver scelto DojoManager!
       child: Scaffold(
         backgroundColor: Theme.of(
           context,
-        ).scaffoldBackgroundColor, // Explicit dark background
+        ).scaffoldBackgroundColor,
         appBar: AppBar(
           backgroundColor: Theme.of(
             context,
-          ).scaffoldBackgroundColor, // Match scaffold background
+          ).scaffoldBackgroundColor,
           title: Text(
             'Cronologia Pagamenti',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -1049,7 +1063,7 @@ Grazie per aver scelto DojoManager!
         body: Container(
           color: Theme.of(
             context,
-          ).scaffoldBackgroundColor, // Ensure body has consistent dark background
+          ).scaffoldBackgroundColor,
           child: TabBarView(
             controller: _tabController,
             children: [

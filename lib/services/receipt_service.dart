@@ -1,288 +1,256 @@
-import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/receipt_model.dart';
-import '../services/supabase_service.dart';
 
 class ReceiptService {
-  static final ReceiptService _instance = ReceiptService._internal();
-  factory ReceiptService() => _instance;
-  ReceiptService._internal();
+  final _client = Supabase.instance.client;
 
-  final client = SupabaseService.instance.client;
-
-  /// Create receipt for SumUp payment (amount and subscription known)
-  Future<ReceiptModel> createReceiptForSumUp({
-    required String userId,
-    required String subscriptionId,
-    required double amount,
-    required String subscriptionType,
-  }) async {
-    try {
-      final response = await client.rpc('create_receipt', params: {
-        'p_user_id': userId,
-        'p_subscription_id': subscriptionId,
-        'p_amount': amount,
-        'p_payment_method': 'sumup',
-        'p_subscription_type': subscriptionType,
-      });
-
-      final receiptId = response as String;
-      return await getReceiptById(receiptId);
-    } catch (error) {
-      throw Exception('Failed to create SumUp receipt: $error');
-    }
-  }
-
-  /// Create receipt for Satispay payment (manual amount entry)
-  Future<ReceiptModel> createReceiptForSatispay({
-    required String userId,
-    required double amount,
-    required String subscriptionType,
-  }) async {
-    try {
-      // First create subscription
-      final subscriptionId = await _createSubscription(
-        userId: userId,
-        amount: amount,
-        type: subscriptionType,
-      );
-
-      final response = await client.rpc('create_receipt', params: {
-        'p_user_id': userId,
-        'p_subscription_id': subscriptionId,
-        'p_amount': amount,
-        'p_payment_method': 'satispay',
-        'p_subscription_type': subscriptionType,
-      });
-
-      final receiptId = response as String;
-      return await getReceiptById(receiptId);
-    } catch (error) {
-      throw Exception('Failed to create Satispay receipt: $error');
-    }
-  }
-
-  /// Create subscription record
-  Future<String> _createSubscription({
-    required String userId,
-    required double amount,
-    required String type,
-  }) async {
-    try {
-      // Calculate dates using business rules
-      final dates = await _calculateSubscriptionDates(type);
-
-      final response = await client
-          .from('subscriptions')
-          .insert({
-            'user_id': userId,
-            'type': type,
-            'amount': amount,
-            'start_date': dates['start_date'],
-            'end_date': dates['end_date'],
-            'is_active': true,
-          })
-          .select('id')
-          .single();
-
-      return response['id'] as String;
-    } catch (error) {
-      throw Exception('Failed to create subscription: $error');
-    }
-  }
-
-  /// Calculate subscription dates according to Team Ragnarok rules
-  Future<Map<String, String>> _calculateSubscriptionDates(String type) async {
-    final now = DateTime.now();
-
-    if (type == 'monthly') {
-      // Monthly: Always from 10th of current month to 10th of next month
-      final startDate = DateTime(now.year, now.month, 10);
-      final endDate = DateTime(now.year, now.month + 1, 10);
-
-      return {
-        'start_date': DateFormat('yyyy-MM-dd').format(startDate),
-        'end_date': DateFormat('yyyy-MM-dd').format(endDate),
-      };
-    } else {
-      // Annual: Valid until August 28th based on payment timing
-      late DateTime endDate;
-
-      if (now.month >= 8 && now.day >= 29) {
-        // Paid from August 29th onwards - valid until next year's August 28th
-        endDate = DateTime(now.year + 1, 8, 28);
-      } else {
-        // Paid before August 29th - valid until current year's August 28th
-        endDate = DateTime(now.year, 8, 28);
-      }
-
-      return {
-        'start_date': DateFormat('yyyy-MM-dd').format(now),
-        'end_date': DateFormat('yyyy-MM-dd').format(endDate),
-      };
-    }
-  }
-
-  /// Get receipt by ID with all related data
-  Future<ReceiptModel> getReceiptById(String receiptId) async {
-    try {
-      final response = await client.from('receipts').select('''
-            *,
-            user_profiles(id, email, full_name, tax_code, address, phone),
-            gym_info(id, name, address, tax_code, phone, email),
-            subscriptions(id, type, amount, start_date, end_date, is_active)
-          ''').eq('id', receiptId).single();
-
-      return ReceiptModel.fromJson(response);
-    } catch (error) {
-      throw Exception('Failed to get receipt: $error');
-    }
-  }
-
-  /// Get all receipts for a user
+  // Get all receipts for a user (production-ready)
   Future<List<ReceiptModel>> getUserReceipts(String userId) async {
     try {
-      final response = await client.from('receipts').select('''
-            *,
-            user_profiles(id, email, full_name, tax_code, address, phone),
-            gym_info(id, name, address, tax_code, phone, email),
-            subscriptions(id, type, amount, start_date, end_date, is_active)
-          ''').eq('user_id', userId).order('issue_date', ascending: false);
+      final response = await _client
+          .from('non_fiscal_receipts')
+          .select()
+          .eq('created_by', userId)
+          .order('created_at', ascending: false);
 
-      return response.map((json) => ReceiptModel.fromJson(json)).toList();
-    } catch (error) {
-      throw Exception('Failed to get user receipts: $error');
+      return (response as List)
+          .map((receipt) => ReceiptModel.fromJson(receipt))
+          .toList();
+    } catch (e) {
+      throw Exception('Errore nel recupero delle ricevute: $e');
     }
   }
 
-  /// Get all receipts for admin view
-  Future<List<ReceiptModel>> getAllReceipts({String? userFilter}) async {
+  // Create a new receipt (production-ready)
+  Future<ReceiptModel> createReceipt({
+    required String description,
+    required double amount,
+    required String createdBy,
+    String? customerName,
+    String? customerTaxCode,
+    String? customerAddress,
+    String? notes,
+    String paymentMethod = 'cash',
+  }) async {
     try {
-      var query = client.from('receipts').select('''
-            *,
-            user_profiles(id, email, full_name, tax_code, address, phone),
-            gym_info(id, name, address, tax_code, phone, email),
-            subscriptions(id, type, amount, start_date, end_date, is_active)
-          ''');
-
-      if (userFilter != null && userFilter.isNotEmpty) {
-        query = query.ilike('user_profiles.full_name', '%$userFilter%');
+      // Validate required production data
+      if (description.trim().isEmpty) {
+        throw Exception('La descrizione è obbligatoria');
+      }
+      if (amount <= 0) {
+        throw Exception('L\'importo deve essere maggiore di zero');
+      }
+      if (createdBy.trim().isEmpty) {
+        throw Exception('Creatore ricevuta non specificato');
       }
 
-      final response = await query.order('issue_date', ascending: false);
+      final response = await _client
+          .from('non_fiscal_receipts')
+          .insert({
+            'description': description.trim(),
+            'amount': amount,
+            'created_by': createdBy,
+            'customer_name': customerName?.trim(),
+            'customer_tax_code': customerTaxCode?.trim(),
+            'customer_address': customerAddress?.trim(),
+            'notes': notes?.trim(),
+            'payment_method': paymentMethod,
+            'status': 'issued', // Always issued for production
+          })
+          .select()
+          .single();
 
-      return response.map((json) => ReceiptModel.fromJson(json)).toList();
-    } catch (error) {
-      throw Exception('Failed to get all receipts: $error');
+      return ReceiptModel.fromJson(response);
+    } catch (e) {
+      throw Exception('Errore nella creazione della ricevuta: $e');
     }
   }
 
-  /// Generate PDF content for receipt
-  String generateReceiptPdf(ReceiptModel receipt) {
-    final issueDate = DateFormat('dd-MM-yyyy').format(receipt.issueDate);
-    final validityPeriod = receipt.validityStart != null &&
-            receipt.validityEnd != null
-        ? 'dal ${DateFormat('dd/MM/yyyy').format(receipt.validityStart!)} al ${DateFormat('dd/MM/yyyy').format(receipt.validityEnd!)}'
-        : '';
+  // Get receipts by date range (production-ready)
+  Future<List<ReceiptModel>> getReceiptsByDateRange(
+      String userId, DateTime startDate, DateTime endDate) async {
+    try {
+      // Validate date range
+      if (startDate.isAfter(endDate)) {
+        throw Exception(
+            'La data di inizio deve essere precedente alla data di fine');
+      }
 
-    return '''
-RICEVUTA NON FISCALE
+      final response = await _client
+          .from('non_fiscal_receipts')
+          .select()
+          .eq('created_by', userId)
+          .gte('created_at', startDate.toIso8601String())
+          .lte('created_at', endDate.toIso8601String())
+          .order('created_at', ascending: false);
 
-${receipt.gym?.name ?? 'TEAM RAGNAROK ASD'}
-${receipt.gym?.address ?? 'via giulio bezzi 25, 48026 Russi - RA'}
-Codice Fiscale: ${receipt.gym?.taxCode ?? '92100170395'}
-
-==========================================
-
-Ricevuta fiscale ${receipt.receiptNumber} del $issueDate
-
-DATI CLIENTE:
-${receipt.user?.fullName ?? ''}
-${receipt.user?.phone != null ? 'Tel. ${receipt.user!.phone}' : ''}
-${receipt.user?.email ?? ''}
-
-DETTAGLI PAGAMENTO:
-Descrizione: ${receipt.description}
-Periodo di validità: $validityPeriod
-Quantità: ${receipt.quantity}
-Prezzo unitario: €${receipt.unitPrice.toStringAsFixed(2).replaceAll('.', ',')}
-Importo: €${receipt.totalAmount.toStringAsFixed(2).replaceAll('.', ',')}
-IVA: ${receipt.vatRate.toStringAsFixed(2)}% (N2.2)
-
-Metodo di pagamento: ${_getPaymentMethodText(receipt.paymentMethod)}
-
-==========================================
-
-${receipt.notes}
-
-Data: $issueDate
-    ''';
-  }
-
-  String _getPaymentMethodText(String method) {
-    switch (method.toLowerCase()) {
-      case 'sumup':
-        return 'SumUp';
-      case 'satispay':
-        return 'Satispay';
-      case 'cash':
-        return 'Contanti';
-      case 'bank_transfer':
-        return 'Bonifico Bancario';
-      default:
-        return method;
+      return (response as List)
+          .map((receipt) => ReceiptModel.fromJson(receipt))
+          .toList();
+    } catch (e) {
+      throw Exception('Errore nel recupero delle ricevute per data: $e');
     }
   }
 
-  /// Check if user needs payment reminder
+  // Delete a receipt (production-ready with validation)
+  Future<void> deleteReceipt(String receiptId, String userId) async {
+    try {
+      if (receiptId.trim().isEmpty) {
+        throw Exception('ID ricevuta non valido');
+      }
+
+      // Verify ownership before deletion (production security)
+      final existing = await _client
+          .from('non_fiscal_receipts')
+          .select('created_by')
+          .eq('id', receiptId)
+          .maybeSingle();
+
+      if (existing == null) {
+        throw Exception('Ricevuta non trovata');
+      }
+
+      if (existing['created_by'] != userId) {
+        throw Exception('Non autorizzato a cancellare questa ricevuta');
+      }
+
+      await _client.from('non_fiscal_receipts').delete().eq('id', receiptId);
+    } catch (e) {
+      throw Exception('Errore nella cancellazione della ricevuta: $e');
+    }
+  }
+
+  // Get receipt statistics for a user (production-ready)
+  Future<Map<String, dynamic>> getReceiptStatistics(String userId) async {
+    try {
+      final response = await _client
+          .from('non_fiscal_receipts')
+          .select('amount, created_at')
+          .eq('created_by', userId);
+
+      if (response.isEmpty) {
+        return {
+          'totalAmount': 0.0,
+          'receiptCount': 0,
+          'averageAmount': 0.0,
+          'monthlyTotal': 0.0,
+          'yearlyTotal': 0.0,
+        };
+      }
+
+      double totalAmount = 0.0;
+      int receiptCount = response.length;
+      double monthlyTotal = 0.0;
+      double yearlyTotal = 0.0;
+
+      final now = DateTime.now();
+      final currentMonth = now.month;
+      final currentYear = now.year;
+
+      for (var receipt in response) {
+        final amount = (receipt['amount'] as num).toDouble();
+        totalAmount += amount;
+
+        final createdAt = DateTime.parse(receipt['created_at']);
+
+        // Monthly total
+        if (createdAt.month == currentMonth && createdAt.year == currentYear) {
+          monthlyTotal += amount;
+        }
+
+        // Yearly total
+        if (createdAt.year == currentYear) {
+          yearlyTotal += amount;
+        }
+      }
+
+      return {
+        'totalAmount': totalAmount,
+        'receiptCount': receiptCount,
+        'averageAmount': receiptCount > 0 ? totalAmount / receiptCount : 0.0,
+        'monthlyTotal': monthlyTotal,
+        'yearlyTotal': yearlyTotal,
+      };
+    } catch (e) {
+      throw Exception('Errore nel recupero delle statistiche: $e');
+    }
+  }
+
+  // Get all receipts for admin (production-ready)
+  Future<List<ReceiptModel>> getAllReceipts({String? searchFilter}) async {
+    try {
+      var query = _client.from('non_fiscal_receipts').select();
+
+      // Add search filter if provided
+      if (searchFilter != null && searchFilter.trim().isNotEmpty) {
+        final filter = '%${searchFilter.trim()}%';
+        query = query.or('customer_name.ilike.$filter,'
+            'description.ilike.$filter,'
+            'receipt_number.ilike.$filter');
+      }
+
+      final response = await query.order('created_at', ascending: false);
+
+      return (response as List)
+          .map((receipt) => ReceiptModel.fromJson(receipt))
+          .toList();
+    } catch (e) {
+      throw Exception('Errore nel recupero di tutte le ricevute: $e');
+    }
+  }
+
+  // Check if a payment reminder is needed for the given user (uses Supabase RPC)
   Future<bool> needsPaymentReminder(String userId) async {
     try {
-      final response = await client
-          .rpc('check_payment_reminder_needed', params: {'p_user_id': userId});
-      return response as bool;
-    } catch (error) {
-      throw Exception('Failed to check payment reminder: $error');
-    }
-  }
-
-  /// Create payment reminder
-  Future<void> createPaymentReminder(String userId) async {
-    try {
-      await client.from('payment_reminders').insert({
-        'user_id': userId,
-        'reminder_date': DateTime.now().toIso8601String().split('T')[0],
-        'message':
-            'Ricorda di pagare il tuo abbonamento mensile entro il giorno 10.',
-        'is_sent': false,
+      final result =
+          await _client.rpc('check_payment_reminder_needed', params: {
+        'p_user_id': userId,
       });
-    } catch (error) {
-      throw Exception('Failed to create payment reminder: $error');
+
+      if (result is bool) {
+        return result;
+      }
+
+      // Some Supabase versions return a map with a single key or a list
+      if (result is Map && result.values.isNotEmpty) {
+        final value = result.values.first;
+        if (value is bool) return value;
+      }
+      if (result is List && result.isNotEmpty) {
+        final value = result.first;
+        if (value is bool) return value;
+        if (value is Map &&
+            value.values.isNotEmpty &&
+            value.values.first is bool) {
+          return value.values.first as bool;
+        }
+      }
+
+      throw Exception('Formato di risposta RPC non valido: $result');
+    } catch (e) {
+      throw Exception('Errore nella verifica del promemoria pagamento: $e');
     }
   }
 
-  /// Get pending payment reminders for user
-  Future<List<Map<String, dynamic>>> getPendingReminders(String userId) async {
+  // Create a payment reminder record for the user
+  Future<void> createPaymentReminder(
+    String userId, {
+    DateTime? reminderDate,
+    String? message,
+  }) async {
     try {
-      final response = await client
-          .from('payment_reminders')
-          .select()
-          .eq('user_id', userId)
-          .eq('is_sent', false)
-          .order('reminder_date', ascending: false);
+      final DateTime date = reminderDate ?? DateTime.now();
+      final String reminderMessage = message ??
+          'Ricorda di pagare il tuo abbonamento mensile entro il giorno 10.';
 
-      return List<Map<String, dynamic>>.from(response);
-    } catch (error) {
-      throw Exception('Failed to get pending reminders: $error');
-    }
-  }
-
-  /// Mark reminder as sent
-  Future<void> markReminderSent(String reminderId) async {
-    try {
-      await client
-          .from('payment_reminders')
-          .update({'is_sent': true}).eq('id', reminderId);
-    } catch (error) {
-      throw Exception('Failed to mark reminder as sent: $error');
+      await _client.from('payment_reminders').insert({
+        'user_id': userId,
+        'reminder_date': date.toIso8601String(),
+        'message': reminderMessage,
+        'is_sent': true,
+      });
+    } catch (e) {
+      throw Exception('Errore nella creazione del promemoria pagamento: $e');
     }
   }
 }

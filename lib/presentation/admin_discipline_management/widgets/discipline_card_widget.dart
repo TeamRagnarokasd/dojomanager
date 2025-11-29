@@ -99,15 +99,18 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surface,
                     borderRadius: BorderRadius.circular(16),
-                    border: widget.isSelected
-                        ? Border.all(color: disciplineColor, width: 2)
-                        : Border.all(
-                            color: theme.colorScheme.outline.withAlpha(51)),
+                    border:
+                        widget.isSelected
+                            ? Border.all(color: disciplineColor, width: 2)
+                            : Border.all(
+                              color: theme.colorScheme.outline.withAlpha(51),
+                            ),
                     boxShadow: [
                       BoxShadow(
-                        color: widget.isSelected
-                            ? disciplineColor.withAlpha(51)
-                            : theme.shadowColor.withAlpha(26),
+                        color:
+                            widget.isSelected
+                                ? disciplineColor.withAlpha(51)
+                                : theme.shadowColor.withAlpha(26),
                         blurRadius: widget.isSelected ? 8 : 4,
                         offset: const Offset(0, 2),
                       ),
@@ -147,12 +150,17 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
                                             widget.discipline['name'],
                                             style: theme.textTheme.titleLarge
                                                 ?.copyWith(
-                                              fontWeight: FontWeight.w600,
-                                              color: isActive
-                                                  ? theme.colorScheme.onSurface
-                                                  : theme.colorScheme.onSurface
-                                                      .withAlpha(153),
-                                            ),
+                                                  fontWeight: FontWeight.w600,
+                                                  color:
+                                                      isActive
+                                                          ? theme
+                                                              .colorScheme
+                                                              .onSurface
+                                                          : theme
+                                                              .colorScheme
+                                                              .onSurface
+                                                              .withAlpha(153),
+                                                ),
                                           ),
                                           const SizedBox(width: 8),
                                           Container(
@@ -161,9 +169,14 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
                                               vertical: 2,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: isActive
-                                                  ? Colors.green.withAlpha(26)
-                                                  : Colors.grey.withAlpha(26),
+                                              color:
+                                                  isActive
+                                                      ? Colors.green.withAlpha(
+                                                        26,
+                                                      )
+                                                      : Colors.grey.withAlpha(
+                                                        26,
+                                                      ),
                                               borderRadius:
                                                   BorderRadius.circular(12),
                                             ),
@@ -174,9 +187,10 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
                                               style: GoogleFonts.inter(
                                                 fontSize: 10,
                                                 fontWeight: FontWeight.w500,
-                                                color: isActive
-                                                    ? Colors.green[700]
-                                                    : Colors.grey[600],
+                                                color:
+                                                    isActive
+                                                        ? Colors.green[700]
+                                                        : Colors.grey[600],
                                               ),
                                             ),
                                           ),
@@ -184,12 +198,12 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        '${_getTotalWeeklyHours()} ore/settimana • ${_getActiveStudentsCount()} studenti',
-                                        style:
-                                            theme.textTheme.bodySmall?.copyWith(
-                                          color: theme.colorScheme.onSurface
-                                              .withAlpha(153),
-                                        ),
+                                        '${_getWeeklyHours()} ore/settimana • ${_getStudentCount()} studenti',
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme.colorScheme.onSurface
+                                                  .withAlpha(153),
+                                            ),
                                       ),
                                     ],
                                   ),
@@ -206,68 +220,77 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
                                   // Quick actions
                                   PopupMenuButton<String>(
                                     onSelected: _handleMenuAction,
-                                    itemBuilder: (context) => [
-                                      const PopupMenuItem(
-                                        value: 'edit',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.edit, size: 20),
-                                            SizedBox(width: 12),
-                                            Text('Modifica'),
-                                          ],
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'schedule',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.schedule, size: 20),
-                                            SizedBox(width: 12),
-                                            Text('Modifica Orari'),
-                                          ],
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'note',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.note_add, size: 20),
-                                            SizedBox(width: 12),
-                                            Text('Aggiungi Nota'),
-                                          ],
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: 'toggle',
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              isActive
-                                                  ? Icons.visibility_off
-                                                  : Icons.visibility,
-                                              size: 20,
+                                    itemBuilder:
+                                        (context) => [
+                                          const PopupMenuItem(
+                                            value: 'edit',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.edit, size: 20),
+                                                SizedBox(width: 12),
+                                                Text('Modifica'),
+                                              ],
                                             ),
-                                            const SizedBox(width: 12),
-                                            Text(isActive
-                                                ? 'Disattiva'
-                                                : 'Attiva'),
-                                          ],
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'delete',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.delete,
-                                                size: 20, color: Colors.red),
-                                            SizedBox(width: 12),
-                                            Text('Elimina',
-                                                style: TextStyle(
-                                                    color: Colors.red)),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
+                                          ),
+                                          const PopupMenuItem(
+                                            value: 'schedule',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.schedule, size: 20),
+                                                SizedBox(width: 12),
+                                                Text('Modifica Orari'),
+                                              ],
+                                            ),
+                                          ),
+                                          const PopupMenuItem(
+                                            value: 'note',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.note_add, size: 20),
+                                                SizedBox(width: 12),
+                                                Text('Aggiungi Nota'),
+                                              ],
+                                            ),
+                                          ),
+                                          PopupMenuItem(
+                                            value: 'toggle',
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  isActive
+                                                      ? Icons.visibility_off
+                                                      : Icons.visibility,
+                                                  size: 20,
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Text(
+                                                  isActive
+                                                      ? 'Disattiva'
+                                                      : 'Attiva',
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const PopupMenuItem(
+                                            value: 'delete',
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.delete,
+                                                  size: 20,
+                                                  color: Colors.red,
+                                                ),
+                                                SizedBox(width: 12),
+                                                Text(
+                                                  'Elimina',
+                                                  style: TextStyle(
+                                                    color: Colors.red,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
                                   ),
                               ],
                             ),
@@ -282,9 +305,7 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
                                     context,
                                     Icons.person,
                                     'Istruttori',
-                                    (widget.discipline['instructors']
-                                            as List<String>)
-                                        .join(', '),
+                                    _getInstructorNames(),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -293,9 +314,7 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
                                     context,
                                     Icons.location_on,
                                     'Luoghi',
-                                    (widget.discipline['locations']
-                                            as List<String>)
-                                        .join(', '),
+                                    _getLocationNames(),
                                   ),
                                 ),
                               ],
@@ -303,20 +322,26 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
 
                             const SizedBox(height: 12),
 
-                            // Next class info
+                            // Next class info - now using real data from palinsesto
                             _buildNextClassInfo(context),
 
                             // Expand button
                             Center(
                               child: TextButton.icon(
-                                onPressed: () =>
-                                    setState(() => _isExpanded = !_isExpanded),
-                                icon: Icon(_isExpanded
-                                    ? Icons.expand_less
-                                    : Icons.expand_more),
-                                label: Text(_isExpanded
-                                    ? 'Meno dettagli'
-                                    : 'Mostra orari'),
+                                onPressed:
+                                    () => setState(
+                                      () => _isExpanded = !_isExpanded,
+                                    ),
+                                icon: Icon(
+                                  _isExpanded
+                                      ? Icons.expand_less
+                                      : Icons.expand_more,
+                                ),
+                                label: Text(
+                                  _isExpanded
+                                      ? 'Meno dettagli'
+                                      : 'Mostra orari',
+                                ),
                                 style: TextButton.styleFrom(
                                   foregroundColor: disciplineColor,
                                 ),
@@ -383,7 +408,11 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
   }
 
   Widget _buildInfoChip(
-      BuildContext context, IconData icon, String label, String value) {
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value,
+  ) {
     final theme = Theme.of(context);
 
     return Container(
@@ -391,20 +420,14 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
       decoration: BoxDecoration(
         color: theme.colorScheme.primary.withAlpha(13),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.colorScheme.primary.withAlpha(26),
-        ),
+        border: Border.all(color: theme.colorScheme.primary.withAlpha(26)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                icon,
-                size: 16,
-                color: theme.colorScheme.primary,
-              ),
+              Icon(icon, size: 16, color: theme.colorScheme.primary),
               const SizedBox(width: 6),
               Text(
                 label,
@@ -431,7 +454,7 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
 
   Widget _buildNextClassInfo(BuildContext context) {
     final theme = Theme.of(context);
-    final nextClass = _getNextClass();
+    final nextClass = widget.discipline['nextClass'] as Map<String, dynamic>?;
 
     if (nextClass == null) {
       return Container(
@@ -442,11 +465,7 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
         ),
         child: Row(
           children: [
-            Icon(
-              Icons.schedule,
-              size: 16,
-              color: Colors.grey[600],
-            ),
+            Icon(Icons.schedule, size: 16, color: Colors.grey[600]),
             const SizedBox(width: 8),
             Text(
               'Nessuna lezione programmata',
@@ -485,11 +504,20 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
                     color: widget.discipline['color'] as Color,
                   ),
                 ),
-                if (nextClass['note']?.isNotEmpty == true)
+                if (nextClass['instructor'] != null)
                   Text(
-                    nextClass['note'],
+                    'Istruttore: ${nextClass['instructor']}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurface.withAlpha(179),
+                      fontSize: 11,
+                    ),
+                  ),
+                if (nextClass['location'] != null)
+                  Text(
+                    'Luogo: ${nextClass['location']}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withAlpha(179),
+                      fontSize: 11,
                     ),
                   ),
               ],
@@ -554,8 +582,9 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
                               Icon(
                                 Icons.access_time,
                                 size: 16,
-                                color:
-                                    theme.colorScheme.onSurface.withAlpha(153),
+                                color: theme.colorScheme.onSurface.withAlpha(
+                                  153,
+                                ),
                               ),
                               const SizedBox(width: 6),
                               Text(
@@ -572,8 +601,9 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
                               Icon(
                                 Icons.person,
                                 size: 16,
-                                color:
-                                    theme.colorScheme.onSurface.withAlpha(153),
+                                color: theme.colorScheme.onSurface.withAlpha(
+                                  153,
+                                ),
                               ),
                               const SizedBox(width: 6),
                               Text(
@@ -587,8 +617,9 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
                               Icon(
                                 Icons.location_on,
                                 size: 16,
-                                color:
-                                    theme.colorScheme.onSurface.withAlpha(153),
+                                color: theme.colorScheme.onSurface.withAlpha(
+                                  153,
+                                ),
                               ),
                               const SizedBox(width: 6),
                               Text(
@@ -612,12 +643,12 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
                                   Expanded(
                                     child: Text(
                                       classInfo['note'],
-                                      style:
-                                          theme.textTheme.bodySmall?.copyWith(
-                                        fontStyle: FontStyle.italic,
-                                        color: theme.colorScheme.onSurface
-                                            .withAlpha(204),
-                                      ),
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            fontStyle: FontStyle.italic,
+                                            color: theme.colorScheme.onSurface
+                                                .withAlpha(204),
+                                          ),
                                     ),
                                   ),
                                 ],
@@ -659,112 +690,47 @@ class _DisciplineCardWidgetState extends State<DisciplineCardWidget>
   Future<bool> _showDeleteConfirmation(BuildContext context) async {
     return await showDialog<bool>(
           context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Elimina Disciplina'),
-            content: Text(
-              'Sei sicuro di voler eliminare ${widget.discipline['name']}?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Annulla'),
+          builder:
+              (context) => AlertDialog(
+                title: const Text('Elimina Disciplina'),
+                content: Text(
+                  'Sei sicuro di voler eliminare ${widget.discipline['name']}?',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Annulla'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('Elimina'),
+                  ),
+                ],
               ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Elimina'),
-              ),
-            ],
-          ),
         ) ??
         false;
   }
 
-  String _getTotalWeeklyHours() {
-    final schedule = widget.discipline['schedule'] as Map<String, dynamic>;
-    double totalHours = 0;
-
-    schedule.values.forEach((dayClasses) {
-      for (var classInfo in dayClasses as List<Map<String, dynamic>>) {
-        final timeRange = classInfo['time'] as String;
-        final duration = _calculateClassDuration(timeRange);
-        totalHours += duration;
-      }
-    });
-
-    return totalHours.toStringAsFixed(1);
+  // Methods to get real data from palinsesto stagionale
+  String _getWeeklyHours() {
+    final weeklyHours = widget.discipline['weeklyHours'] as double? ?? 0.0;
+    return weeklyHours.toStringAsFixed(1);
   }
 
-  double _calculateClassDuration(String timeRange) {
-    // Simple duration calculation from "HH:MM-HH:MM" format
-    final parts = timeRange.split('-');
-    if (parts.length != 2) return 1.0;
-
-    try {
-      final startParts = parts[0].split(':');
-      final endParts = parts[1].split(':');
-
-      final startMinutes =
-          int.parse(startParts[0]) * 60 + int.parse(startParts[1]);
-      final endMinutes = int.parse(endParts[0]) * 60 + int.parse(endParts[1]);
-
-      return (endMinutes - startMinutes) / 60.0;
-    } catch (e) {
-      return 1.0; // Default duration
-    }
+  String _getStudentCount() {
+    final studentCount = widget.discipline['studentCount'] as int? ?? 0;
+    return studentCount.toString();
   }
 
-  String _getActiveStudentsCount() {
-    // Mock data - in real app would come from database
-    return '${15 + (widget.discipline['name'].hashCode % 20)}';
+  String _getInstructorNames() {
+    final instructors = widget.discipline['instructors'] as List<String>? ?? [];
+    return instructors.isNotEmpty
+        ? instructors.join(', ')
+        : 'Nessun istruttore';
   }
 
-  Map<String, dynamic>? _getNextClass() {
-    final schedule = widget.discipline['schedule'] as Map<String, dynamic>;
-    final now = DateTime.now();
-    final currentDay = _getCurrentDayName();
-
-    // Find next class (simplified logic)
-    final todayClasses = schedule[currentDay] as List<Map<String, dynamic>>?;
-
-    if (todayClasses != null && todayClasses.isNotEmpty) {
-      final nextClass = Map<String, dynamic>.from(todayClasses.first);
-      nextClass['day'] = currentDay;
-      return nextClass;
-    }
-
-    // Find next day with classes
-    final dayOrder = [
-      'Lunedì',
-      'Martedì',
-      'Mercoledì',
-      'Giovedì',
-      'Venerdì',
-      'Sabato',
-      'Domenica'
-    ];
-    for (var day in dayOrder) {
-      final dayClasses = schedule[day] as List<Map<String, dynamic>>?;
-      if (dayClasses != null && dayClasses.isNotEmpty) {
-        final nextClass = Map<String, dynamic>.from(dayClasses.first);
-        nextClass['day'] = day;
-        return nextClass;
-      }
-    }
-
-    return null;
-  }
-
-  String _getCurrentDayName() {
-    const days = [
-      'Lunedì',
-      'Martedì',
-      'Mercoledì',
-      'Giovedì',
-      'Venerdì',
-      'Sabato',
-      'Domenica'
-    ];
-    final now = DateTime.now();
-    return days[now.weekday - 1];
+  String _getLocationNames() {
+    final locations = widget.discipline['locations'] as List<String>? ?? [];
+    return locations.isNotEmpty ? locations.join(', ') : 'Sala Principale';
   }
 }

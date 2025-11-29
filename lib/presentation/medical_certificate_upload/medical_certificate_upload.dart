@@ -4,6 +4,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
+import '../../services/supabase_service.dart';
+import '../../services/user_profile_service.dart';
 import './widgets/camera_capture_widget.dart';
 import './widgets/certificate_details_form_widget.dart';
 import './widgets/certificate_requirements_widget.dart';
@@ -22,11 +24,13 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
     with TickerProviderStateMixin {
   final PageController _pageController = PageController();
   late TabController _tabController;
+  final UserProfileService _userProfileService = UserProfileService();
 
   // Form and upload state
   XFile? _capturedImage;
   Map<String, dynamic> _certificateDetails = {};
   bool _isUploading = false;
+  bool _isLoading = false;
   double _uploadProgress = 0.0;
   String? _uploadStatusMessage;
   int _currentStep = 0;
@@ -104,85 +108,92 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
     });
   }
 
+  bool _isFormValid() {
+    return _capturedImage != null &&
+        _certificateDetails['isValid'] == true &&
+        _certificateDetails['startDate'] != null &&
+        _certificateDetails['endDate'] != null;
+  }
+
   Future<void> _uploadCertificate() async {
-    if (_capturedImage == null || _certificateDetails['isValid'] != true) {
-      Fluttertoast.showToast(
-        msg: "Completa tutti i campi richiesti",
-        toastLength: Toast.LENGTH_LONG,
-        gravity: ToastGravity.BOTTOM,
+    if (!_isFormValid()) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Completare tutti i campi richiesti'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
-    setState(() {
-      _isUploading = true;
-      _uploadProgress = 0.0;
-      _uploadStatusMessage = "Preparazione del documento...";
-    });
+    setState(() => _isLoading = true);
 
     try {
-      // Simulate upload process with real-like progression
-      await _simulateUploadProcess();
+      String? uploadedUrl;
 
-      // Create certificate record
-      final certificateRecord = {
-        'id': DateTime.now().millisecondsSinceEpoch.toString(),
-        'imagePath': _capturedImage!.path,
-        'imageName': _capturedImage!.name,
-        'issueDate': _certificateDetails['issueDate'],
-        'expirationDate': _certificateDetails['expirationDate'],
-        'doctorName': _certificateDetails['doctorName'],
-        'doctorLicense': _certificateDetails['doctorLicense'],
-        'medicalCenter': _certificateDetails['medicalCenter'],
-        'notes': _certificateDetails['notes'],
-        'uploadDate': DateTime.now(),
-        'status': 'uploaded',
-      };
+      // Upload file if available
+      if (_capturedImage != null) {
+        final userId = SupabaseService.instance.getCurrentUserId();
+        if (userId == null) {
+          throw Exception('Utente non autenticato');
+        }
 
-      // In a real app, this would be sent to a server
-      // For now, we'll store it locally as "uploaded"
+        final fileName =
+            'medical_cert_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
-      setState(() {
-        _isUploading = false;
-        _uploadProgress = 1.0;
-        _hasUnsavedChanges = false;
-      });
+        await SupabaseService.instance.client.storage
+            .from('medical-certificates')
+            .uploadBinary(fileName, await _capturedImage!.readAsBytes());
 
-      // Show success dialog
-      _showSuccessDialog(certificateRecord);
+        uploadedUrl = SupabaseService.instance.client.storage
+            .from('medical-certificates')
+            .getPublicUrl(fileName);
+      }
+
+      // Update user profile with complete certificate details
+      final userId = SupabaseService.instance.getCurrentUserId();
+      if (userId != null) {
+        final result =
+            await UserProfileService().updateMedicalCertificateComplete(
+          userId: userId,
+          certificateUrl: uploadedUrl ?? '',
+          startDate: _certificateDetails['startDate'] as DateTime?,
+          expiryDate: _certificateDetails['endDate'] as DateTime?,
+          doctorName: _certificateDetails['doctorName'] as String?,
+          medicalCenter: _certificateDetails['medicalCenter'] as String?,
+          certificateType: _certificateDetails['certificateType'] as String?,
+          certificateStatus: 'pending',
+        );
+
+        if (result['success'] == true) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Certificato medico caricato con successo!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            Navigator.pop(context);
+          }
+        } else {
+          throw Exception(result['error'] ?? 'Errore durante il salvataggio');
+        }
+      }
     } catch (e) {
-      setState(() {
-        _isUploading = false;
-        _uploadProgress = 0.0;
-      });
-
-      // Add to pending uploads for offline functionality
-      _addToPendingUploads();
-
-      Fluttertoast.showToast(
-        msg: "Errore durante il caricamento. Salvato per dopo.",
-        toastLength: Toast.LENGTH_LONG,
-        gravity: ToastGravity.BOTTOM,
-      );
-    }
-  }
-
-  Future<void> _simulateUploadProcess() async {
-    final steps = [
-      "Compressione immagine...",
-      "Caricamento documento...",
-      "Validazione dati...",
-      "Elaborazione OCR...",
-      "Salvataggio nel sistema...",
-      "Configurazione promemoria...",
-    ];
-
-    for (int i = 0; i < steps.length; i++) {
-      await Future.delayed(Duration(milliseconds: 800));
-      setState(() {
-        _uploadProgress = (i + 1) / steps.length;
-        _uploadStatusMessage = steps[i];
-      });
+      debugPrint('Upload error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore durante il caricamento: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -215,23 +226,27 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
     );
   }
 
-  void _showSuccessDialog(Map<String, dynamic> certificateRecord) {
+  void _showSuccessDialog(Map<String, dynamic> uploadResult) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.lightTheme.colorScheme.surface,
         title: Row(
           children: [
-            CustomIconWidget(
-              iconName: 'check_circle',
+            Icon(
+              Icons.check_circle,
               color: AppTheme.lightTheme.colorScheme.tertiary,
               size: 24,
             ),
             SizedBox(width: 2.w),
-            Text(
-              'Caricamento Completato',
-              style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
-                color: AppTheme.lightTheme.colorScheme.tertiary,
+            Expanded(
+              child: Text(
+                'Certificato Caricato',
+                style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                  color: AppTheme.lightTheme.colorScheme.tertiary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
@@ -241,53 +256,81 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Il certificato medico è stato caricato con successo.',
-              style: AppTheme.lightTheme.textTheme.bodyMedium,
+              uploadResult['message'] ??
+                  'Il certificato medico è stato caricato con successo.',
+              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onSurface,
+              ),
             ),
             SizedBox(height: 2.h),
             Container(
               width: double.infinity,
               padding: EdgeInsets.all(3.w),
               decoration: BoxDecoration(
-                color: AppTheme.lightTheme.colorScheme.tertiary
-                    .withValues(alpha: 0.1),
+                color: AppTheme.lightTheme.colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppTheme.lightTheme.colorScheme.primary.withAlpha(
+                    77,
+                  ),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Dettagli:',
-                    style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.schedule,
+                        color: AppTheme.lightTheme.colorScheme.primary,
+                        size: 16,
+                      ),
+                      SizedBox(width: 2.w),
+                      Expanded(
+                        child: Text(
+                          'Stato: In attesa di approvazione',
+                          style: AppTheme.lightTheme.textTheme.labelLarge
+                              ?.copyWith(
+                            color: AppTheme.lightTheme.colorScheme.onSurface,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   SizedBox(height: 1.h),
                   Text(
-                    'Scadenza: ${_formatDate(_certificateDetails['expirationDate'])}',
-                    style: AppTheme.lightTheme.textTheme.bodySmall,
+                    'Il tuo certificato è stato caricato ed è ora in attesa di approvazione da parte dell\'amministrazione.',
+                    style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                      color: AppTheme.lightTheme.colorScheme.primary,
+                    ),
                   ),
-                  Text(
-                    'Medico: ${_certificateDetails['doctorName']}',
-                    style: AppTheme.lightTheme.textTheme.bodySmall,
-                  ),
+                  if (_certificateDetails['expirationDate'] != null) ...[
+                    SizedBox(height: 1.h),
+                    Text(
+                      'Scadenza: ${_formatDate(_certificateDetails['expirationDate'])}',
+                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                        color: AppTheme.lightTheme.colorScheme.onSurface,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
             SizedBox(height: 2.h),
             Row(
               children: [
-                CustomIconWidget(
-                  iconName: 'notifications',
-                  color: AppTheme.lightTheme.colorScheme.primary,
+                Icon(
+                  Icons.notifications,
+                  color: AppTheme.lightTheme.colorScheme.secondary,
                   size: 16,
                 ),
                 SizedBox(width: 2.w),
                 Expanded(
                   child: Text(
-                    'Promemoria di scadenza configurati automaticamente',
+                    'Riceverai una notifica quando il certificato sarà approvato',
                     style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                      color: AppTheme.lightTheme.colorScheme.primary,
+                      color: AppTheme.lightTheme.colorScheme.secondary,
                     ),
                   ),
                 ),
@@ -299,16 +342,29 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              Navigator.pushNamed(context, '/dashboard-home');
+              Navigator.of(context).pop(); // Go back to profile
             },
-            child: Text('Vai alla Dashboard'),
+            child: Text(
+              'Torna al Profilo',
+              style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.outline,
+              ),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.of(context).pop();
               _resetForm();
             },
-            child: Text('Carica Altro'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.lightTheme.colorScheme.primary,
+            ),
+            child: Text(
+              'Carica Altro',
+              style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onPrimary,
+              ),
+            ),
           ),
         ],
       ),
@@ -338,17 +394,37 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
       final result = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('Modifiche non salvate'),
-          content:
-              Text('Hai modifiche non salvate. Vuoi uscire senza salvare?'),
+          backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+          title: Text(
+            'Modifiche non salvate',
+            style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+              color: AppTheme.lightTheme.colorScheme.onSurface,
+            ),
+          ),
+          content: Text(
+            'Hai modifiche non salvate. Vuoi uscire senza salvare?',
+            style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+              color: AppTheme.lightTheme.colorScheme.onSurface,
+            ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: Text('Annulla'),
+              child: Text(
+                'Annulla',
+                style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                  color: AppTheme.lightTheme.colorScheme.outline,
+                ),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: Text('Esci'),
+              child: Text(
+                'Esci',
+                style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                  color: AppTheme.lightTheme.colorScheme.primary,
+                ),
+              ),
             ),
           ],
         ),
@@ -369,9 +445,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
           children: [
             _buildProgressIndicator(),
             _buildTabBar(),
-            Expanded(
-              child: _buildTabBarView(),
-            ),
+            Expanded(child: _buildTabBarView()),
             if (!_isUploading) _buildBottomActions(),
           ],
         ),
@@ -381,9 +455,12 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
+      backgroundColor: AppTheme.lightTheme.colorScheme.primary,
+      foregroundColor: AppTheme.lightTheme.colorScheme.onPrimary,
       title: Text(
         'Carica Certificato Medico',
         style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+          color: AppTheme.lightTheme.colorScheme.onPrimary,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -395,7 +472,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
         },
         icon: CustomIconWidget(
           iconName: 'arrow_back',
-          color: AppTheme.lightTheme.colorScheme.onSurface,
+          color: AppTheme.lightTheme.colorScheme.onPrimary,
           size: 24,
         ),
       ),
@@ -416,7 +493,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
           onPressed: _showHelpDialog,
           icon: CustomIconWidget(
             iconName: 'help_outline',
-            color: AppTheme.lightTheme.colorScheme.onSurface,
+            color: AppTheme.lightTheme.colorScheme.onPrimary,
             size: 24,
           ),
         ),
@@ -437,8 +514,9 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
                 decoration: BoxDecoration(
                   color: i <= _currentStep
                       ? AppTheme.lightTheme.colorScheme.primary
-                      : AppTheme.lightTheme.colorScheme.outline
-                          .withValues(alpha: 0.3),
+                      : AppTheme.lightTheme.colorScheme.outline.withValues(
+                          alpha: 0.3,
+                        ),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -528,11 +606,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
   Widget _buildTabBarView() {
     return TabBarView(
       controller: _tabController,
-      children: [
-        _buildCaptureTab(),
-        _buildPreviewTab(),
-        _buildDetailsTab(),
-      ],
+      children: [_buildCaptureTab(), _buildPreviewTab(), _buildDetailsTab()],
     );
   }
 
@@ -543,9 +617,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
         children: [
           CertificateRequirementsWidget(),
           SizedBox(height: 2.h),
-          CameraCaptureWidget(
-            onImageCaptured: _onImageCaptured,
-          ),
+          CameraCaptureWidget(onImageCaptured: _onImageCaptured),
         ],
       ),
     );
@@ -602,8 +674,9 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
         color: AppTheme.lightTheme.colorScheme.surface,
         border: Border(
           top: BorderSide(
-            color:
-                AppTheme.lightTheme.colorScheme.outline.withValues(alpha: 0.2),
+            color: AppTheme.lightTheme.colorScheme.outline.withValues(
+              alpha: 0.2,
+            ),
             width: 1,
           ),
         ),
@@ -652,9 +725,17 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: AppTheme.lightTheme.colorScheme.surface,
       builder: (context) => Container(
         height: 60.h,
         padding: EdgeInsets.all(4.w),
+        decoration: BoxDecoration(
+          color: AppTheme.lightTheme.colorScheme.surface,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+          ),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -668,7 +749,9 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
                 SizedBox(width: 2.w),
                 Text(
                   'Caricamenti in Sospeso',
-                  style: AppTheme.lightTheme.textTheme.titleLarge,
+                  style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+                    color: AppTheme.lightTheme.colorScheme.onSurface,
+                  ),
                 ),
               ],
             ),
@@ -679,15 +762,28 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
                 itemBuilder: (context, index) {
                   final upload = _pendingUploads[index];
                   return Card(
+                    color: AppTheme.lightTheme.colorScheme.surface,
+                    elevation: 2,
                     child: ListTile(
                       leading: CustomIconWidget(
                         iconName: 'schedule',
                         color: AppTheme.lightTheme.colorScheme.error,
                         size: 24,
                       ),
-                      title: Text(upload['imageName']),
+                      title: Text(
+                        upload['imageName'],
+                        style:
+                            AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.lightTheme.colorScheme.onSurface,
+                        ),
+                      ),
                       subtitle: Text(
                         'Creato: ${_formatDate(upload['createdAt'])}',
+                        style:
+                            AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                          color:
+                              AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                       trailing: IconButton(
                         onPressed: () {
@@ -717,7 +813,13 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Aiuto'),
+        backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+        title: Text(
+          'Aiuto',
+          style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+            color: AppTheme.lightTheme.colorScheme.onSurface,
+          ),
+        ),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -725,15 +827,20 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
             children: [
               Text(
                 'Come caricare il certificato medico:',
-                style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w600,
+                  color: AppTheme.lightTheme.colorScheme.onSurface,
                 ),
               ),
               SizedBox(height: 2.h),
-              _buildHelpStep('1',
-                  'Scatta una foto del certificato o selezionalo dalla galleria'),
               _buildHelpStep(
-                  '2', 'Controlla l\'anteprima e ritaglia se necessario'),
+                '1',
+                'Scatta una foto del certificato o selezionalo dalla galleria',
+              ),
+              _buildHelpStep(
+                '2',
+                'Controlla l\'anteprima e ritaglia se necessario',
+              ),
               _buildHelpStep('3', 'Compila i dettagli del certificato'),
               _buildHelpStep('4', 'Carica il documento'),
               SizedBox(height: 2.h),
@@ -741,20 +848,38 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
                 'Requisiti:',
                 style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w600,
+                  color: AppTheme.lightTheme.colorScheme.onSurface,
                 ),
               ),
               SizedBox(height: 1.h),
-              Text('• Formato: PDF, JPG, PNG (max 5MB)'),
-              Text('• Documento leggibile e completo'),
-              Text('• Date di emissione e scadenza visibili'),
-              Text('• Informazioni del medico presenti'),
+              Text(
+                '• Formato: PDF, JPG, PNG (max 5MB)',
+                style: AppTheme.lightTheme.textTheme.bodySmall,
+              ),
+              Text(
+                '• Documento leggibile e completo',
+                style: AppTheme.lightTheme.textTheme.bodySmall,
+              ),
+              Text(
+                '• Date di emissione e scadenza visibili',
+                style: AppTheme.lightTheme.textTheme.bodySmall,
+              ),
+              Text(
+                '• Informazioni del medico presenti',
+                style: AppTheme.lightTheme.textTheme.bodySmall,
+              ),
             ],
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text('Chiudi'),
+            child: Text(
+              'Chiudi',
+              style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.primary,
+              ),
+            ),
           ),
         ],
       ),

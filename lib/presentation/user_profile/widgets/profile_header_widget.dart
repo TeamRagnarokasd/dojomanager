@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../constants/app_constants.dart';
+import '../../../services/supabase_service.dart';
+import '../../../services/user_profile_service.dart';
 
 class ProfileHeaderWidget extends StatefulWidget {
   const ProfileHeaderWidget({Key? key}) : super(key: key);
@@ -13,9 +16,56 @@ class ProfileHeaderWidget extends StatefulWidget {
 }
 
 class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
-  String _userAvatar =
-      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face';
+  String? _userAvatar;
+  String _userName = '';
+  String _userRole = '';
+  bool _isLoading = false;
   final ImagePicker _picker = ImagePicker();
+  final UserProfileService _userProfileService = UserProfileService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    try {
+      final client = SupabaseService.instance.client;
+      final user = client.auth.currentUser;
+
+      if (user == null) return;
+
+      final response = await client
+          .from('user_profiles')
+          .select('full_name, role, profile_image_url')
+          .eq('id', user.id)
+          .single();
+
+      setState(() {
+        _userName = response['full_name'] ?? 'Utente';
+        _userRole = _formatRole(response['role'] ?? 'student');
+        _userAvatar = response['profile_image_url'];
+      });
+    } catch (e) {
+      print('Error loading user profile: $e');
+    }
+  }
+
+  String _formatRole(String role) {
+    switch (role) {
+      case 'student':
+        return 'Team Ragnarok Member';
+      case 'instructor':
+        return 'Istruttore';
+      case 'admin':
+        return 'Amministratore';
+      case 'principal_admin':
+        return 'Amministratore Principale';
+      default:
+        return 'Team Ragnarok Member';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,30 +90,47 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.red, width: 3),
-                  image: DecorationImage(
-                    image: NetworkImage(_userAvatar),
-                    fit: BoxFit.cover,
-                  ),
+                  color: Colors.grey[800],
                 ),
+                child: _userAvatar != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(25.w),
+                        child: Image.network(
+                          _userAvatar!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return _buildDefaultAvatar();
+                          },
+                        ),
+                      )
+                    : _buildDefaultAvatar(),
               ),
               Positioned(
                 bottom: 0,
                 right: 0,
                 child: GestureDetector(
-                  onTap: _updateProfilePhoto,
+                  onTap: _isLoading ? null : _updateProfilePhoto,
                   child: Container(
                     width: 8.w,
                     height: 8.w,
                     decoration: BoxDecoration(
-                      color: Colors.red,
+                      color: _isLoading ? Colors.grey : Colors.red,
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 2),
                     ),
-                    child: Icon(
-                      Icons.camera_alt,
-                      color: Colors.white,
-                      size: 4.w,
-                    ),
+                    child: _isLoading
+                        ? Padding(
+                            padding: EdgeInsets.all(1.w),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(
+                            Icons.camera_alt,
+                            color: Colors.white,
+                            size: 4.w,
+                          ),
                   ),
                 ),
               ),
@@ -71,7 +138,7 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
           ),
           SizedBox(height: 2.h),
           Text(
-            'Marco Rossi',
+            _userName.isEmpty ? 'Caricamento...' : _userName,
             style: GoogleFonts.inter(
               color: Colors.white,
               fontSize: 16.sp,
@@ -79,7 +146,7 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
             ),
           ),
           Text(
-            'Team Ragnarok Member',
+            _userRole,
             style: GoogleFonts.inter(
               color: Colors.red,
               fontSize: 12.sp,
@@ -108,6 +175,22 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDefaultAvatar() {
+    return Container(
+      width: 25.w,
+      height: 25.w,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.grey[700],
+      ),
+      child: Icon(
+        Icons.person,
+        color: Colors.grey[400],
+        size: 12.w,
       ),
     );
   }
@@ -192,6 +275,23 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
 
   Future<void> _pickImage(ImageSource source) async {
     Navigator.pop(context);
+
+    // Request permissions
+    if (source == ImageSource.camera) {
+      final permission = await Permission.camera.request();
+      if (!permission.isGranted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Permesso fotocamera necessario'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    }
+
+    setState(() => _isLoading = true);
+
     try {
       final XFile? image = await _picker.pickImage(
         source: source,
@@ -201,25 +301,63 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
       );
 
       if (image != null) {
-        // In a real app, you would upload this to your server
-        // For demo purposes, we'll use a placeholder
-        setState(() {
-          _userAvatar =
-              'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face';
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Foto profilo aggiornata!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        await _uploadProfileImage(image);
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Errore durante l\'aggiornamento della foto'),
+          content: Text('Errore durante la selezione dell\'immagine'),
           backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _uploadProfileImage(XFile image) async {
+    try {
+      // Use the improved upload service
+      final result = await _userProfileService.uploadProfilePhoto(image);
+
+      if (result['success'] == true) {
+        setState(() {
+          _userAvatar = result['profile_image_url'];
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                result['message'] ?? 'Foto profilo aggiornata con successo!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ??
+                'Errore durante l\'aggiornamento della foto'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Riprova',
+              onPressed: () => _updateProfilePhoto(),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error uploading profile image: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Errore imprevisto durante il caricamento'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'Riprova',
+            onPressed: () => _updateProfilePhoto(),
+          ),
         ),
       );
     }

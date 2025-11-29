@@ -3,10 +3,12 @@ import 'package:google_fonts/google_fonts.dart';
 
 class TodaysClassesSectionWidget extends StatelessWidget {
   final bool isLoading;
+  final VoidCallback? onRefresh;
 
   const TodaysClassesSectionWidget({
     Key? key,
     required this.isLoading,
+    this.onRefresh,
   }) : super(key: key);
 
   @override

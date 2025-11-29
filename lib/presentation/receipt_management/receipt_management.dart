@@ -117,15 +117,10 @@ class _ReceiptManagementState extends State<ReceiptManagement> {
   Future<void> _checkPaymentReminder() async {
     try {
       final currentUserId = 'current-user-id'; // Replace with actual user ID
-      final needsReminder =
-          await _receiptService.needsPaymentReminder(currentUserId);
-
-      if (needsReminder) {
-        final now = DateTime.now();
-        if (now.day == 7) {
-          // Show reminder on 7th of each month
-          _showPaymentReminderDialog();
-        }
+      final now = DateTime.now();
+      if (now.day == 7) {
+        // Show reminder on 7th of each month
+        _showPaymentReminderDialog();
       }
     } catch (error) {
       print('Error checking payment reminder: $error');
@@ -366,10 +361,6 @@ class _ReceiptManagementState extends State<ReceiptManagement> {
       context: context,
       builder: (context) => PaymentConfirmationDialog(
         paymentMethod: paymentMethod,
-        amount: amount,
-        subscriptionType: subscriptionType,
-        onConfirm: () =>
-            _createReceipt(paymentMethod, amount, subscriptionType),
         onCancel: () => Navigator.pop(context),
       ),
     );
@@ -393,25 +384,15 @@ class _ReceiptManagementState extends State<ReceiptManagement> {
 
     try {
       final currentUserId = 'current-user-id'; // Replace with actual user ID
-      ReceiptModel receipt;
-
-      if (paymentMethod == 'sumup') {
-        // For SumUp, we have subscription ID available
-        final subscriptionId = 'known-subscription-id'; // Get from context
-        receipt = await _receiptService.createReceiptForSumUp(
-          userId: currentUserId,
-          subscriptionId: subscriptionId,
-          amount: amount,
-          subscriptionType: subscriptionType,
-        );
-      } else {
-        // For Satispay, create new subscription
-        receipt = await _receiptService.createReceiptForSatispay(
-          userId: currentUserId,
-          amount: amount,
-          subscriptionType: subscriptionType,
-        );
-      }
+      
+      // Use the available createReceipt method instead of undefined methods
+      final receipt = await _receiptService.createReceipt(
+        description: 'Abbonamento $subscriptionType - ${paymentMethod.toUpperCase()}',
+        amount: amount,
+        createdBy: currentUserId,
+        paymentMethod: paymentMethod,
+        notes: 'Abbonamento $subscriptionType generato automaticamente',
+      );
 
       _showSuccessToast('Ricevuta generata con successo!');
       _loadReceipts(); // Refresh the list
@@ -486,7 +467,7 @@ class _ReceiptManagementState extends State<ReceiptManagement> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            _receiptService.generateReceiptPdf(receipt),
+                            _generateReceiptContent(receipt),
                             style: GoogleFonts.inter(
                               fontSize: 12.sp,
                               fontFeatures: [FontFeature.tabularFigures()],
@@ -530,7 +511,7 @@ class _ReceiptManagementState extends State<ReceiptManagement> {
 
   Future<void> _downloadReceiptPdf(ReceiptModel receipt) async {
     try {
-      final pdfContent = _receiptService.generateReceiptPdf(receipt);
+      final pdfContent = _generateReceiptContent(receipt);
       final filename =
           'ricevuta_${receipt.receiptNumber}_${DateFormat('yyyyMMdd').format(receipt.issueDate)}.txt';
 
@@ -553,6 +534,27 @@ class _ReceiptManagementState extends State<ReceiptManagement> {
     } catch (error) {
       _showErrorToast('Errore durante il download: $error');
     }
+  }
+
+  // Add this helper method to generate receipt content
+  String _generateReceiptContent(ReceiptModel receipt) {
+    return '''
+RICEVUTA NON FISCALE
+
+Numero: #${receipt.receiptNumber}
+Data: ${DateFormat('dd/MM/yyyy').format(receipt.issueDate)}
+
+Descrizione: ${receipt.description}
+Importo: €${receipt.totalAmount.toStringAsFixed(2)}
+Metodo di Pagamento: ${_getPaymentMethodText(receipt.paymentMethod)}
+
+${receipt.validityStart != null && receipt.validityEnd != null 
+  ? 'Validità: dal ${DateFormat('dd/MM/yyyy').format(receipt.validityStart!)} al ${DateFormat('dd/MM/yyyy').format(receipt.validityEnd!)}\n' 
+  : ''}
+Stato: ${receipt.status.toUpperCase()}
+
+Generato il: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}
+''';
   }
 
   void _onFilterChanged(String filter) {

@@ -123,6 +123,97 @@ class TeamCertificationsWidget extends StatelessWidget {
 
           SizedBox(height: 2.h),
 
+          // UIJJ Affiliation Section
+          Container(
+            padding: EdgeInsets.all(3.w),
+            decoration: BoxDecoration(
+              color: Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.orange.withAlpha(77), width: 1),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    // UIJJ Logo
+                    Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.black,
+                      ),
+                      padding: EdgeInsets.all(2),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.asset(
+                          'assets/images/162741-1758188985237.jpg',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 3.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'UIJJ',
+                            style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 0.5.h),
+                          Text(
+                            'Unione Italiana Jiu-Jitsu',
+                            style: GoogleFonts.inter(
+                              color: Colors.orange,
+                              fontSize: 11.sp,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          SizedBox(height: 0.5.h),
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 2.w,
+                              vertical: 0.5.h,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withAlpha(51),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'Team Affiliato',
+                              style: GoogleFonts.inter(
+                                color: Colors.orange,
+                                fontSize: 10.sp,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 2.h),
+                Text(
+                  'Il Team Ragnarok è affiliato all\'Unione Italiana Jiu-Jitsu, riconoscimento che attesta la qualità dell\'insegnamento e la competenza tecnica nella disciplina del Brazilian Jiu-Jitsu.',
+                  style: GoogleFonts.inter(
+                    color: Colors.grey[300],
+                    fontSize: 11.sp,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          SizedBox(height: 2.h),
+
           // Rolling JJ Academy Affiliation Section
           Container(
             padding: EdgeInsets.all(3.w),

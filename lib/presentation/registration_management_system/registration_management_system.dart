@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'dart:async';
 
-import '../../services/supabase_service.dart';
+import '../../services/student_registration_service.dart';
 import './widgets/bulk_approval_widget.dart';
 import './widgets/document_verification_widget.dart';
-import './widgets/registration_card_widget.dart';
 
 class RegistrationManagementSystem extends StatefulWidget {
   const RegistrationManagementSystem({super.key});
@@ -24,322 +24,271 @@ class _RegistrationManagementSystemState
   Set<String> selectedRegistrations = {};
   String selectedTypeFilter = 'all';
   String selectedUrgencyFilter = 'all';
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
-    _initializeRegistrationManagement();
+    _loadPendingRegistrations();
+    // Set up periodic refresh to check for new registrations
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      _loadPendingRegistrations();
+    });
   }
 
-  Future<void> _initializeRegistrationManagement() async {
-    try {
-      await _checkAdminAccess();
-      await _loadPendingRegistrations();
-    } catch (e) {
-      _showErrorMessage('Errore di accesso: ${e.toString()}');
-    } finally {
-      if (mounted) {
-        setState(() => isLoading = false);
-      }
-    }
-  }
-
-  Future<void> _checkAdminAccess() async {
-    final client = SupabaseService.instance.client;
-    final user = client.auth.currentUser;
-
-    if (user == null) {
-      throw Exception('Accesso non autorizzato');
-    }
-
-    try {
-      final profileResponse =
-          await client
-              .from('user_profiles')
-              .select()
-              .eq('id', user.id)
-              .single();
-
-      currentUser = profileResponse;
-      isPrincipalAdmin =
-          user.email == 'lutadordeeliteravenna@gmail.com' ||
-          (currentUser?['role'] == 'principal_admin');
-
-      final userRole = currentUser?['role']?.toString() ?? '';
-      if (!['admin', 'principal_admin'].contains(userRole) &&
-          !isPrincipalAdmin) {
-        throw Exception('Accesso negato: diritti amministratore richiesti');
-      }
-    } catch (e) {
-      print('Error checking admin access: $e');
-      throw Exception('Errore nel controllo dei permessi amministratore');
-    }
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadPendingRegistrations() async {
-    final client = SupabaseService.instance.client;
+    if (!mounted) return;
+
+    setState(() {
+      isLoading = true;
+    });
 
     try {
-      final pendingResponse = await client
-          .from('pending_registrations')
-          .select()
-          .order('created_at', ascending: false);
-
-      pendingRegistrations = pendingResponse ?? [];
-      _applyFilters();
+      final registrations =
+          await StudentRegistrationService.getPendingRegistrations();
 
       if (mounted) {
-        setState(() {});
+        setState(() {
+          pendingRegistrations = registrations;
+          filteredRegistrations = registrations;
+          isLoading = false;
+        });
+
+        // Show notification badge if there are new registrations
+        if (registrations.isNotEmpty) {
+          print('Found ${registrations.length} pending registrations');
+        }
       }
     } catch (e) {
-      print('Error loading pending registrations: $e');
-      pendingRegistrations = [];
+      print('Error loading registrations: $e');
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
     }
   }
 
   void _applyFilters() {
-    filteredRegistrations =
-        pendingRegistrations.where((registration) {
-          // Type filter
-          if (selectedTypeFilter != 'all') {
-            final role =
-                registration['requested_role']?.toString() ?? 'instructor';
-            final isAdminRequest = ['admin', 'instructor_admin'].contains(role);
+    setState(() {
+      filteredRegistrations = pendingRegistrations.where((registration) {
+        bool matchesType = true;
+        bool matchesUrgency = true;
 
-            if (selectedTypeFilter == 'standard' && isAdminRequest)
-              return false;
-            if (selectedTypeFilter == 'admin' && !isAdminRequest) return false;
+        if (selectedTypeFilter != 'all') {
+          final role = registration['requested_role']?.toString() ?? 'instructor';
+          if (selectedTypeFilter == 'admin') {
+            matchesType = ['admin', 'instructor_admin'].contains(role);
+          } else if (selectedTypeFilter == 'standard') {
+            matchesType = role == 'instructor';
           }
+        }
 
-          // Urgency filter based on submission date
-          if (selectedUrgencyFilter != 'all') {
-            final createdAt = DateTime.parse(registration['created_at']);
-            final daysSinceSubmission =
-                DateTime.now().difference(createdAt).inDays;
-
-            if (selectedUrgencyFilter == 'urgent' && daysSinceSubmission < 7)
-              return false;
-            if (selectedUrgencyFilter == 'normal' && daysSinceSubmission >= 7)
-              return false;
+        if (selectedUrgencyFilter != 'all') {
+          final createdAt = DateTime.parse(registration['created_at']);
+          final daysSinceSubmission = DateTime.now().difference(createdAt).inDays;
+          final isUrgent = daysSinceSubmission >= 7;
+          
+          if (selectedUrgencyFilter == 'urgent') {
+            matchesUrgency = isUrgent;
+          } else if (selectedUrgencyFilter == 'normal') {
+            matchesUrgency = !isUrgent;
           }
+        }
 
-          return true;
-        }).toList();
-  }
-
-  Future<void> _approvePendingRegistration(String registrationId) async {
-    try {
-      final client = SupabaseService.instance.client;
-
-      await client
-          .from('pending_registrations')
-          .update({
-            'status': 'approved',
-            'reviewed_by': currentUser?['id'],
-            'reviewed_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', registrationId);
-
-      // Log the admin activity
-      await client.from('admin_activity_log').insert({
-        'admin_id': currentUser?['id'],
-        'action_type': 'REGISTRATION_APPROVED',
-        'description': 'Registrazione approvata',
-        'target_user_id': registrationId,
-      });
-
-      _showSuccessMessage('Registrazione approvata con successo');
-      await _loadPendingRegistrations();
-    } catch (e) {
-      print('Error approving registration: $e');
-      _showErrorMessage('Errore nell\'approvazione: ${e.toString()}');
-    }
-  }
-
-  Future<void> _rejectPendingRegistration(
-    String registrationId,
-    String reason,
-  ) async {
-    try {
-      final client = SupabaseService.instance.client;
-
-      await client
-          .from('pending_registrations')
-          .update({
-            'status': 'rejected',
-            'reviewed_by': currentUser?['id'],
-            'reviewed_at': DateTime.now().toIso8601String(),
-            'rejection_reason': reason,
-          })
-          .eq('id', registrationId);
-
-      // Log the admin activity
-      await client.from('admin_activity_log').insert({
-        'admin_id': currentUser?['id'],
-        'action_type': 'REGISTRATION_REJECTED',
-        'description': 'Registrazione respinta: $reason',
-        'target_user_id': registrationId,
-      });
-
-      _showSuccessMessage('Registrazione respinta');
-      await _loadPendingRegistrations();
-    } catch (e) {
-      print('Error rejecting registration: $e');
-      _showErrorMessage('Errore nel rifiuto: ${e.toString()}');
-    }
-  }
-
-  Future<void> _requestAdditionalDocuments(
-    String registrationId,
-    List<String> documents,
-  ) async {
-    try {
-      final client = SupabaseService.instance.client;
-
-      // In a real implementation, this would send an email or notification
-      // For now, we'll just log it
-      await client.from('admin_activity_log').insert({
-        'admin_id': currentUser?['id'],
-        'action_type': 'DOCUMENTS_REQUESTED',
-        'description':
-            'Richiesti documenti aggiuntivi: ${documents.join(', ')}',
-        'target_user_id': registrationId,
-      });
-
-      _showSuccessMessage('Richiesta documenti inviata automaticamente');
-    } catch (e) {
-      print('Error requesting documents: $e');
-      _showErrorMessage('Errore nella richiesta documenti: ${e.toString()}');
-    }
-  }
-
-  Future<void> _contactApplicant(
-    String registrationId,
-    String contactMethod,
-  ) async {
-    try {
-      final client = SupabaseService.instance.client;
-
-      // Log the contact attempt
-      await client.from('admin_activity_log').insert({
-        'admin_id': currentUser?['id'],
-        'action_type': 'APPLICANT_CONTACTED',
-        'description': 'Contattato richiedente via $contactMethod',
-        'target_user_id': registrationId,
-      });
-
-      _showSuccessMessage('Contatto registrato nel sistema');
-    } catch (e) {
-      print('Error logging contact: $e');
-      _showErrorMessage('Errore nel logging contatto: ${e.toString()}');
-    }
-  }
-
-  Future<void> _scheduleInterview(
-    String registrationId,
-    DateTime dateTime,
-  ) async {
-    try {
-      final client = SupabaseService.instance.client;
-
-      // Log the interview scheduling
-      await client.from('admin_activity_log').insert({
-        'admin_id': currentUser?['id'],
-        'action_type': 'INTERVIEW_SCHEDULED',
-        'description': 'Colloquio programmato per ${dateTime.toString()}',
-        'target_user_id': registrationId,
-      });
-
-      _showSuccessMessage('Colloquio programmato con notifica automatica');
-    } catch (e) {
-      print('Error scheduling interview: $e');
-      _showErrorMessage(
-        'Errore nella programmazione colloquio: ${e.toString()}',
-      );
-    }
-  }
-
-  Future<void> _archiveApplication(String registrationId) async {
-    try {
-      final client = SupabaseService.instance.client;
-
-      await client
-          .from('pending_registrations')
-          .update({
-            'status': 'archived',
-            'reviewed_by': currentUser?['id'],
-            'reviewed_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', registrationId);
-
-      _showSuccessMessage('Domanda archiviata');
-      await _loadPendingRegistrations();
-    } catch (e) {
-      print('Error archiving application: $e');
-      _showErrorMessage('Errore nell\'archiviazione: ${e.toString()}');
-    }
+        return matchesType && matchesUrgency;
+      }).toList();
+    });
   }
 
   Future<void> _bulkApproveRegistrations() async {
     if (selectedRegistrations.isEmpty) return;
 
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Conferma Approvazione Multipla'),
+        content: Text(
+          'Sei sicuro di voler approvare ${selectedRegistrations.length} registrazioni?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annulla'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Approva Tutto'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => isLoading = true);
+
     try {
-      final client = SupabaseService.instance.client;
-
-      for (String registrationId in selectedRegistrations) {
-        await client
-            .from('pending_registrations')
-            .update({
-              'status': 'approved',
-              'reviewed_by': currentUser?['id'],
-              'reviewed_at': DateTime.now().toIso8601String(),
-            })
-            .eq('id', registrationId);
-
-        // Log each approval
-        await client.from('admin_activity_log').insert({
-          'admin_id': currentUser?['id'],
-          'action_type': 'BULK_REGISTRATION_APPROVED',
-          'description': 'Registrazione approvata in massa',
-          'target_user_id': registrationId,
-        });
+      for (final registrationId in selectedRegistrations) {
+        final registration = pendingRegistrations.firstWhere(
+          (r) => r['id'] == registrationId,
+        );
+        await StudentRegistrationService.approveUserRegistration(
+          registration['email'],
+          'Approvazione multipla da amministratore',
+        );
       }
 
-      _showSuccessMessage(
-        '${selectedRegistrations.length} registrazioni approvate con email di benvenuto automatiche',
-      );
-      setState(() {
-        selectedRegistrations.clear();
-      });
+      _showMessage('${selectedRegistrations.length} registrazioni approvate');
+      selectedRegistrations.clear();
       await _loadPendingRegistrations();
     } catch (e) {
-      print('Error in bulk approval: $e');
-      _showErrorMessage('Errore nell\'approvazione in massa: ${e.toString()}');
+      _showMessage('Errore durante l\'approvazione multipla: $e', isError: true);
+    } finally {
+      setState(() => isLoading = false);
     }
+  }
+
+  Future<void> _approveRegistration(Map<String, dynamic> registration) async {
+    try {
+      // Show confirmation dialog
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Conferma Approvazione'),
+          content: Text(
+            'Sei sicuro di voler approvare la registrazione di ${registration['full_name']}?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Annulla'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Approva'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+
+      setState(() => isLoading = true);
+
+      final success = await StudentRegistrationService.approveUserRegistration(
+        registration['email'],
+        'Registrazione approvata dall\'amministratore',
+      );
+
+      if (success) {
+        _showMessage('Registrazione approvata con successo');
+        await _loadPendingRegistrations(); // Refresh the list
+      } else {
+        _showMessage('Errore durante l\'approvazione', isError: true);
+      }
+    } catch (e) {
+      print('Error approving registration: $e');
+      _showMessage('Errore durante l\'approvazione: $e', isError: true);
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _rejectRegistration(Map<String, dynamic> registration) async {
+    try {
+      // Show rejection dialog with reason input
+      String? rejectionReason;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) {
+          final reasonController = TextEditingController();
+          return AlertDialog(
+            title: const Text('Rifiuta Registrazione'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Sei sicuro di voler rifiutare la registrazione di ${registration['full_name']}?',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: reasonController,
+                  decoration: const InputDecoration(
+                    labelText: 'Motivo del rifiuto (opzionale)',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Annulla'),
+              ),
+              TextButton(
+                onPressed: () {
+                  rejectionReason = reasonController.text.trim();
+                  Navigator.of(context).pop(true);
+                },
+                child: const Text(
+                  'Rifiuta',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirmed != true) return;
+
+      setState(() => isLoading = true);
+
+      final success = await StudentRegistrationService.rejectUserRegistration(
+        registration['email'],
+        rejectionReason?.isNotEmpty == true ? rejectionReason : null,
+      );
+
+      if (success) {
+        _showMessage('Registrazione rifiutata');
+        await _loadPendingRegistrations(); // Refresh the list
+      } else {
+        _showMessage('Errore durante il rifiuto', isError: true);
+      }
+    } catch (e) {
+      print('Error rejecting registration: $e');
+      _showMessage('Errore durante il rifiuto: $e', isError: true);
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  void _showMessage(String message, {bool isError = false}) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        duration: Duration(seconds: isError ? 4 : 2),
+      ),
+    );
   }
 
   void _showSuccessMessage(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
+    _showMessage(message, isError: false);
   }
 
   void _showErrorMessage(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
+    _showMessage(message, isError: true);
   }
 
   @override
@@ -526,10 +475,9 @@ class _RegistrationManagementSystemState
                             Text(
                               'Approva, gestisci e monitora registrazioni',
                               style: TextStyle(
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                                 fontSize: 11,
                               ),
                             ),
@@ -542,10 +490,9 @@ class _RegistrationManagementSystemState
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color:
-                              totalPending > 0
-                                  ? Colors.orange.withValues(alpha: 0.1)
-                                  : Colors.green.withValues(alpha: 0.1),
+                          color: totalPending > 0
+                              ? Colors.orange.withValues(alpha: 0.1)
+                              : Colors.green.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
                             color:
@@ -695,105 +642,57 @@ class _RegistrationManagementSystemState
               ),
 
             Expanded(
-              child:
-                  filteredRegistrations.isEmpty
-                      ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.inbox,
-                              size: 48,
-                              color:
-                                  Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
+              child: filteredRegistrations.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.inbox,
+                            size: 48,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'Nessuna registrazione in attesa',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
-                            SizedBox(height: 16),
-                            Text(
-                              'Nessuna registrazione in attesa',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                              ),
+                          ),
+                          if (selectedTypeFilter != 'all' ||
+                              selectedUrgencyFilter != 'all') ...[
+                            SizedBox(height: 8),
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  selectedTypeFilter = 'all';
+                                  selectedUrgencyFilter = 'all';
+                                  _applyFilters();
+                                });
+                              },
+                              child: Text('Pulisci filtri'),
                             ),
-                            if (selectedTypeFilter != 'all' ||
-                                selectedUrgencyFilter != 'all') ...[
-                              SizedBox(height: 8),
-                              TextButton(
-                                onPressed: () {
-                                  setState(() {
-                                    selectedTypeFilter = 'all';
-                                    selectedUrgencyFilter = 'all';
-                                    _applyFilters();
-                                  });
-                                },
-                                child: Text('Pulisci filtri'),
-                              ),
-                            ],
                           ],
-                        ),
-                      )
-                      : ListView.builder(
-                        padding: EdgeInsets.all(16),
-                        itemCount: filteredRegistrations.length,
-                        itemBuilder: (context, index) {
-                          final registration = filteredRegistrations[index];
-                          final isSelected = selectedRegistrations.contains(
-                            registration['id'],
-                          );
-
-                          return RegistrationCardWidget(
-                            registration: registration,
-                            isSelected: isSelected,
-                            isPrincipalAdmin: isPrincipalAdmin,
-                            onTap: () {
-                              setState(() {
-                                if (isSelected) {
-                                  selectedRegistrations.remove(
-                                    registration['id'],
-                                  );
-                                } else {
-                                  selectedRegistrations.add(registration['id']);
-                                }
-                              });
-                            },
-                            onApprove:
-                                () => _approvePendingRegistration(
-                                  registration['id'],
-                                ),
-                            onReject:
-                                (reason) => _rejectPendingRegistration(
-                                  registration['id'],
-                                  reason,
-                                ),
-                            onRequestDocuments:
-                                (documents) => _requestAdditionalDocuments(
-                                  registration['id'],
-                                  documents,
-                                ),
-                            onContactApplicant:
-                                (method) => _contactApplicant(
-                                  registration['id'],
-                                  method,
-                                ),
-                            onScheduleInterview:
-                                (dateTime) => _scheduleInterview(
-                                  registration['id'],
-                                  dateTime,
-                                ),
-                            onArchive:
-                                () => _archiveApplication(registration['id']),
-                            onViewDocuments:
-                                () => _showDocumentVerificationDialog(
-                                  registration,
-                                ),
-                          );
-                        },
+                        ],
                       ),
+                    )
+                  : ListView.builder(
+                      padding: EdgeInsets.all(16),
+                      itemCount: filteredRegistrations.length,
+                      itemBuilder: (context, index) {
+                        final registration = filteredRegistrations[index];
+                        final isSelected = selectedRegistrations.contains(
+                          registration['id'],
+                        );
+
+                        return _buildRegistrationCard(registration);
+                      },
+                    ),
             ),
           ],
         ),
@@ -839,6 +738,191 @@ class _RegistrationManagementSystemState
     );
   }
 
+  Widget _buildRegistrationCard(Map<String, dynamic> registration) {
+    final isMinor = registration['is_minor'] == true;
+    final medicalStatus = registration['medical_cert_status'] ?? 'pending';
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with name and email
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        registration['full_name'] ?? 'Nome non disponibile',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        registration['email'] ?? '',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isMinor)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.orange,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'MINORENNE',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // Registration details
+            if (registration['phone'] != null)
+              _buildDetailRow('Telefono', registration['phone']),
+
+            _buildDetailRow(
+              'Data richiesta',
+              _formatDate(registration['created_at']),
+            ),
+
+            _buildDetailRow(
+              'Certificato medico',
+              medicalStatus == 'uploaded' ? 'Caricato' : 'Da caricare',
+            ),
+
+            // Message from registration
+            if (registration['message'] != null &&
+                registration['message'].toString().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Dettagli registrazione:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        registration['message'],
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            const SizedBox(height: 16),
+
+            // Action buttons
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: isLoading
+                        ? null
+                        : () => _approveRegistration(registration),
+                    icon: const Icon(Icons.check),
+                    label: const Text('Approva'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: isLoading
+                        ? null
+                        : () => _rejectRegistration(registration),
+                    icon: const Icon(Icons.close),
+                    label: const Text('Rifiuta'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(dynamic dateTime) {
+    if (dateTime == null) return 'Non disponibile';
+
+    try {
+      DateTime date;
+      if (dateTime is String) {
+        date = DateTime.parse(dateTime);
+      } else {
+        date = dateTime as DateTime;
+      }
+      return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return 'Non disponibile';
+    }
+  }
+
   Widget _buildFilterChip(
     String label,
     String value,
@@ -860,22 +944,20 @@ class _RegistrationManagementSystemState
                 isSelected ? color.withValues(alpha: 0.1) : Colors.transparent,
             borderRadius: BorderRadius.circular(16.0),
             border: Border.all(
-              color:
-                  isSelected
-                      ? color
-                      : Theme.of(
-                        context,
-                      ).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+              color: isSelected
+                  ? color
+                  : Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
               width: 1,
             ),
           ),
           child: Text(
             label,
             style: TextStyle(
-              color:
-                  isSelected
-                      ? color
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
+              color: isSelected
+                  ? color
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
               fontSize: 11,
             ),
@@ -916,18 +998,17 @@ class _RegistrationManagementSystemState
   void _showDocumentVerificationDialog(Map<String, dynamic> registration) {
     showDialog(
       context: context,
-      builder:
-          (context) => Dialog(
-            child: DocumentVerificationWidget(
-              registration: registration,
-              onDocumentApprove: (docType) {
-                _showSuccessMessage('Documento $docType approvato');
-              },
-              onDocumentReject: (docType, reason) {
-                _showErrorMessage('Documento $docType respinto: $reason');
-              },
-            ),
-          ),
+      builder: (context) => Dialog(
+        child: DocumentVerificationWidget(
+          registration: registration,
+          onDocumentApprove: (docType) {
+            _showSuccessMessage('Documento $docType approvato');
+          },
+          onDocumentReject: (docType, reason) {
+            _showErrorMessage('Documento $docType respinto: $reason');
+          },
+        ),
+      ),
     );
   }
 
@@ -936,82 +1017,81 @@ class _RegistrationManagementSystemState
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder:
-          (context) => Container(
-            height: MediaQuery.of(context).size.height * 0.7,
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Notifiche Tempo Reale',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 18,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                      ),
-                      Text(
-                        'Registrazioni che richiedono attenzione immediata',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.7,
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Notifiche Tempo Reale',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 18,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: ListView(
-                    children: [
-                      if (_getPriorityRegistrationsCount() > 0)
-                        ListTile(
-                          leading: Icon(Icons.priority_high, color: Colors.red),
-                          title: Text('Registrazioni urgenti'),
-                          subtitle: Text(
-                            '${_getPriorityRegistrationsCount()} registrazioni richiedono attenzione',
-                          ),
-                          trailing: Icon(Icons.arrow_forward_ios),
-                          onTap: () {
-                            Navigator.pop(context);
-                            setState(() {
-                              selectedUrgencyFilter = 'urgent';
-                              _applyFilters();
-                            });
-                          },
-                        ),
-                      ListTile(
-                        leading: Icon(
-                          Icons.admin_panel_settings,
-                          color: Colors.orange,
-                        ),
-                        title: Text('Richieste Admin'),
-                        subtitle: Text(
-                          'Richieste amministratore necessitano approvazione principale',
-                        ),
-                        trailing: Icon(Icons.arrow_forward_ios),
-                        onTap: () {
-                          Navigator.pop(context);
-                          setState(() {
-                            selectedTypeFilter = 'admin';
-                            _applyFilters();
-                          });
-                        },
-                      ),
-                    ],
+                  Text(
+                    'Registrazioni che richiedono attenzione immediata',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+            Expanded(
+              child: ListView(
+                children: [
+                  if (_getPriorityRegistrationsCount() > 0)
+                    ListTile(
+                      leading: Icon(Icons.priority_high, color: Colors.red),
+                      title: Text('Registrazioni urgenti'),
+                      subtitle: Text(
+                        '${_getPriorityRegistrationsCount()} registrazioni richiedono attenzione',
+                      ),
+                      trailing: Icon(Icons.arrow_forward_ios),
+                      onTap: () {
+                        Navigator.pop(context);
+                        setState(() {
+                          selectedUrgencyFilter = 'urgent';
+                          _applyFilters();
+                        });
+                      },
+                    ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.admin_panel_settings,
+                      color: Colors.orange,
+                    ),
+                    title: Text('Richieste Admin'),
+                    subtitle: Text(
+                      'Richieste amministratore necessitano approvazione principale',
+                    ),
+                    trailing: Icon(Icons.arrow_forward_ios),
+                    onTap: () {
+                      Navigator.pop(context);
+                      setState(() {
+                        selectedTypeFilter = 'admin';
+                        _applyFilters();
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -5,6 +5,8 @@ import 'package:sizer/sizer.dart';
 import '../../core/app_export.dart';
 import '../../widgets/custom_icon_widget.dart';
 import '../../widgets/main_navigation_wrapper.dart';
+import '../../models/class_schedule_model.dart';
+import '../../services/class_schedule_service.dart';
 import './widgets/booking_modal_widget.dart';
 import './widgets/class_card_widget.dart';
 import './widgets/filter_chips_widget.dart';
@@ -26,89 +28,17 @@ class _ClassScheduleState extends State<ClassSchedule>
   bool _isLoading = false;
   bool _isOffline = false;
 
-  // Mock data for classes
-  final List<Map<String, dynamic>> _allClasses = [
-    {
-      "id": 1,
-      "type": "Karate",
-      "instructor": "Marco Rossi",
-      "time": "09:00 - 10:30",
-      "date": "29/08/2025",
-      "capacity": 20,
-      "enrolled": 15,
-      "isBooked": false,
-      "description":
-          "Corso di Karate tradizionale per principianti e intermedi. Focus su tecniche di base, kata e kumite.",
-      "instructorBio":
-          "Marco Rossi è un maestro di Karate con 15 anni di esperienza. Cintura nera 4° dan, ha partecipato a numerose competizioni nazionali.",
-    },
-    {
-      "id": 2,
-      "type": "Judo",
-      "instructor": "Anna Bianchi",
-      "time": "11:00 - 12:30",
-      "date": "29/08/2025",
-      "capacity": 16,
-      "enrolled": 16,
-      "isBooked": false,
-      "waitlistPosition": 3,
-      "description":
-          "Allenamento di Judo con focus su tecniche di proiezione e controllo a terra.",
-      "instructorBio":
-          "Anna Bianchi, cintura nera 3° dan, specializzata in tecniche di Ne-waza e preparazione atletica.",
-    },
-    {
-      "id": 3,
-      "type": "Taekwondo",
-      "instructor": "Giuseppe Verdi",
-      "time": "15:00 - 16:30",
-      "date": "29/08/2025",
-      "capacity": 18,
-      "enrolled": 12,
-      "isBooked": true,
-      "description":
-          "Corso di Taekwondo con enfasi su tecniche di calcio e forme (poomsae).",
-      "instructorBio":
-          "Giuseppe Verdi, maestro di Taekwondo WTF, ha allenato diversi atleti a livello nazionale e internazionale.",
-    },
-    {
-      "id": 4,
-      "type": "Karate",
-      "instructor": "Lucia Ferrari",
-      "time": "17:30 - 19:00",
-      "date": "29/08/2025",
-      "capacity": 22,
-      "enrolled": 8,
-      "isBooked": false,
-      "description":
-          "Karate avanzato con focus su applicazioni pratiche e autodifesa.",
-      "instructorBio":
-          "Lucia Ferrari, cintura nera 5° dan, specializzata in Karate applicato e difesa personale femminile.",
-    },
-    {
-      "id": 5,
-      "type": "Judo",
-      "instructor": "Roberto Conti",
-      "time": "19:30 - 21:00",
-      "date": "29/08/2025",
-      "capacity": 20,
-      "enrolled": 18,
-      "isBooked": false,
-      "description":
-          "Judo competitivo per atleti esperti. Preparazione per gare regionali.",
-      "instructorBio":
-          "Roberto Conti, ex atleta nazionale di Judo, ora dedito all'insegnamento e alla preparazione di giovani talenti.",
-    },
-  ];
-
-  List<Map<String, dynamic>> _filteredClasses = [];
+  // Dynamic data from Supabase
+  List<ClassScheduleModel> _allClasses = [];
+  List<ClassScheduleModel> _filteredClasses = [];
+  final ClassScheduleService _classService = ClassScheduleService.instance;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this, initialIndex: 1);
-    _filteredClasses = List.from(_allClasses);
     _checkConnectivity();
+    _loadClassSchedule();
   }
 
   @override
@@ -118,10 +48,40 @@ class _ClassScheduleState extends State<ClassSchedule>
   }
 
   void _checkConnectivity() {
-    // Simulate connectivity check
     setState(() {
       _isOffline = false; // For demo purposes, assume online
     });
+  }
+
+  Future<void> _loadClassSchedule() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final classes =
+          await _classService.getClassScheduleForDate(_selectedDate);
+
+      setState(() {
+        _allClasses = classes;
+        _isLoading = false;
+        _isOffline = false; // Reset offline status on successful load
+      });
+      _filterClasses();
+    } catch (error) {
+      print('Error loading class schedule: $error');
+      setState(() {
+        _isLoading = false;
+        _isOffline = true; // Set offline status on error
+      });
+
+      // Show user-friendly error message
+      Fluttertoast.showToast(
+        msg: "Impossibile caricare il palinsesto. Verifica la connessione.",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+      );
+    }
   }
 
   void _filterClasses() {
@@ -132,14 +92,13 @@ class _ClassScheduleState extends State<ClassSchedule>
         _filteredClasses = _allClasses.where((classItem) {
           bool matchesType = _selectedFilters.any(
             (filter) =>
-                filter.toLowerCase() ==
-                (classItem['type'] as String).toLowerCase(),
+                filter.toLowerCase() == classItem.discipline.toLowerCase(),
           );
           bool matchesAvailability = _selectedFilters.contains('available')
-              ? (classItem['enrolled'] as int) < (classItem['capacity'] as int)
+              ? classItem.hasAvailableSpots
               : true;
           bool matchesMyClasses = _selectedFilters.contains('my_classes')
-              ? classItem['isBooked'] as bool
+              ? classItem.isBooked
               : true;
 
           return (matchesType ||
@@ -175,10 +134,10 @@ class _ClassScheduleState extends State<ClassSchedule>
     setState(() {
       _selectedDate = date;
     });
-    // In a real app, you would fetch classes for the selected date
+    _loadClassSchedule();
   }
 
-  void _showBookingModal(Map<String, dynamic> classData) {
+  void _showBookingModal(ClassScheduleModel classData) {
     final theme = Theme.of(context);
 
     showModalBottomSheet(
@@ -194,67 +153,108 @@ class _ClassScheduleState extends State<ClassSchedule>
         maxChildSize: 0.9,
         expand: false,
         builder: (context, scrollController) => BookingModalWidget(
-          classData: classData,
+          classData: _convertModelToMap(classData),
           onBookingConfirmed: () {
-            _onBookingConfirmed(classData['id'] as int);
+            _onBookingConfirmed(classData.id);
           },
         ),
       ),
     );
   }
 
-  void _onBookingConfirmed(int classId) {
-    final theme = Theme.of(context);
-
-    setState(() {
-      final classIndex = _allClasses.indexWhere((c) => c['id'] == classId);
-      if (classIndex != -1) {
-        _allClasses[classIndex]['isBooked'] = true;
-        _allClasses[classIndex]['enrolled'] =
-            (_allClasses[classIndex]['enrolled'] as int) + 1;
-      }
-    });
-    _filterClasses();
-
-    Fluttertoast.showToast(
-      msg: "Prenotazione confermata!",
-      toastLength: Toast.LENGTH_SHORT,
-      gravity: ToastGravity.BOTTOM,
-      backgroundColor: theme.colorScheme.tertiary,
-      textColor: theme.colorScheme.onTertiary,
-    );
+  Map<String, dynamic> _convertModelToMap(ClassScheduleModel model) {
+    return {
+      'id': model.id,
+      'type': model.disciplineDisplayName,
+      'instructor': model.instructorName,
+      'time': model.timeRange,
+      'date': model.dateFormatted,
+      'capacity': model.capacity,
+      'enrolled': model.enrolled,
+      'isBooked': model.isBooked,
+      'waitlistPosition': model.waitlistPosition,
+      'description': model.description,
+      'instructorBio': model.instructorBio,
+    };
   }
 
-  void _onCancelBooking(int classId) {
+  Future<void> _onBookingConfirmed(String classId) async {
     final theme = Theme.of(context);
 
-    setState(() {
-      final classIndex = _allClasses.indexWhere((c) => c['id'] == classId);
-      if (classIndex != -1) {
-        _allClasses[classIndex]['isBooked'] = false;
-        _allClasses[classIndex]['enrolled'] =
-            (_allClasses[classIndex]['enrolled'] as int) - 1;
-      }
-    });
-    _filterClasses();
+    try {
+      final success = await _classService.bookClass(classId);
 
-    Fluttertoast.showToast(
-      msg: "Prenotazione cancellata",
-      toastLength: Toast.LENGTH_SHORT,
-      gravity: ToastGravity.BOTTOM,
-      backgroundColor: theme.colorScheme.error,
-      textColor: theme.colorScheme.onError,
-    );
+      if (success) {
+        setState(() {
+          final classIndex = _allClasses.indexWhere((c) => c.id == classId);
+          if (classIndex != -1) {
+            _allClasses[classIndex] = _allClasses[classIndex].copyWith(
+              isBooked: true,
+              enrolled: _allClasses[classIndex].enrolled + 1,
+            );
+          }
+        });
+        _filterClasses();
+
+        Fluttertoast.showToast(
+          msg: "Prenotazione confermata!",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: theme.colorScheme.tertiary,
+          textColor: theme.colorScheme.onTertiary,
+        );
+      }
+    } catch (error) {
+      Fluttertoast.showToast(
+        msg: "Errore nella prenotazione: ${error.toString()}",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: theme.colorScheme.error,
+        textColor: theme.colorScheme.onError,
+      );
+    }
+  }
+
+  Future<void> _onCancelBooking(String classId) async {
+    final theme = Theme.of(context);
+
+    try {
+      final success = await _classService.cancelBooking(classId);
+
+      if (success) {
+        setState(() {
+          final classIndex = _allClasses.indexWhere((c) => c.id == classId);
+          if (classIndex != -1) {
+            _allClasses[classIndex] = _allClasses[classIndex].copyWith(
+              isBooked: false,
+              enrolled: _allClasses[classIndex].enrolled - 1,
+            );
+          }
+        });
+        _filterClasses();
+
+        Fluttertoast.showToast(
+          msg: "Prenotazione cancellata",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: theme.colorScheme.error,
+          textColor: theme.colorScheme.onError,
+        );
+      }
+    } catch (error) {
+      Fluttertoast.showToast(
+        msg: "Errore nella cancellazione: ${error.toString()}",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: theme.colorScheme.error,
+        textColor: theme.colorScheme.onError,
+      );
+    }
   }
 
   void _showQuickBookingModal() {
-    final availableClasses = _allClasses
-        .where(
-          (c) =>
-              (c['enrolled'] as int) < (c['capacity'] as int) &&
-              !(c['isBooked'] as bool),
-        )
-        .toList();
+    final availableClasses =
+        _allClasses.where((c) => c.hasAvailableSpots && !c.isBooked).toList();
 
     if (availableClasses.isEmpty) {
       Fluttertoast.showToast(
@@ -270,16 +270,7 @@ class _ClassScheduleState extends State<ClassSchedule>
   }
 
   Future<void> _refreshSchedule() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 2));
-
-    setState(() {
-      _isLoading = false;
-    });
+    await _loadClassSchedule();
 
     Fluttertoast.showToast(
       msg: "Orario aggiornato",
@@ -359,11 +350,11 @@ class _ClassScheduleState extends State<ClassSchedule>
                             itemBuilder: (context, index) {
                               final classData = _filteredClasses[index];
                               return ClassCardWidget(
-                                classData: classData,
-                                isBooked: classData['isBooked'] as bool,
+                                classData: _convertModelToMap(classData),
+                                isBooked: classData.isBooked,
                                 onTap: () => _showBookingModal(classData),
                                 onCancelBooking: () =>
-                                    _onCancelBooking(classData['id'] as int),
+                                    _onCancelBooking(classData.id),
                               );
                             },
                           ),
@@ -466,7 +457,7 @@ class _ClassScheduleState extends State<ClassSchedule>
             ),
             SizedBox(height: 2.h),
             Text(
-              'Non ci sono classi disponibili per i filtri selezionati. Prova a modificare i filtri o contatta l\'amministrazione.',
+              'Non ci sono classi disponibili per i filtri selezionati. Prova a modificare i filtri o seleziona una data diversa.',
               style: theme.textTheme.bodyMedium!.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
                 height: 1.5,
@@ -478,10 +469,11 @@ class _ClassScheduleState extends State<ClassSchedule>
               onPressed: () {
                 setState(() {
                   _selectedFilters = ['all'];
+                  _selectedDate = DateTime.now();
                 });
-                _filterClasses();
+                _loadClassSchedule();
               },
-              child: Text('Mostra Tutte le Classi'),
+              child: const Text('Mostra Tutte le Classi'),
             ),
           ],
         ),

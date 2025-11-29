@@ -66,9 +66,7 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
     });
 
     try {
-      _receipts = await _receiptService.getAllReceipts(
-        userFilter: _customerFilter.isNotEmpty ? _customerFilter : null,
-      );
+      _receipts = await _receiptService.getAllReceipts();
       _applyFilters();
       _calculateStats();
     } catch (error) {

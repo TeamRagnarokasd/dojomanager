@@ -1,71 +1,139 @@
-# Team Ragnarok ASD App
+# Team Ragnarok ASD APP
 
-Team Ragnarok ASD Management Application - A comprehensive martial arts school management system built with Flutter and Supabase.
+Una moderna applicazione Flutter per la gestione della palestra di arti marziali Team Ragnarok ASD.
 
-## Features
+## Caratteristiche Principali
 
-- Student registration and management
-- Class scheduling and booking
-- Instructor dashboard and management
-- Payment processing and receipt generation
-- Medical certificate tracking
-- Admin management system
-- Real-time notifications
-- Multi-role authentication
+- 🥋 **Gestione Completa delle Discipline**: Karate, Judo, Aikido, Kendo e altre arti marziali
+- 👥 **Sistema di Ruoli Avanzato**: Studenti, Istruttori e Amministratori con accesso personalizzato
+- 📅 **Prenotazione Classi**: Sistema di prenotazione intelligente con calendario integrato
+- 🏥 **Certificati Medici**: Upload e gestione automatica dei certificati medici
+- 🧾 **Ricevute Italiane**: Sistema di generazione ricevute conforme alla normativa italiana
+- 💳 **Gestione Abbonamenti**: Piani flessibili con sistema entry-based innovativo
+- 📱 **Interfaccia Responsiva**: Design ottimizzato per smartphone, tablet e desktop
+- 🔔 **Notifiche Automatiche**: Sistema di promemoria e comunicazioni integrate
 
-## Getting Started
+## Aggiornamento Icona Applicazione
 
-This project is a Flutter application with Supabase backend integration.
+L'applicazione utilizza il logo ufficiale Team Ragnarok come icona dell'app su tutte le piattaforme.
 
-### Prerequisites
+### Per aggiornare le icone dell'applicazione:
 
-- Flutter SDK ≥ 3.10
-- Dart SDK ≥ 3.0
-- Android Studio / VS Code
-- Supabase account and project
+1. **Preparazione**: Assicurarsi che l'immagine del logo si trovi in `assets/images/img_app_logo.svg`
 
-### Installation
+2. **Generazione automatica icone**:
+   ```bash
+   # Installa le dipendenze
+   flutter pub get
+   
+   # Genera le icone per tutte le piattaforme
+   dart run flutter_launcher_icons
+   ```
 
-1. Clone the repository
-2. Run `flutter pub get` to install dependencies
-3. Configure your environment variables in `env.json`
-4. Run `flutter run` to start the application
+3. **Piattaforme supportate**:
+   - **Android**: Genera icone adaptive e legacy in tutte le risoluzioni richieste
+   - **iOS**: Crea icone per tutte le dimensioni dell'App Store e dispositivi
+   - **Web**: Aggiorna favicon e icone del manifest per PWA
 
-## Project Structure
+4. **Configurazione personalizzata**: 
+   - Le icone Android utilizzano uno sfondo bianco con il logo come foreground
+   - Le icone iOS mantengono le proporzioni originali del logo
+   - Le icone Web sono ottimizzate per browser e PWA
 
-- `lib/` - Main application code
-- `lib/presentation/` - UI screens and widgets  
-- `lib/services/` - Business logic and API services
-- `lib/core/` - Core utilities and exports
-- `lib/theme/` - Application theming
-- `lib/routes/` - Navigation routing
-- `android/` - Android-specific configuration
-- `ios/` - iOS-specific configuration
+### Struttura dei file icona generati:
 
-## Build Instructions
+```
+android/app/src/main/res/
+├── mipmap-hdpi/ic_launcher.png
+├── mipmap-mdpi/ic_launcher.png
+├── mipmap-xhdpi/ic_launcher.png
+├── mipmap-xxhdpi/ic_launcher.png
+└── mipmap-xxxhdpi/ic_launcher.png
 
-### Debug Build
-```bash
-flutter run
+ios/Runner/Assets.xcassets/AppIcon.appiconset/
+├── Icon-App-20x20@1x.png
+├── Icon-App-29x29@1x.png
+└── [tutte le altre dimensioni iOS]
+
+web/
+├── favicon.png
+└── icons/Icon-192.png, Icon-512.png
 ```
 
-### Release APK
-```bash
-flutter build apk --release
+## Tecnologie Utilizzate
+
+- **Framework**: Flutter 3.16.0+ / Dart 3.2.0+
+- **Database**: Supabase (PostgreSQL)
+- **Autenticazione**: Supabase Auth con RLS policies
+- **State Management**: Provider + setState
+- **Design System**: Material Design 3 con temi personalizzati
+- **Icone**: flutter_launcher_icons per generazione automatica
+
+## Installazione e Setup
+
+1. **Clona il repository**:
+   ```bash
+   git clone [repository-url]
+   cd team-ragnarok-app
+   ```
+
+2. **Installa le dipendenze**:
+   ```bash
+   flutter pub get
+   ```
+
+3. **Configura Supabase**:
+   - Copia `env.json.example` in `env.json`
+   - Inserisci le tue credenziali Supabase
+
+4. **Genera le icone dell'app**:
+   ```bash
+   dart run flutter_launcher_icons
+   ```
+
+5. **Avvia l'applicazione**:
+   ```bash
+   flutter run
+   ```
+
+## Struttura del Progetto
+
+```
+lib/
+├── presentation/          # Schermate e widget UI
+├── services/             # Logica business e integrazione API
+├── models/              # Modelli dati
+├── core/                # Configurazioni e utilità core
+├── theme/               # Temi e stili
+├── constants/           # Costanti applicazione
+└── routes/              # Configurazione routing
+
+supabase/
+└── migrations/          # Script migrazione database
+
+assets/
+└── images/              # Risorse immagini (incluso logo)
 ```
 
-### Release Bundle
-```bash
-flutter build appbundle --release
-```
+## Contribuire
 
-## Environment Configuration
+1. Fork del repository
+2. Crea un branch per la feature (`git checkout -b feature/AmazingFeature`)
+3. Commit delle modifiche (`git commit -m 'Add some AmazingFeature'`)
+4. Push del branch (`git push origin feature/AmazingFeature`)
+5. Apri una Pull Request
 
-Configure the following environment variables in `env.json`:
+## Licenza
 
-- `SUPABASE_URL` - Your Supabase project URL
-- `SUPABASE_ANON_KEY` - Your Supabase anonymous key
+Questo progetto è di proprietà di Team Ragnarok ASD. Tutti i diritti riservati.
 
-## License
+## Contatti
 
-This project is proprietary software developed for Team Ragnarok ASD.
+**Team Ragnarok ASD**
+- Email: info@teamragnarok.it
+- Website: www.teamragnarok.it
+- Sede: [Piazza caduti sul lavoro 13 Ravenna]
+
+---
+
+*Sviluppato con ❤️ per la comunità delle arti marziali Team Ragnarok*

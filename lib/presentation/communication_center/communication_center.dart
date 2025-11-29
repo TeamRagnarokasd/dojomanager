@@ -23,9 +23,26 @@ class _CommunicationCenterState extends State<CommunicationCenter>
   bool _isLoading = true;
   bool _isSending = false;
 
+  // Recurrence settings
+  bool _isRecurring = false;
+  String _recurrenceType = 'none'; // 'none', 'weekly', 'monthly'
+  Set<String> _selectedWeekdays = {};
+  int _selectedDayOfMonth = 1;
+
   final List<Map<String, dynamic>> _messages = [];
   final List<Map<String, dynamic>> _templates = [];
   final List<Map<String, dynamic>> _scheduledMessages = [];
+
+  // Weekday options for Italian
+  final Map<String, String> _weekdayOptions = {
+    'monday': 'Lunedì',
+    'tuesday': 'Martedì',
+    'wednesday': 'Mercoledì',
+    'thursday': 'Giovedì',
+    'friday': 'Venerdì',
+    'saturday': 'Sabato',
+    'sunday': 'Domenica',
+  };
 
   @override
   void initState() {
@@ -68,6 +85,8 @@ class _CommunicationCenterState extends State<CommunicationCenter>
             'sent_at': DateFormat('dd/MM/yyyy HH:mm')
                 .format(DateTime.parse(item['created_at'])),
             'target_audience': item['target_audience'],
+            'is_recurring': item['is_recurring'] ?? false,
+            'recurrence_type': item['recurrence_type'] ?? 'none',
           });
         }
       });
@@ -104,29 +123,74 @@ class _CommunicationCenterState extends State<CommunicationCenter>
       return;
     }
 
+    // Validate recurrence settings
+    if (_isRecurring) {
+      if (_recurrenceType == 'weekly' && _selectedWeekdays.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'Seleziona almeno un giorno per la ripetizione settimanale')),
+        );
+        return;
+      }
+    }
+
     setState(() => _isSending = true);
 
     try {
       final supabase = SupabaseService.instance.client;
 
-      await supabase.from('admin_communications').insert({
+      // Prepare recurrence data
+      final Map<String, dynamic> messageData = {
         'title': _subjectController.text.trim(),
         'content': _contentController.text.trim(),
         'target_audience': _selectedRecipientGroup,
         'sender_id': supabase.auth.currentUser?.id,
-        'status': 'sent',
-      });
+        'status': _isRecurring ? 'scheduled' : 'sent',
+        'is_recurring': _isRecurring,
+        'recurrence_type': _isRecurring ? _recurrenceType : 'none',
+      };
+
+      // Add recurrence-specific fields
+      if (_isRecurring) {
+        if (_recurrenceType == 'weekly') {
+          messageData['recurrence_days'] = _selectedWeekdays.toList();
+        } else if (_recurrenceType == 'monthly') {
+          messageData['recurrence_day_of_month'] = _selectedDayOfMonth;
+        }
+
+        // Calculate next scheduled date
+        DateTime nextScheduled;
+        if (_recurrenceType == 'weekly') {
+          nextScheduled = _calculateNextWeeklyDate();
+        } else {
+          nextScheduled = _calculateNextMonthlyDate();
+        }
+        messageData['next_scheduled_date'] = nextScheduled.toIso8601String();
+      }
+
+      await supabase.from('admin_communications').insert(messageData);
 
       _subjectController.clear();
       _contentController.clear();
-      setState(() => _selectedRecipientGroup = 'all');
+      setState(() {
+        _selectedRecipientGroup = 'all';
+        _isRecurring = false;
+        _recurrenceType = 'none';
+        _selectedWeekdays.clear();
+        _selectedDayOfMonth = 1;
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Messaggio inviato con successo!')),
+        SnackBar(
+          content: Text(_isRecurring
+              ? 'Messaggio ricorrente programmato con successo!'
+              : 'Messaggio inviato con successo!'),
+        ),
       );
 
       await _loadCommunicationData();
-      _tabController.animateTo(0); // Switch to messages tab
+      _tabController.animateTo(0);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Errore durante l\'invio: $e')),
@@ -134,6 +198,45 @@ class _CommunicationCenterState extends State<CommunicationCenter>
     } finally {
       setState(() => _isSending = false);
     }
+  }
+
+  DateTime _calculateNextWeeklyDate() {
+    final now = DateTime.now();
+    final weekdayMap = {
+      'monday': DateTime.monday,
+      'tuesday': DateTime.tuesday,
+      'wednesday': DateTime.wednesday,
+      'thursday': DateTime.thursday,
+      'friday': DateTime.friday,
+      'saturday': DateTime.saturday,
+      'sunday': DateTime.sunday,
+    };
+
+    // Find next occurrence
+    for (int i = 1; i <= 7; i++) {
+      final testDate = now.add(Duration(days: i));
+      final weekdayName = _weekdayOptions.entries
+          .firstWhere((e) => weekdayMap[e.key] == testDate.weekday)
+          .key;
+
+      if (_selectedWeekdays.contains(weekdayName)) {
+        return testDate;
+      }
+    }
+
+    return now.add(Duration(days: 7)); // Fallback
+  }
+
+  DateTime _calculateNextMonthlyDate() {
+    final now = DateTime.now();
+    DateTime nextDate = DateTime(now.year, now.month + 1, _selectedDayOfMonth);
+
+    // Handle invalid dates (e.g., Feb 30)
+    while (nextDate.month != ((now.month + 1) % 12)) {
+      nextDate = nextDate.subtract(Duration(days: 1));
+    }
+
+    return nextDate;
   }
 
   @override
@@ -346,12 +449,243 @@ class _CommunicationCenterState extends State<CommunicationCenter>
             _buildTemplateSelection(),
             SizedBox(height: 16.h),
             _buildMessageEditor(),
+            SizedBox(height: 16.h),
+            _buildRecurrenceSection(), // NEW: Recurrence options
             SizedBox(height: 24.h),
             _buildSendActions(),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildRecurrenceSection() {
+    return Container(
+      padding: EdgeInsets.all(16.sp),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor,
+        borderRadius: BorderRadius.circular(12.sp),
+        border: Border.all(
+          color: _isRecurring ? AppTheme.secondaryLight : Colors.white30,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Ripetizione Messaggio',
+                  style: GoogleFonts.inter(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              Switch(
+                value: _isRecurring,
+                onChanged: (value) {
+                  setState(() {
+                    _isRecurring = value;
+                    if (!value) {
+                      _recurrenceType = 'none';
+                      _selectedWeekdays.clear();
+                    }
+                  });
+                },
+                activeColor: AppTheme.secondaryLight,
+              ),
+            ],
+          ),
+          if (_isRecurring) ...[
+            SizedBox(height: 16.h),
+
+            // Recurrence type selection
+            Text(
+              'Tipo di Ripetizione',
+              style: GoogleFonts.inter(
+                fontSize: 14.sp,
+                fontWeight: FontWeight.w500,
+                color: Colors.white70,
+              ),
+            ),
+            SizedBox(height: 8.h),
+
+            Row(
+              children: [
+                Expanded(
+                  child: _buildRecurrenceTypeChip('Settimanale', 'weekly'),
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: _buildRecurrenceTypeChip('Mensile', 'monthly'),
+                ),
+              ],
+            ),
+
+            SizedBox(height: 16.h),
+
+            // Weekly options
+            if (_recurrenceType == 'weekly') ...[
+              Text(
+                'Seleziona i Giorni',
+                style: GoogleFonts.inter(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white70,
+                ),
+              ),
+              SizedBox(height: 8.h),
+              Wrap(
+                spacing: 8.w,
+                runSpacing: 8.h,
+                children: _weekdayOptions.entries.map((entry) {
+                  final isSelected = _selectedWeekdays.contains(entry.key);
+                  return FilterChip(
+                    label: Text(
+                      entry.value,
+                      style: GoogleFonts.inter(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w500,
+                        color:
+                            isSelected ? AppTheme.primaryColor : Colors.white70,
+                      ),
+                    ),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      setState(() {
+                        if (selected) {
+                          _selectedWeekdays.add(entry.key);
+                        } else {
+                          _selectedWeekdays.remove(entry.key);
+                        }
+                      });
+                    },
+                    backgroundColor: AppTheme.backgroundDark,
+                    selectedColor: AppTheme.secondaryLight,
+                    side: BorderSide(
+                      color:
+                          isSelected ? AppTheme.secondaryLight : Colors.white30,
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+
+            // Monthly options
+            if (_recurrenceType == 'monthly') ...[
+              Text(
+                'Giorno del Mese',
+                style: GoogleFonts.inter(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white70,
+                ),
+              ),
+              SizedBox(height: 8.h),
+              DropdownButtonFormField<int>(
+                value: _selectedDayOfMonth,
+                style: GoogleFonts.inter(color: Colors.white),
+                dropdownColor: AppTheme.backgroundDark,
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: AppTheme.backgroundDark,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.sp),
+                    borderSide: BorderSide(color: Colors.white30),
+                  ),
+                ),
+                items: List.generate(31, (index) {
+                  final day = index + 1;
+                  return DropdownMenuItem(
+                    value: day,
+                    child: Text('Giorno $day'),
+                  );
+                }),
+                onChanged: (value) {
+                  setState(() => _selectedDayOfMonth = value!);
+                },
+              ),
+            ],
+
+            SizedBox(height: 12.h),
+
+            // Preview of next scheduled date
+            Container(
+              padding: EdgeInsets.all(12.sp),
+              decoration: BoxDecoration(
+                color: AppTheme.secondaryLight.withAlpha(26),
+                borderRadius: BorderRadius.circular(8.sp),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: AppTheme.secondaryLight,
+                    size: 16.sp,
+                  ),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: Text(
+                      _getRecurrencePreview(),
+                      style: GoogleFonts.inter(
+                        fontSize: 11.sp,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecurrenceTypeChip(String label, String type) {
+    final isSelected = _recurrenceType == type;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _recurrenceType = type;
+          _selectedWeekdays.clear();
+        });
+      },
+      child: Container(
+        padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 16.w),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.secondaryLight : AppTheme.backgroundDark,
+          borderRadius: BorderRadius.circular(8.sp),
+          border: Border.all(
+            color: isSelected ? AppTheme.secondaryLight : Colors.white30,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 13.sp,
+              fontWeight: FontWeight.w500,
+              color: isSelected ? AppTheme.primaryColor : Colors.white70,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _getRecurrencePreview() {
+    if (_recurrenceType == 'weekly' && _selectedWeekdays.isNotEmpty) {
+      final dayNames =
+          _selectedWeekdays.map((key) => _weekdayOptions[key]).join(', ');
+      return 'Il messaggio sarà inviato ogni: $dayNames';
+    } else if (_recurrenceType == 'monthly') {
+      return 'Il messaggio sarà inviato il giorno $_selectedDayOfMonth di ogni mese';
+    }
+    return 'Seleziona le opzioni di ripetizione sopra';
   }
 
   Widget _buildTemplatesTab() {

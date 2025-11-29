@@ -214,19 +214,5 @@ class RecentActivityFeedWidget extends StatelessWidget {
       'time': '1 giorno',
       'color': const Color(0xFF3498DB),
     },
-    {
-      'icon': Icons.notifications,
-      'title': 'Promemoria',
-      'subtitle': 'Rinnovo certificato medico',
-      'time': '2 giorni',
-      'color': const Color(0xFFF39C12),
-    },
-    {
-      'icon': Icons.celebration,
-      'title': 'Nuovo Traguardo',
-      'subtitle': 'Completate 20 ore di allenamento',
-      'time': '3 giorni',
-      'color': const Color(0xFFFF0000),
-    },
   ];
 }

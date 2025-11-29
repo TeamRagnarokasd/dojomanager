@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
-import '../../theme/app_theme.dart';
 import '../../services/auth_service.dart';
-import './widgets/biometric_prompt_widget.dart';
 import './widgets/login_form_widget.dart';
-import './widgets/role_selection_widget.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -24,108 +22,71 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isPasswordVisible = false;
   bool _isLoading = false;
-  bool _showBiometricPrompt = false;
-  String _selectedRole = 'student';
+  bool _rememberMe = false;
   String? _emailError;
   String? _passwordError;
-  bool _showAdminStatus = false;
-  Map<String, dynamic>? _adminStatusData;
+
+  // SharedPreferences keys
+  static const String _keyRememberMe = 'remember_me';
+  static const String _keyStoredEmail = 'stored_email';
 
   @override
   void initState() {
     super.initState();
-    _initializeAuth();
-    _loadAdminStatus();
+    _checkRememberedSession();
   }
 
-  void _initializeAuth() {
-    // Initialize auth listener
-    _authService.initAuthListener();
-
-    // Check if user is already authenticated
-    if (_authService.isAuthenticated) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _navigateToDashboard();
-      });
-    }
-  }
-
-  Future<void> _loadAdminStatus() async {
+  /// Check if user has enabled "remember me" and auto-login
+  Future<void> _checkRememberedSession() async {
     try {
-      final status =
-          await _authService.adminVerification.getAdminStatusSummary();
-      setState(() {
-        _adminStatusData = status;
-      });
-    } catch (error) {
-      print('Error loading admin status: $error');
-    }
-  }
+      final prefs = await SharedPreferences.getInstance();
+      final rememberMe = prefs.getBool(_keyRememberMe) ?? false;
+      final storedEmail = prefs.getString(_keyStoredEmail);
 
-  void _toggleAdminStatus() {
-    setState(() {
-      _showAdminStatus = !_showAdminStatus;
-    });
-  }
+      if (rememberMe && storedEmail != null && storedEmail.isNotEmpty) {
+        // Check if there's an active Supabase session
+        final currentSession = _authService.currentSession;
 
-  Future<void> _performAdminVerification() async {
-    try {
-      setState(() {
-        _isLoading = true;
-      });
-
-      final result =
-          await _authService.adminVerification.performCompleteVerification();
-
-      if (result.success) {
-        _authService.showSuccessToast(
-          'Verifica admin completata con successo!',
-        );
-        await _loadAdminStatus();
-      } else {
-        _authService.showErrorToast(
-          'Verifica admin fallita: ${result.message}',
-        );
-
-        // Show emergency reset option
-        final shouldReset = await showDialog<bool>(
-          context: context,
-          builder:
-              (context) => AlertDialog(
-                title: const Text('Problema Admin Rilevato'),
-                content: Text(
-                  '${result.message}\n\nVuoi eseguire un reset di emergenza dell\'admin?',
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Annulla'),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Reset Emergenza'),
-                  ),
-                ],
-              ),
-        );
-
-        if (shouldReset == true) {
-          final resetSuccess =
-              await _authService.adminVerification.emergencyAdminReset();
-          if (resetSuccess) {
-            _authService.showSuccessToast('Reset emergenza admin completato!');
-            await _loadAdminStatus();
-          } else {
-            _authService.showErrorToast('Reset emergenza fallito');
-          }
+        if (currentSession != null && !currentSession.isExpired) {
+          // User is already logged in, navigate to appropriate dashboard
+          await _navigateBasedOnUserRole();
+        } else {
+          // Pre-fill email for convenience
+          setState(() {
+            _emailController.text = storedEmail;
+            _rememberMe = true;
+          });
         }
       }
     } catch (error) {
-      _authService.showErrorToast('Errore durante verifica admin: $error');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      print('Error checking remembered session: $error');
+    }
+  }
+
+  /// Save "remember me" preference
+  Future<void> _saveRememberMePreference(String email) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_keyRememberMe, _rememberMe);
+
+      if (_rememberMe) {
+        await prefs.setString(_keyStoredEmail, email);
+      } else {
+        await prefs.remove(_keyStoredEmail);
+      }
+    } catch (error) {
+      print('Error saving remember me preference: $error');
+    }
+  }
+
+  /// Clear "remember me" data
+  Future<void> _clearRememberMeData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_keyRememberMe);
+      await prefs.remove(_keyStoredEmail);
+    } catch (error) {
+      print('Error clearing remember me data: $error');
     }
   }
 
@@ -142,25 +103,10 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
-  void _onRoleSelected(String role) {
+  void _onRememberMeChanged(bool value) {
     setState(() {
-      _selectedRole = role;
-      _emailError = null;
-      _passwordError = null;
+      _rememberMe = value;
     });
-
-    // Set suggested email based on role
-    switch (role) {
-      case 'admin':
-        _emailController.text = 'lutadordeeliteravenna@gmail.com';
-        break;
-      case 'instructor':
-        _emailController.text = 'instructor@teamragnarok.com';
-        break;
-      case 'student':
-        _emailController.text = 'studente@teamragnarok.com';
-        break;
-    }
   }
 
   void _onForgotPassword() async {
@@ -205,19 +151,13 @@ class _LoginScreenState extends State<LoginScreen> {
         // Success - trigger haptic feedback
         HapticFeedback.heavyImpact();
 
+        // Save remember me preference
+        await _saveRememberMePreference(email);
+
         _authService.showSuccessToast('Accesso effettuato con successo!');
 
-        // Check user role and update selected role
-        final userRole = await _authService.getUserRole();
-        setState(() {
-          _selectedRole = userRole;
-        });
-
-        // Show biometric prompt for future logins
-        setState(() {
-          _showBiometricPrompt = true;
-          _isLoading = false;
-        });
+        // Navigate directly based on database role
+        await _navigateBasedOnUserRole();
       } else {
         setState(() {
           _isLoading = false;
@@ -247,18 +187,44 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _navigateToDashboard() {
-    Navigator.pushReplacementNamed(context, '/dashboard-home');
-  }
+  /// Navigate to appropriate dashboard based on user role
+  Future<void> _navigateBasedOnUserRole() async {
+    try {
+      final user = _authService.currentUser;
+      final userRole = await _authService.getUserRole();
+      final isPrincipalAdmin = await _authService.isPrincipalAdmin();
 
-  void _onBiometricLogin() {
-    HapticFeedback.heavyImpact();
-    _authService.showSuccessToast('Accesso biometrico configurato!');
-    _navigateToDashboard();
-  }
+      // Check if user is principal admin by email or role
+      final isPrincipalByEmail =
+          user?.email?.toLowerCase() == 'lutadordeeliteravenna@gmail.com';
 
-  void _onSkipBiometric() {
-    _navigateToDashboard();
+      String targetRoute;
+
+      if (isPrincipalAdmin || isPrincipalByEmail) {
+        // Principal admin goes DIRECTLY to enhanced admin dashboard
+        targetRoute = AppRoutes.enhancedAdminDashboard;
+        print('✅ Principal admin detected - redirecting to enhanced dashboard');
+      } else if (['admin', 'instructor_admin'].contains(userRole)) {
+        // Other admins go to enhanced admin dashboard
+        targetRoute = AppRoutes.enhancedAdminDashboard;
+        print('✅ Admin detected - redirecting to enhanced admin dashboard');
+      } else {
+        // ALL non-admin users (students, instructors) go to dashboard home
+        targetRoute = AppRoutes.dashboardHome;
+        print('✅ Non-admin user detected - redirecting to dashboard home');
+      }
+
+      // Navigate to the determined route
+      Navigator.pushNamedAndRemoveUntil(context, targetRoute, (route) => false);
+    } catch (error) {
+      print('Error in role-based navigation: $error');
+      // Fallback to dashboard home for non-admin users
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        AppRoutes.dashboardHome,
+        (route) => false,
+      );
+    }
   }
 
   void _navigateToRegistration() {
@@ -274,8 +240,7 @@ class _LoginScreenState extends State<LoginScreen> {
           physics: const BouncingScrollPhysics(),
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              minHeight:
-                  MediaQuery.of(context).size.height -
+              minHeight: MediaQuery.of(context).size.height -
                   MediaQuery.of(context).padding.top,
             ),
             child: Padding(
@@ -305,7 +270,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(16),
                             child: Image.asset(
-                              'assets/images/149054-1756519869859.jpg',
+                              'assets/images/146804-1762122410365.jpg',
                               width: 24.w,
                               height: 24.w,
                               fit: BoxFit.contain,
@@ -328,280 +293,103 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         SizedBox(height: 3.h),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              'Team Ragnarok APP',
-                              style: AppTheme
-                                  .lightTheme
-                                  .textTheme
-                                  .headlineMedium
-                                  ?.copyWith(
-                                    color: AppTheme.textPrimaryLight,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                            ),
-                            SizedBox(width: 2.w),
-                            GestureDetector(
-                              onTap: _toggleAdminStatus,
-                              child: Icon(
-                                _showAdminStatus
-                                    ? Icons.admin_panel_settings
-                                    : Icons.admin_panel_settings_outlined,
-                                color:
-                                    _adminStatusData?['admin_profile_exists'] ==
-                                            true
-                                        ? Colors.green
-                                        : Colors.orange,
-                                size: 6.w,
-                              ),
-                            ),
-                          ],
+                        Text(
+                          'Team Ragnarok APP',
+                          style: AppTheme.lightTheme.textTheme.headlineMedium
+                              ?.copyWith(
+                            color: AppTheme.textPrimaryLight,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         SizedBox(height: 1.h),
                         Text(
                           'BJJ • SAMBO • MMA • GRAPPLING',
                           style: AppTheme.lightTheme.textTheme.bodyMedium
                               ?.copyWith(
-                                color: AppTheme.textSecondaryLight,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 1.2,
-                              ),
+                            color: AppTheme.textSecondaryLight,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.2,
+                          ),
                         ),
                       ],
                     ),
                   ),
 
-                  SizedBox(height: 4.h),
-
-                  // Admin Status Panel
-                  if (_showAdminStatus && _adminStatusData != null) ...[
-                    Container(
-                      padding: EdgeInsets.all(4.w),
-                      decoration: BoxDecoration(
-                        color: AppTheme.lightTheme.colorScheme.surface,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color:
-                              _adminStatusData!['admin_profile_exists'] == true
-                                  ? Colors.green
-                                  : Colors.orange,
-                          width: 2,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.admin_panel_settings,
-                                color:
-                                    _adminStatusData!['admin_profile_exists'] ==
-                                            true
-                                        ? Colors.green
-                                        : Colors.orange,
-                                size: 5.w,
-                              ),
-                              SizedBox(width: 2.w),
-                              Text(
-                                'Stato Sistema Admin',
-                                style: AppTheme.lightTheme.textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 2.h),
-                          _buildStatusRow(
-                            'Profilo Admin',
-                            _adminStatusData!['admin_profile_exists'] == true,
-                          ),
-                          _buildStatusRow(
-                            'Auth Admin',
-                            _adminStatusData!['admin_auth_exists'] == true,
-                          ),
-                          _buildStatusRow(
-                            'Admin Attivo',
-                            _adminStatusData!['admin_active'] == true,
-                          ),
-                          SizedBox(height: 2.h),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: _performAdminVerification,
-                                  icon: Icon(Icons.verified_user, size: 4.w),
-                                  label: const Text('Verifica Admin'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.blue,
-                                    foregroundColor: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                  ],
-
                   SizedBox(height: 6.h),
 
                   // Login Form
-                  if (!_showBiometricPrompt) ...[
-                    Form(
-                      key: _formKey,
-                      child: LoginFormWidget(
-                        emailController: _emailController,
-                        passwordController: _passwordController,
-                        isPasswordVisible: _isPasswordVisible,
-                        onPasswordVisibilityToggle: _togglePasswordVisibility,
-                        onForgotPassword: _onForgotPassword,
-                        emailError: _emailError,
-                        passwordError: _passwordError,
-                      ),
+                  Form(
+                    key: _formKey,
+                    child: LoginFormWidget(
+                      emailController: _emailController,
+                      passwordController: _passwordController,
+                      isPasswordVisible: _isPasswordVisible,
+                      onPasswordVisibilityToggle: _togglePasswordVisibility,
+                      onForgotPassword: _onForgotPassword,
+                      emailError: _emailError,
+                      passwordError: _passwordError,
+                      rememberMe: _rememberMe,
+                      onRememberMeChanged: _onRememberMeChanged,
                     ),
+                  ),
 
-                    SizedBox(height: 4.h),
+                  SizedBox(height: 6.h),
 
-                    // Role Selection
-                    RoleSelectionWidget(
-                      selectedRole: _selectedRole,
-                      onRoleSelected: _onRoleSelected,
-                    ),
-
-                    SizedBox(height: 6.h),
-
-                    // Login Button
-                    SizedBox(
-                      height: 7.h,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _performLogin,
-                        child:
-                            _isLoading
-                                ? SizedBox(
-                                  width: 5.w,
-                                  height: 5.w,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      AppTheme.onPrimaryLight,
-                                    ),
-                                  ),
-                                )
-                                : Text(
-                                  'Accedi',
-                                  style: AppTheme
-                                      .lightTheme
-                                      .textTheme
-                                      .titleMedium
-                                      ?.copyWith(
-                                        color: AppTheme.onPrimaryLight,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                  // Login Button
+                  SizedBox(
+                    height: 7.h,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _performLogin,
+                      child: _isLoading
+                          ? SizedBox(
+                              width: 5.w,
+                              height: 5.w,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  AppTheme.onPrimaryLight,
                                 ),
-                      ),
+                              ),
+                            )
+                          : Text(
+                              'Accedi',
+                              style: AppTheme.lightTheme.textTheme.titleMedium
+                                  ?.copyWith(
+                                color: AppTheme.onPrimaryLight,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                     ),
-                  ],
-
-                  // Biometric Prompt
-                  if (_showBiometricPrompt) ...[
-                    BiometricPromptWidget(
-                      onBiometricLogin: _onBiometricLogin,
-                      onSkip: _onSkipBiometric,
-                      isAvailable: true,
-                    ),
-                  ],
+                  ),
 
                   SizedBox(height: 4.h),
 
                   // Registration Link
-                  if (!_showBiometricPrompt) ...[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Nuovo utente? ',
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Nuovo utente? ',
+                        style: AppTheme.lightTheme.textTheme.bodyMedium
+                            ?.copyWith(color: AppTheme.textSecondaryLight),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          _navigateToRegistration();
+                        },
+                        child: Text(
+                          'Registrati',
                           style: AppTheme.lightTheme.textTheme.bodyMedium
-                              ?.copyWith(color: AppTheme.textSecondaryLight),
-                        ),
-                        GestureDetector(
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            _navigateToRegistration();
-                          },
-                          child: Text(
-                            'Registrati',
-                            style: AppTheme.lightTheme.textTheme.bodyMedium
-                                ?.copyWith(
-                                  color: AppTheme.primaryLight,
-                                  fontWeight: FontWeight.w600,
-                                  decoration: TextDecoration.underline,
-                                ),
+                              ?.copyWith(
+                            color: AppTheme.primaryLight,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-
-                  SizedBox(height: 4.h),
-
-                  // Auth Info Section (for development/testing)
-                  if (!_showBiometricPrompt &&
-                      _authService.currentUser == null) ...[
-                    Container(
-                      padding: EdgeInsets.all(4.w),
-                      decoration: BoxDecoration(
-                        color: AppTheme.lightTheme.colorScheme.surface
-                            .withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: AppTheme.borderLight,
-                          width: 1,
                         ),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Account di prova disponibili:',
-                            style: AppTheme.lightTheme.textTheme.titleSmall
-                                ?.copyWith(
-                                  color: AppTheme.textPrimaryLight,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                          SizedBox(height: 1.h),
-                          Text(
-                            'Admin: lutadordeeliteravenna@gmail.com',
-                            style: AppTheme.lightTheme.textTheme.bodySmall
-                                ?.copyWith(
-                                  color: AppTheme.textSecondaryLight,
-                                  fontFamily: 'monospace',
-                                ),
-                          ),
-                          Text(
-                            'Studente: studente@teamragnarok.com',
-                            style: AppTheme.lightTheme.textTheme.bodySmall
-                                ?.copyWith(
-                                  color: AppTheme.textSecondaryLight,
-                                  fontFamily: 'monospace',
-                                ),
-                          ),
-                          Text(
-                            'Istruttore: instructor@teamragnarok.com',
-                            style: AppTheme.lightTheme.textTheme.bodySmall
-                                ?.copyWith(
-                                  color: AppTheme.textSecondaryLight,
-                                  fontFamily: 'monospace',
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
 
                   SizedBox(height: 2.h),
                 ],
@@ -609,29 +397,6 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildStatusRow(String label, bool isSuccess) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 0.5.h),
-      child: Row(
-        children: [
-          Icon(
-            isSuccess ? Icons.check_circle : Icons.error,
-            color: isSuccess ? Colors.green : Colors.red,
-            size: 4.w,
-          ),
-          SizedBox(width: 2.w),
-          Text(
-            label,
-            style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-              color: isSuccess ? Colors.green : Colors.red,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
       ),
     );
   }

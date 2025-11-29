@@ -1,15 +1,12 @@
-import 'dart:convert';
-import 'dart:io' if (dart.library.io) 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:universal_html/html.dart' as html;
 
 import '../../core/app_export.dart';
 import '../../services/supabase_service.dart';
+import '../../theme/app_theme.dart';
 
 class AdminManagementSystem extends StatefulWidget {
   const AdminManagementSystem({super.key});
@@ -23,10 +20,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   bool isPrincipalAdmin = false;
   Map<String, dynamic>? currentUser;
   List<dynamic> systemUsers = [];
-  List<dynamic> pendingRegistrations = [];
-  List<dynamic> activityLogs = [];
   List<dynamic> adminCommunications = [];
-  List<dynamic> nonFiscalReceipts = [];
   String selectedTab = 'users';
 
   // Form controllers
@@ -36,17 +30,41 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       TextEditingController();
   final TextEditingController _communicationTargetController =
       TextEditingController();
-  final TextEditingController _receiptDescriptionController =
-      TextEditingController();
-  final TextEditingController _receiptAmountController =
-      TextEditingController();
-  final TextEditingController _receiptNotesController = TextEditingController();
   final TextEditingController _editFullNameController = TextEditingController();
   final TextEditingController _editPhoneController = TextEditingController();
   final TextEditingController _editEmergencyContactController =
       TextEditingController();
   final TextEditingController _editEmergencyPhoneController =
       TextEditingController();
+
+  // Additional form controllers for expanded user profile editing
+  final TextEditingController _editEmailController = TextEditingController();
+  final TextEditingController _editAddressLineController =
+      TextEditingController();
+  final TextEditingController _editCityController = TextEditingController();
+  final TextEditingController _editProvinceController = TextEditingController();
+  final TextEditingController _editCapController = TextEditingController();
+  final TextEditingController _editCodiceFiscaleController =
+      TextEditingController();
+  final TextEditingController _editParentGuardianNameController =
+      TextEditingController();
+  final TextEditingController _editParentGuardianSurnameController =
+      TextEditingController();
+  final TextEditingController _editParentGuardianEmailController =
+      TextEditingController();
+  final TextEditingController _editParentGuardianPhoneController =
+      TextEditingController();
+  final TextEditingController _editParentGuardianCodiceFiscaleController =
+      TextEditingController();
+  final TextEditingController _editParentGuardianRelationController =
+      TextEditingController();
+
+  DateTime? _selectedBirthDate;
+  bool _isMinor = false;
+  bool _isActive = true;
+  String _selectedStatus = 'approved';
+  String _selectedRole = 'student';
+  String _selectedMedicalCertificateStatus = 'pending';
 
   Map<String, dynamic>? selectedUserForEdit;
 
@@ -61,13 +79,25 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
     _communicationTitleController.dispose();
     _communicationContentController.dispose();
     _communicationTargetController.dispose();
-    _receiptDescriptionController.dispose();
-    _receiptAmountController.dispose();
-    _receiptNotesController.dispose();
     _editFullNameController.dispose();
     _editPhoneController.dispose();
     _editEmergencyContactController.dispose();
     _editEmergencyPhoneController.dispose();
+
+    // Dispose additional controllers
+    _editEmailController.dispose();
+    _editAddressLineController.dispose();
+    _editCityController.dispose();
+    _editProvinceController.dispose();
+    _editCapController.dispose();
+    _editCodiceFiscaleController.dispose();
+    _editParentGuardianNameController.dispose();
+    _editParentGuardianSurnameController.dispose();
+    _editParentGuardianEmailController.dispose();
+    _editParentGuardianPhoneController.dispose();
+    _editParentGuardianCodiceFiscaleController.dispose();
+    _editParentGuardianRelationController.dispose();
+
     super.dispose();
   }
 
@@ -93,18 +123,16 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
     }
 
     try {
-      final profileResponse =
-          await client
-              .from('user_profiles')
-              .select()
-              .eq('id', user.id)
-              .single();
+      final profileResponse = await client
+          .from('user_profiles')
+          .select()
+          .eq('id', user.id)
+          .single();
 
       currentUser = profileResponse;
 
       // Check if principal admin or regular admin
-      isPrincipalAdmin =
-          user.email == 'lutadordeeliteravenna@gmail.com' ||
+      isPrincipalAdmin = user.email == 'lutadordeeliteravenna@gmail.com' ||
           (currentUser?['role'] == 'principal_admin');
 
       // Allow access for admin or principal_admin roles
@@ -135,32 +163,6 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         systemUsers = [];
       }
 
-      // Load pending registrations with error handling
-      try {
-        final pendingResponse = await client
-            .from('pending_registrations')
-            .select()
-            .eq('status', 'pending')
-            .order('created_at', ascending: false);
-        pendingRegistrations = pendingResponse ?? [];
-      } catch (e) {
-        print('Error loading pending registrations: $e');
-        pendingRegistrations = [];
-      }
-
-      // Load activity logs with error handling
-      try {
-        final logsResponse = await client
-            .from('admin_activity_log')
-            .select()
-            .order('created_at', ascending: false)
-            .limit(20);
-        activityLogs = logsResponse ?? [];
-      } catch (e) {
-        print('Error loading activity logs: $e');
-        activityLogs = [];
-      }
-
       // Load admin communications with error handling
       try {
         final communicationsResponse = await client
@@ -171,18 +173,6 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       } catch (e) {
         print('Error loading communications: $e');
         adminCommunications = [];
-      }
-
-      // Load non-fiscal receipts with error handling
-      try {
-        final receiptsResponse = await client
-            .from('non_fiscal_receipts')
-            .select()
-            .order('created_at', ascending: false);
-        nonFiscalReceipts = receiptsResponse ?? [];
-      } catch (e) {
-        print('Error loading receipts: $e');
-        nonFiscalReceipts = [];
       }
 
       if (mounted) {
@@ -204,8 +194,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
 
       await client
           .from('user_profiles')
-          .update({'role': newRole})
-          .eq('id', userId);
+          .update({'role': newRole}).eq('id', userId);
 
       // Log the admin activity
       await client.from('admin_activity_log').insert({
@@ -258,25 +247,24 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       } else {
         final result = await showDialog<ImageSource>(
           context: context,
-          builder:
-              (context) => AlertDialog(
-                title: Text('Seleziona fonte immagine'),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ListTile(
-                      leading: Icon(Icons.camera_alt),
-                      title: Text('Camera'),
-                      onTap: () => Navigator.pop(context, ImageSource.camera),
-                    ),
-                    ListTile(
-                      leading: Icon(Icons.photo_library),
-                      title: Text('Galleria'),
-                      onTap: () => Navigator.pop(context, ImageSource.gallery),
-                    ),
-                  ],
+          builder: (context) => AlertDialog(
+            title: Text('Seleziona fonte immagine'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: Icon(Icons.camera_alt),
+                  title: Text('Camera'),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
                 ),
-              ),
+                ListTile(
+                  leading: Icon(Icons.photo_library),
+                  title: Text('Galleria'),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+              ],
+            ),
+          ),
         );
 
         if (result != null) {
@@ -324,19 +312,10 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         'sender_id': currentUser?['id'],
         'title': _communicationTitleController.text,
         'content': _communicationContentController.text,
-        'target_audience':
-            _communicationTargetController.text.isEmpty
-                ? 'all'
-                : _communicationTargetController.text,
+        'target_audience': _communicationTargetController.text.isEmpty
+            ? 'all'
+            : _communicationTargetController.text,
         'status': 'sent',
-      });
-
-      // Log the admin activity
-      await client.from('admin_activity_log').insert({
-        'admin_id': currentUser?['id'],
-        'action_type': 'COMMUNICATION_SENT',
-        'description':
-            'Comunicazione inviata: ${_communicationTitleController.text}',
       });
 
       _communicationTitleController.clear();
@@ -351,137 +330,116 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
     }
   }
 
-  Future<void> _createNonFiscalReceipt() async {
-    if (_receiptDescriptionController.text.isEmpty ||
-        _receiptAmountController.text.isEmpty) {
-      _showErrorMessage('Descrizione e importo sono obbligatori');
+  Future<void> _deleteUser(
+    String userId,
+    String userName,
+    String userEmail,
+  ) async {
+    // Prevent deletion of principal admin
+    if (userEmail == 'lutadordeeliteravenna@gmail.com') {
+      _showErrorMessage('Impossibile eliminare l\'amministratore principale');
       return;
     }
 
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Conferma Eliminazione',
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Sei sicuro di voler eliminare l\'utente?',
+              style: GoogleFonts.inter(fontSize: 16),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Utente: $userName',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              'Email: $userEmail',
+              style: GoogleFonts.inter(fontSize: 14),
+            ),
+            SizedBox(height: 16),
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '⚠️ Attenzione:',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange.shade800,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '• L\'utente verrà eliminato permanentemente\n• Le ricevute associate verranno preservate\n• Questa azione non può essere annullata',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: Colors.orange.shade800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Annulla'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: Text('Elimina'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     try {
       final client = SupabaseService.instance.client;
-      final amount = double.parse(_receiptAmountController.text);
 
-      final receiptNumber =
-          'NF${DateTime.now().year}${DateTime.now().millisecondsSinceEpoch}';
+      // Call the safe_delete_user function
+      final result = await client.rpc(
+        'safe_delete_user',
+        params: {'target_user_id': userId},
+      );
 
-      await client.from('non_fiscal_receipts').insert({
-        'receipt_number': receiptNumber,
-        'created_by': currentUser?['id'],
-        'description': _receiptDescriptionController.text,
-        'amount': amount,
-        'notes': _receiptNotesController.text,
-        'status': 'issued',
-      });
-
-      // Log the admin activity
-      await client.from('admin_activity_log').insert({
-        'admin_id': currentUser?['id'],
-        'action_type': 'RECEIPT_CREATED',
-        'description': 'Ricevuta non fiscale creata: $receiptNumber',
-      });
-
-      _receiptDescriptionController.clear();
-      _receiptAmountController.clear();
-      _receiptNotesController.clear();
-
-      _showSuccessMessage('Ricevuta non fiscale creata: $receiptNumber');
-      await _loadSystemData();
-    } catch (e) {
-      print('Error creating receipt: $e');
-      _showErrorMessage('Errore nella creazione ricevuta: ${e.toString()}');
-    }
-  }
-
-  Future<void> _downloadReceipt(Map<String, dynamic> receipt) async {
-    try {
-      final content = _generateReceiptContent(receipt);
-      final fileName = 'ricevuta_${receipt['receipt_number']}.txt';
-
-      if (kIsWeb) {
-        // Web download
-        final bytes = utf8.encode(content);
-        final blob = html.Blob([bytes]);
-        final url = html.Url.createObjectUrlFromBlob(blob);
-        final anchor =
-            html.AnchorElement(href: url)
-              ..setAttribute("download", fileName)
-              ..click();
-        html.Url.revokeObjectUrl(url);
-        _showSuccessMessage('Ricevuta scaricata');
+      if (result['success'] == true) {
+        _showSuccessMessage(
+          'Utente eliminato con successo (ricevute preservate)',
+        );
+        await _loadSystemData(); // Refresh the user list
       } else {
-        // Mobile download
-        final directory = await getApplicationDocumentsDirectory();
-        final file = File('${directory.path}/$fileName');
-        await file.writeAsString(content);
-        _showSuccessMessage('Ricevuta salvata in: ${file.path}');
+        _showErrorMessage(result['error'] ?? 'Errore durante l\'eliminazione');
       }
     } catch (e) {
-      print('Error downloading receipt: $e');
-      _showErrorMessage('Errore nel download: ${e.toString()}');
-    }
-  }
-
-  String _generateReceiptContent(Map<String, dynamic> receipt) {
-    return '''
-RICEVUTA NON FISCALE
-====================
-
-Numero Ricevuta: ${receipt['receipt_number']}
-Data: ${DateTime.parse(receipt['created_at']).toLocal().toString().split(' ')[0]}
-
-Descrizione: ${receipt['description']}
-Importo: €${receipt['amount'].toStringAsFixed(2)}
-
-${receipt['notes'] != null && receipt['notes'].toString().isNotEmpty ? 'Note: ${receipt['notes']}\n' : ''}
-
-Emessa da: Team Ragnarok ASD
-Data di emissione: ${DateTime.now().toLocal().toString()}
-
-====================
-Questa è una ricevuta non fiscale
-    ''';
-  }
-
-  Future<void> _approvePendingRegistration(String registrationId) async {
-    try {
-      final client = SupabaseService.instance.client;
-
-      await client
-          .from('pending_registrations')
-          .update({
-            'status': 'approved',
-            'reviewed_by': currentUser?['id'],
-            'reviewed_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', registrationId);
-
-      _showSuccessMessage('Registrazione approvata');
-      await _loadSystemData();
-    } catch (e) {
-      print('Error approving registration: $e');
-      _showErrorMessage('Errore nell\'approvazione: ${e.toString()}');
-    }
-  }
-
-  Future<void> _rejectPendingRegistration(String registrationId) async {
-    try {
-      final client = SupabaseService.instance.client;
-
-      await client
-          .from('pending_registrations')
-          .update({
-            'status': 'rejected',
-            'reviewed_by': currentUser?['id'],
-            'reviewed_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', registrationId);
-
-      _showSuccessMessage('Registrazione respinta');
-      await _loadSystemData();
-    } catch (e) {
-      print('Error rejecting registration: $e');
-      _showErrorMessage('Errore nel rifiuto: ${e.toString()}');
+      print('Error deleting user: $e');
+      _showErrorMessage('Errore durante l\'eliminazione: ${e.toString()}');
     }
   }
 
@@ -655,10 +613,9 @@ Questa è una ricevuta non fiscale
                             Text(
                               'Gestione Sistema',
                               style: TextStyle(
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                                 fontSize: 11,
                               ),
                             ),
@@ -668,7 +625,7 @@ Questa è una ricevuta non fiscale
                     ],
                   ),
                   SizedBox(height: 16),
-                  // Tab navigation - horizontal scroll
+                  // Tab navigation - horizontal scroll (removed Registrazioni, Ricevute, Attività)
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -676,24 +633,10 @@ Questa è una ricevuta non fiscale
                         _buildTabButton('users', 'Utenti', Icons.people),
                         SizedBox(width: 8),
                         _buildTabButton(
-                          'pending',
-                          'Registrazioni',
-                          Icons.pending_actions,
-                        ),
-                        SizedBox(width: 8),
-                        _buildTabButton(
                           'communications',
                           'Comunicazioni',
                           Icons.campaign,
                         ),
-                        SizedBox(width: 8),
-                        _buildTabButton(
-                          'receipts',
-                          'Ricevute',
-                          Icons.receipt_long,
-                        ),
-                        SizedBox(width: 8),
-                        _buildTabButton('activity', 'Attività', Icons.history),
                         SizedBox(width: 8),
                         if (isPrincipalAdmin)
                           _buildTabButton(
@@ -721,20 +664,6 @@ Questa è una ricevuta non fiscale
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
-          // Navigate to dedicated screens instead of switching tabs
-          if (tabId == 'users') {
-            Navigator.pushNamed(context, AppRoutes.userManagementSystem);
-            return;
-          }
-          if (tabId == 'pending') {
-            Navigator.pushNamed(
-              context,
-              AppRoutes.registrationManagementSystem,
-            );
-            return;
-          }
-
-          // For other tabs, keep the existing behavior
           if (mounted) {
             setState(() => selectedTab = tabId);
           }
@@ -743,12 +672,11 @@ Questa è una ricevuta non fiscale
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color:
-                isSelected
-                    ? Theme.of(context).colorScheme.secondary
-                    : Theme.of(
-                      context,
-                    ).colorScheme.secondary.withValues(alpha: 0.1),
+            color: isSelected
+                ? Theme.of(context).colorScheme.secondary
+                : Theme.of(
+                    context,
+                  ).colorScheme.secondary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8.0),
             border: Border.all(
               color: Theme.of(
@@ -762,20 +690,18 @@ Questa è una ricevuta non fiscale
             children: [
               Icon(
                 icon,
-                color:
-                    isSelected
-                        ? Colors.white
-                        : Theme.of(context).colorScheme.secondary,
+                color: isSelected
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.secondary,
                 size: 16,
               ),
               SizedBox(width: 4),
               Text(
                 label,
                 style: GoogleFonts.inter(
-                  color:
-                      isSelected
-                          ? Colors.white
-                          : Theme.of(context).colorScheme.secondary,
+                  color: isSelected
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.secondary,
                   fontWeight: FontWeight.w500,
                   fontSize: 12,
                 ),
@@ -791,14 +717,8 @@ Questa è una ricevuta non fiscale
     switch (selectedTab) {
       case 'users':
         return _buildUsersTab();
-      case 'pending':
-        return _buildPendingTab();
       case 'communications':
         return _buildCommunicationsTab();
-      case 'receipts':
-        return _buildReceiptsTab();
-      case 'activity':
-        return _buildActivityTab();
       case 'settings':
         return _buildSettingsTab();
       default:
@@ -816,9 +736,9 @@ Questa è una ricevuta non fiscale
             Text(
               'Gestione Utenti Sistema',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
             ),
             ElevatedButton.icon(
               onPressed: _loadSystemData,
@@ -862,6 +782,9 @@ Questa è una ricevuta non fiscale
   Widget _buildUserCard(Map<String, dynamic> user) {
     final role = user['role']?.toString() ?? 'student';
     final isActive = user['is_active'] == true;
+    final userEmail = user['email']?.toString() ?? '';
+    final userName = user['full_name']?.toString() ?? 'Nome non disponibile';
+    final userId = user['id']?.toString() ?? '';
 
     return Container(
       margin: EdgeInsets.only(bottom: 12),
@@ -886,18 +809,16 @@ Questa è una ricevuta non fiscale
                         backgroundColor: _getRoleColor(
                           role,
                         ).withValues(alpha: 0.1),
-                        backgroundImage:
-                            user['profile_image_url'] != null
-                                ? NetworkImage(user['profile_image_url'])
-                                : null,
-                        child:
-                            user['profile_image_url'] == null
-                                ? Icon(
-                                  _getRoleIcon(role),
-                                  color: _getRoleColor(role),
-                                  size: 20,
-                                )
-                                : null,
+                        backgroundImage: user['profile_image_url'] != null
+                            ? NetworkImage(user['profile_image_url'])
+                            : null,
+                        child: user['profile_image_url'] == null
+                            ? Icon(
+                                _getRoleIcon(role),
+                                color: _getRoleColor(role),
+                                size: 20,
+                              )
+                            : null,
                       ),
                     ),
                     SizedBox(width: 12),
@@ -906,8 +827,7 @@ Questa è una ricevuta non fiscale
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            user['full_name']?.toString() ??
-                                'Nome non disponibile',
+                            userName,
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 14,
@@ -915,13 +835,12 @@ Questa è una ricevuta non fiscale
                             ),
                           ),
                           Text(
-                            user['email']?.toString() ?? '',
+                            userEmail,
                             style: TextStyle(
                               fontSize: 12,
-                              color:
-                                  Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                           if (user['phone'] != null)
@@ -929,10 +848,9 @@ Questa è una ricevuta non fiscale
                               'Tel: ${user['phone']}',
                               style: TextStyle(
                                 fontSize: 11,
-                                color:
-                                    Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
                             ),
                         ],
@@ -980,6 +898,18 @@ Questa è una ricevuta non fiscale
                         foregroundColor: Theme.of(context).colorScheme.primary,
                       ),
                     ),
+                    // Add delete button right next to edit button for admin-level users
+                    if (isPrincipalAdmin &&
+                        userEmail != 'lutadordeeliteravenna@gmail.com')
+                      TextButton.icon(
+                        onPressed: () =>
+                            _deleteUser(userId, userName, userEmail),
+                        icon: Icon(Icons.delete, size: 16),
+                        label: Text('Elimina'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red,
+                        ),
+                      ),
                     if (isPrincipalAdmin && role != 'principal_admin')
                       TextButton.icon(
                         onPressed: () => _showPromotionDialog(user),
@@ -995,145 +925,6 @@ Questa è una ricevuta non fiscale
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildPendingTab() {
-    if (pendingRegistrations.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inbox, size: 48, color: AppTheme.textSecondaryLight),
-            SizedBox(height: 16),
-            Text(
-              'Nessuna registrazione in attesa',
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                color: AppTheme.textSecondaryLight,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView(
-      padding: EdgeInsets.all(16),
-      children: [
-        Text(
-          'Registrazioni in Attesa',
-          style: GoogleFonts.inter(
-            fontWeight: FontWeight.w600,
-            fontSize: 18,
-            color: AppTheme.textPrimaryLight,
-          ),
-        ),
-        SizedBox(height: 16),
-        ...pendingRegistrations
-            .map((registration) => _buildPendingCard(registration))
-            .toList(),
-      ],
-    );
-  }
-
-  Widget _buildPendingCard(Map<String, dynamic> registration) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 12),
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(13),
-            blurRadius: 8.0,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.person_add, color: Colors.orange, size: 20),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  registration['full_name']?.toString() ??
-                      'Nome non disponibile',
-                  style: GoogleFonts.inter(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    color: AppTheme.textPrimaryLight,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 8),
-          Text(
-            'Email: ${registration['email']?.toString() ?? ''}',
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              color: AppTheme.textSecondaryLight,
-            ),
-          ),
-          if (registration['phone'] != null)
-            Text(
-              'Telefono: ${registration['phone']}',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                color: AppTheme.textSecondaryLight,
-              ),
-            ),
-          if (registration['message'] != null) ...[
-            SizedBox(height: 8),
-            Text(
-              'Messaggio: ${registration['message']}',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                color: AppTheme.textPrimaryLight,
-              ),
-            ),
-          ],
-          SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed:
-                      () => _approvePendingRegistration(registration['id']),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                  ),
-                  child: Text(
-                    'Approva',
-                    style: GoogleFonts.inter(color: Colors.white, fontSize: 12),
-                  ),
-                ),
-              ),
-              SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed:
-                      () => _rejectPendingRegistration(registration['id']),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.red),
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                  ),
-                  child: Text(
-                    'Rifiuta',
-                    style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -1366,332 +1157,6 @@ Questa è una ricevuta non fiscale
     );
   }
 
-  Widget _buildReceiptsTab() {
-    return ListView(
-      padding: EdgeInsets.all(16),
-      children: [
-        Text(
-          'Gestione Ricevute Non Fiscali',
-          style: GoogleFonts.inter(
-            fontWeight: FontWeight.w600,
-            fontSize: 18,
-            color: AppTheme.textPrimaryLight,
-          ),
-        ),
-        SizedBox(height: 16),
-
-        // Receipt Form Card
-        Container(
-          padding: EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12.0),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(13),
-                blurRadius: 8.0,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.receipt_long,
-                    color: AppTheme.primaryColor,
-                    size: 20,
-                  ),
-                  SizedBox(width: 8),
-                  Text(
-                    'Crea Nuova Ricevuta Non Fiscale',
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                      color: AppTheme.textPrimaryLight,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 16),
-              TextField(
-                controller: _receiptDescriptionController,
-                decoration: InputDecoration(
-                  labelText: 'Descrizione *',
-                  hintText: 'Descrivi il servizio o prodotto',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                  ),
-                  prefixIcon: Icon(Icons.description),
-                ),
-              ),
-              SizedBox(height: 12),
-              TextField(
-                controller: _receiptAmountController,
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  labelText: 'Importo (€) *',
-                  hintText: 'Es: 25.00',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                  ),
-                  prefixIcon: Icon(Icons.euro),
-                ),
-              ),
-              SizedBox(height: 12),
-              TextField(
-                controller: _receiptNotesController,
-                maxLines: 2,
-                decoration: InputDecoration(
-                  labelText: 'Note aggiuntive (opzionale)',
-                  hintText: 'Eventuali note o specifiche...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                  ),
-                  prefixIcon: Icon(Icons.note),
-                ),
-              ),
-              SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _createNonFiscalReceipt,
-                  icon: Icon(Icons.add),
-                  label: Text('Crea Ricevuta'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        SizedBox(height: 24),
-
-        // Receipts History
-        Text(
-          'Ricevute Emesse',
-          style: GoogleFonts.inter(
-            fontWeight: FontWeight.w600,
-            fontSize: 16,
-            color: AppTheme.textPrimaryLight,
-          ),
-        ),
-        SizedBox(height: 12),
-
-        if (nonFiscalReceipts.isEmpty)
-          Container(
-            padding: EdgeInsets.all(32),
-            child: Center(
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.receipt_long,
-                    size: 48,
-                    color: AppTheme.textSecondaryLight,
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'Nessuna ricevuta emessa',
-                    style: GoogleFonts.inter(
-                      fontSize: 16,
-                      color: AppTheme.textSecondaryLight,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else
-          ...nonFiscalReceipts
-              .map((receipt) => _buildReceiptCard(receipt))
-              .toList(),
-      ],
-    );
-  }
-
-  Widget _buildReceiptCard(Map<String, dynamic> receipt) {
-    final amount = receipt['amount']?.toDouble() ?? 0.0;
-
-    return Container(
-      margin: EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12.0),
-        elevation: 2,
-        child: InkWell(
-          onTap: () => _downloadReceipt(receipt),
-          borderRadius: BorderRadius.circular(12.0),
-          child: Container(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.receipt_long, color: Colors.green, size: 20),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'N° ${receipt['receipt_number']}',
-                        style: GoogleFonts.inter(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                          color: AppTheme.textPrimaryLight,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      '€${amount.toStringAsFixed(2)}',
-                      style: GoogleFonts.inter(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 8),
-                Text(
-                  receipt['description']?.toString() ?? '',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: AppTheme.textPrimaryLight,
-                  ),
-                ),
-                if (receipt['notes'] != null &&
-                    receipt['notes'].toString().isNotEmpty) ...[
-                  SizedBox(height: 4),
-                  Text(
-                    'Note: ${receipt['notes']}',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      color: AppTheme.textSecondaryLight,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-                SizedBox(height: 12),
-                Row(
-                  children: [
-                    Text(
-                      'Data: ${DateTime.parse(receipt['created_at']).toLocal().toString().split(' ')[0]}',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: AppTheme.textSecondaryLight,
-                      ),
-                    ),
-                    const Spacer(),
-                    TextButton.icon(
-                      onPressed: () => _downloadReceipt(receipt),
-                      icon: Icon(Icons.download, size: 16),
-                      label: Text('Scarica'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppTheme.primaryColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActivityTab() {
-    return ListView(
-      padding: EdgeInsets.all(16),
-      children: [
-        Text(
-          'Log Attività Sistema',
-          style: GoogleFonts.inter(
-            fontWeight: FontWeight.w600,
-            fontSize: 18,
-            color: AppTheme.textPrimaryLight,
-          ),
-        ),
-        SizedBox(height: 16),
-        if (activityLogs.isEmpty)
-          Center(
-            child: Column(
-              children: [
-                SizedBox(height: 32),
-                Icon(
-                  Icons.history,
-                  size: 48,
-                  color: AppTheme.textSecondaryLight,
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'Nessuna attività registrata',
-                  style: GoogleFonts.inter(
-                    fontSize: 16,
-                    color: AppTheme.textSecondaryLight,
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          ...activityLogs.map((log) => _buildActivityCard(log)).toList(),
-      ],
-    );
-  }
-
-  Widget _buildActivityCard(Map<String, dynamic> log) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 12),
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(13),
-            blurRadius: 8.0,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            log['action_type']?.toString() ?? 'Azione non specificata',
-            style: GoogleFonts.inter(
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-              color: AppTheme.textPrimaryLight,
-            ),
-          ),
-          SizedBox(height: 4),
-          Text(
-            log['description']?.toString() ?? '',
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              color: AppTheme.textSecondaryLight,
-            ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            'Data: ${log['created_at']?.toString().split('T')[0] ?? ''}',
-            style: GoogleFonts.inter(
-              fontSize: 10,
-              color: AppTheme.textSecondaryLight,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSettingsTab() {
     return ListView(
       padding: EdgeInsets.all(16),
@@ -1777,156 +1242,774 @@ Questa è una ricevuta non fiscale
 
   void _showUserEditDialog(Map<String, dynamic> user) {
     selectedUserForEdit = user;
+
+    // Populate all form fields with existing user data
     _editFullNameController.text = user['full_name']?.toString() ?? '';
     _editPhoneController.text = user['phone']?.toString() ?? '';
     _editEmergencyContactController.text =
         user['emergency_contact']?.toString() ?? '';
     _editEmergencyPhoneController.text =
         user['emergency_phone']?.toString() ?? '';
+    _editEmailController.text = user['email']?.toString() ?? '';
+    _editAddressLineController.text = user['address_line']?.toString() ?? '';
+    _editCityController.text = user['city']?.toString() ?? '';
+    _editProvinceController.text = user['province']?.toString() ?? '';
+    _editCapController.text = user['cap']?.toString() ?? '';
+    _editCodiceFiscaleController.text =
+        user['codice_fiscale']?.toString() ?? '';
+    _editParentGuardianNameController.text =
+        user['parent_guardian_name']?.toString() ?? '';
+    _editParentGuardianSurnameController.text =
+        user['parent_guardian_surname']?.toString() ?? '';
+    _editParentGuardianEmailController.text =
+        user['parent_guardian_email']?.toString() ?? '';
+    _editParentGuardianPhoneController.text =
+        user['parent_guardian_phone']?.toString() ?? '';
+    _editParentGuardianCodiceFiscaleController.text =
+        user['parent_guardian_codice_fiscale']?.toString() ?? '';
+    _editParentGuardianRelationController.text =
+        user['parent_guardian_relation']?.toString() ?? '';
+
+    // Set boolean and dropdown values with proper state management
+    _isMinor = user['is_minor'] ?? false;
+    _isActive = user['is_active'] ?? true;
+    _selectedStatus = user['status']?.toString() ?? 'approved';
+    _selectedRole = user['role']?.toString() ?? 'student';
+    _selectedMedicalCertificateStatus =
+        user['medical_certificate_status']?.toString() ?? 'pending';
+
+    // Parse birth date
+    _selectedBirthDate = user['birth_date'] != null
+        ? DateTime.tryParse(user['birth_date'])
+        : null;
 
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(
-              'Modifica Profilo Utente',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: _editFullNameController,
-                    decoration: InputDecoration(
-                      labelText: 'Nome Completo',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.person),
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, dialogSetState) => Dialog(
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.9,
+            height: MediaQuery.of(context).size.height * 0.85,
+            child: Column(
+              children: [
+                // Header
+                Container(
+                  padding: EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(12),
+                      topRight: Radius.circular(12),
                     ),
                   ),
-                  SizedBox(height: 12),
-                  TextField(
-                    controller: _editPhoneController,
-                    decoration: InputDecoration(
-                      labelText: 'Telefono',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.phone),
-                    ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit, color: Colors.white),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Modifica Profilo Utente Completo',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 18,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: Icon(Icons.close, color: Colors.white),
+                      ),
+                    ],
                   ),
-                  SizedBox(height: 12),
-                  TextField(
-                    controller: _editEmergencyContactController,
-                    decoration: InputDecoration(
-                      labelText: 'Contatto di Emergenza',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.contact_emergency),
-                    ),
-                  ),
-                  SizedBox(height: 12),
-                  TextField(
-                    controller: _editEmergencyPhoneController,
-                    decoration: InputDecoration(
-                      labelText: 'Telefono Emergenza',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.phone_in_talk),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Annulla'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  final updates = <String, dynamic>{};
-
-                  if (_editFullNameController.text !=
-                      (user['full_name'] ?? '')) {
-                    updates['full_name'] = _editFullNameController.text;
-                  }
-                  if (_editPhoneController.text != (user['phone'] ?? '')) {
-                    updates['phone'] =
-                        _editPhoneController.text.isEmpty
-                            ? null
-                            : _editPhoneController.text;
-                  }
-                  if (_editEmergencyContactController.text !=
-                      (user['emergency_contact'] ?? '')) {
-                    updates['emergency_contact'] =
-                        _editEmergencyContactController.text.isEmpty
-                            ? null
-                            : _editEmergencyContactController.text;
-                  }
-                  if (_editEmergencyPhoneController.text !=
-                      (user['emergency_phone'] ?? '')) {
-                    updates['emergency_phone'] =
-                        _editEmergencyPhoneController.text.isEmpty
-                            ? null
-                            : _editEmergencyPhoneController.text;
-                  }
-
-                  if (updates.isNotEmpty) {
-                    Navigator.pop(context);
-                    _updateUserProfile(user['id'], updates);
-                  } else {
-                    Navigator.pop(context);
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  foregroundColor: Colors.white,
                 ),
-                child: Text('Salva'),
-              ),
-            ],
+
+                // Scrollable Form Content
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // User Info Section
+                        _buildFormSection(
+                          'Informazioni Personali',
+                          Icons.person,
+                          [
+                            _buildTextField(
+                              controller: _editFullNameController,
+                              label: 'Nome Completo *',
+                              icon: Icons.person,
+                            ),
+                            SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _editEmailController,
+                              label: 'Email *',
+                              icon: Icons.email,
+                              keyboardType: TextInputType.emailAddress,
+                            ),
+                            SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _editPhoneController,
+                              label: 'Telefono',
+                              icon: Icons.phone,
+                              keyboardType: TextInputType.phone,
+                            ),
+                            SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _editCodiceFiscaleController,
+                              label: 'Codice Fiscale',
+                              icon: Icons.credit_card,
+                            ),
+                            SizedBox(height: 16),
+                            // Birth Date Picker
+                            InkWell(
+                              onTap: () async {
+                                final date = await showDatePicker(
+                                  context: context,
+                                  initialDate: _selectedBirthDate ??
+                                      DateTime.now().subtract(
+                                        Duration(days: 365 * 20),
+                                      ),
+                                  firstDate: DateTime(1900),
+                                  lastDate: DateTime.now(),
+                                );
+                                if (date != null) {
+                                  dialogSetState(
+                                    () => _selectedBirthDate = date,
+                                  );
+                                }
+                              },
+                              child: Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 16,
+                                ),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: Colors.grey.shade400,
+                                  ),
+                                  borderRadius: BorderRadius.circular(
+                                    8,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.calendar_today,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                    SizedBox(width: 12),
+                                    Text(
+                                      _selectedBirthDate != null
+                                          ? '${_selectedBirthDate!.day}/${_selectedBirthDate!.month}/${_selectedBirthDate!.year}'
+                                          : 'Data di Nascita',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: _selectedBirthDate != null
+                                            ? Colors.black87
+                                            : Colors.grey.shade600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        SizedBox(height: 24),
+
+                        // Address Section
+                        _buildFormSection(
+                          'Indirizzo',
+                          Icons.location_on,
+                          [
+                            _buildTextField(
+                              controller: _editAddressLineController,
+                              label: 'Indirizzo',
+                              icon: Icons.home,
+                            ),
+                            SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  flex: 2,
+                                  child: _buildTextField(
+                                    controller: _editCityController,
+                                    label: 'Città',
+                                    icon: Icons.location_city,
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildTextField(
+                                    controller: _editProvinceController,
+                                    label: 'Provincia',
+                                    icon: Icons.map,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _editCapController,
+                              label: 'CAP',
+                              icon: Icons.local_post_office,
+                              keyboardType: TextInputType.number,
+                            ),
+                          ],
+                        ),
+
+                        SizedBox(height: 24),
+
+                        // Emergency Contact Section
+                        _buildFormSection(
+                          'Contatto di Emergenza',
+                          Icons.emergency,
+                          [
+                            _buildTextField(
+                              controller: _editEmergencyContactController,
+                              label: 'Nome Contatto di Emergenza',
+                              icon: Icons.contact_emergency,
+                            ),
+                            SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _editEmergencyPhoneController,
+                              label: 'Telefono Emergenza',
+                              icon: Icons.phone_in_talk,
+                              keyboardType: TextInputType.phone,
+                            ),
+                          ],
+                        ),
+
+                        SizedBox(height: 24),
+
+                        // Parent/Guardian Section (if minor)
+                        _buildFormSection(
+                          'Informazioni Genitore/Tutore',
+                          Icons.family_restroom,
+                          [
+                            CheckboxListTile(
+                              title: Text('Utente Minorenne'),
+                              value: _isMinor,
+                              onChanged: (value) {
+                                dialogSetState(
+                                  () => _isMinor = value ?? false,
+                                );
+                              },
+                            ),
+                            if (_isMinor) ...[
+                              SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildTextField(
+                                      controller:
+                                          _editParentGuardianNameController,
+                                      label: 'Nome Genitore/Tutore',
+                                      icon: Icons.person,
+                                    ),
+                                  ),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: _buildTextField(
+                                      controller:
+                                          _editParentGuardianSurnameController,
+                                      label: 'Cognome Genitore/Tutore',
+                                      icon: Icons.person,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 16),
+                              _buildTextField(
+                                controller: _editParentGuardianEmailController,
+                                label: 'Email Genitore/Tutore',
+                                icon: Icons.email,
+                                keyboardType: TextInputType.emailAddress,
+                              ),
+                              SizedBox(height: 16),
+                              _buildTextField(
+                                controller: _editParentGuardianPhoneController,
+                                label: 'Telefono Genitore/Tutore',
+                                icon: Icons.phone,
+                                keyboardType: TextInputType.phone,
+                              ),
+                              SizedBox(height: 16),
+                              _buildTextField(
+                                controller:
+                                    _editParentGuardianCodiceFiscaleController,
+                                label: 'Codice Fiscale Genitore/Tutore',
+                                icon: Icons.credit_card,
+                              ),
+                              SizedBox(height: 16),
+                              _buildTextField(
+                                controller:
+                                    _editParentGuardianRelationController,
+                                label: 'Relazione (es. Padre, Madre, Tutore)',
+                                icon: Icons.family_restroom,
+                              ),
+                            ],
+                          ],
+                        ),
+
+                        SizedBox(height: 24),
+
+                        // Status & Settings Section
+                        _buildFormSection(
+                          'Stato & Impostazioni',
+                          Icons.settings,
+                          [
+                            Column(
+                              children: [
+                                DropdownButtonFormField<String>(
+                                  value: _selectedRole,
+                                  decoration: InputDecoration(
+                                    labelText: 'Ruolo Utente',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    prefixIcon: Icon(
+                                      Icons.admin_panel_settings,
+                                    ),
+                                  ),
+                                  items: [
+                                    DropdownMenuItem(
+                                      value: 'student',
+                                      child: Text('Studente'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'instructor',
+                                      child: Text('Istruttore'),
+                                    ),
+                                    if (isPrincipalAdmin) ...[
+                                      DropdownMenuItem(
+                                        value: 'admin',
+                                        child: Text('Amministratore'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'instructor_admin',
+                                        child: Text('Istruttore Admin'),
+                                      ),
+                                    ],
+                                  ],
+                                  onChanged: (value) {
+                                    if (value != null) {
+                                      dialogSetState(
+                                        () => _selectedRole = value,
+                                      );
+                                    }
+                                  },
+                                ),
+                                SizedBox(height: 16),
+                                DropdownButtonFormField<String>(
+                                  value: _selectedStatus,
+                                  decoration: InputDecoration(
+                                    labelText: 'Stato Account',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    prefixIcon: Icon(
+                                      Icons.check_circle,
+                                    ),
+                                  ),
+                                  items: [
+                                    DropdownMenuItem(
+                                      value: 'pending',
+                                      child: Text('In Attesa'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'approved',
+                                      child: Text('Approvato'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'rejected',
+                                      child: Text('Rifiutato'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'suspended',
+                                      child: Text('Sospeso'),
+                                    ),
+                                  ],
+                                  onChanged: (value) {
+                                    if (value != null) {
+                                      dialogSetState(
+                                        () => _selectedStatus = value,
+                                      );
+                                    }
+                                  },
+                                ),
+                                SizedBox(height: 16),
+                                DropdownButtonFormField<String>(
+                                  value: _selectedMedicalCertificateStatus,
+                                  decoration: InputDecoration(
+                                    labelText: 'Stato Certificato Medico',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    prefixIcon: Icon(
+                                      Icons.medical_services,
+                                    ),
+                                  ),
+                                  items: [
+                                    DropdownMenuItem(
+                                      value: 'pending',
+                                      child: Text('In Attesa'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'approved',
+                                      child: Text('Approvato'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'expired',
+                                      child: Text('Scaduto'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'rejected',
+                                      child: Text('Rifiutato'),
+                                    ),
+                                  ],
+                                  onChanged: (value) {
+                                    if (value != null) {
+                                      dialogSetState(
+                                        () =>
+                                            _selectedMedicalCertificateStatus =
+                                                value,
+                                      );
+                                    }
+                                  },
+                                ),
+                                SizedBox(height: 16),
+                                CheckboxListTile(
+                                  title: Text('Account Attivo'),
+                                  subtitle: Text(
+                                    'L\'utente può accedere al sistema',
+                                  ),
+                                  value: _isActive,
+                                  onChanged: (value) {
+                                    dialogSetState(
+                                      () => _isActive = value ?? true,
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Footer Actions
+                Container(
+                  padding: EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(12),
+                      bottomRight: Radius.circular(12),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                          ),
+                          child: Text('Annulla'),
+                        ),
+                      ),
+                      SizedBox(width: 16),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => _saveCompleteUserProfile(user),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                Theme.of(context).colorScheme.primary,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                          ),
+                          child: Text('Salva Modifiche'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
+        ),
+      ),
     );
+  }
+
+  Widget _buildFormSection(String title, IconData icon, List<Widget> children) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
+            SizedBox(width: 8),
+            Text(
+              title,
+              style: GoogleFonts.inter(
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 16),
+        ...children,
+      ],
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType? keyboardType,
+    int? maxLines,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines ?? 1,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        prefixIcon: Icon(icon),
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      ),
+    );
+  }
+
+  Future<void> _saveCompleteUserProfile(Map<String, dynamic> user) async {
+    try {
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(child: CircularProgressIndicator()),
+      );
+
+      final updates = <String, dynamic>{};
+
+      // Basic Info Updates
+      if (_editFullNameController.text != (user['full_name'] ?? '')) {
+        updates['full_name'] = _editFullNameController.text.trim();
+      }
+      if (_editEmailController.text != (user['email'] ?? '')) {
+        updates['email'] = _editEmailController.text.trim();
+      }
+      if (_editPhoneController.text != (user['phone'] ?? '')) {
+        updates['phone'] = _editPhoneController.text.trim().isEmpty
+            ? null
+            : _editPhoneController.text.trim();
+      }
+      if (_editCodiceFiscaleController.text != (user['codice_fiscale'] ?? '')) {
+        updates['codice_fiscale'] =
+            _editCodiceFiscaleController.text.trim().isEmpty
+                ? null
+                : _editCodiceFiscaleController.text.trim();
+      }
+
+      // Birth Date
+      if (_selectedBirthDate != null) {
+        final currentBirthDate = user['birth_date'] != null
+            ? DateTime.tryParse(user['birth_date'])
+            : null;
+        if (currentBirthDate == null ||
+            !_selectedBirthDate!.isAtSameMomentAs(currentBirthDate)) {
+          updates['birth_date'] =
+              _selectedBirthDate!.toIso8601String().split('T')[0];
+        }
+      }
+
+      // Address Updates
+      if (_editAddressLineController.text != (user['address_line'] ?? '')) {
+        updates['address_line'] = _editAddressLineController.text.trim().isEmpty
+            ? null
+            : _editAddressLineController.text.trim();
+      }
+      if (_editCityController.text != (user['city'] ?? '')) {
+        updates['city'] = _editCityController.text.trim().isEmpty
+            ? null
+            : _editCityController.text.trim();
+      }
+      if (_editProvinceController.text != (user['province'] ?? '')) {
+        updates['province'] = _editProvinceController.text.trim().isEmpty
+            ? null
+            : _editProvinceController.text.trim();
+      }
+      if (_editCapController.text != (user['cap'] ?? '')) {
+        updates['cap'] = _editCapController.text.trim().isEmpty
+            ? null
+            : _editCapController.text.trim();
+      }
+
+      // Emergency Contact Updates
+      if (_editEmergencyContactController.text !=
+          (user['emergency_contact'] ?? '')) {
+        updates['emergency_contact'] =
+            _editEmergencyContactController.text.trim().isEmpty
+                ? null
+                : _editEmergencyContactController.text.trim();
+      }
+      if (_editEmergencyPhoneController.text !=
+          (user['emergency_phone'] ?? '')) {
+        updates['emergency_phone'] =
+            _editEmergencyPhoneController.text.trim().isEmpty
+                ? null
+                : _editEmergencyPhoneController.text.trim();
+      }
+
+      // Minor status and Parent/Guardian Info
+      if (_isMinor != (user['is_minor'] ?? false)) {
+        updates['is_minor'] = _isMinor;
+      }
+
+      if (_isMinor) {
+        if (_editParentGuardianNameController.text !=
+            (user['parent_guardian_name'] ?? '')) {
+          updates['parent_guardian_name'] =
+              _editParentGuardianNameController.text.trim().isEmpty
+                  ? null
+                  : _editParentGuardianNameController.text.trim();
+        }
+        if (_editParentGuardianSurnameController.text !=
+            (user['parent_guardian_surname'] ?? '')) {
+          updates['parent_guardian_surname'] =
+              _editParentGuardianSurnameController.text.trim().isEmpty
+                  ? null
+                  : _editParentGuardianSurnameController.text.trim();
+        }
+        if (_editParentGuardianEmailController.text !=
+            (user['parent_guardian_email'] ?? '')) {
+          updates['parent_guardian_email'] =
+              _editParentGuardianEmailController.text.trim().isEmpty
+                  ? null
+                  : _editParentGuardianEmailController.text.trim();
+        }
+        if (_editParentGuardianPhoneController.text !=
+            (user['parent_guardian_phone'] ?? '')) {
+          updates['parent_guardian_phone'] =
+              _editParentGuardianPhoneController.text.trim().isEmpty
+                  ? null
+                  : _editParentGuardianPhoneController.text.trim();
+        }
+        if (_editParentGuardianCodiceFiscaleController.text !=
+            (user['parent_guardian_codice_fiscale'] ?? '')) {
+          updates['parent_guardian_codice_fiscale'] =
+              _editParentGuardianCodiceFiscaleController.text.trim().isEmpty
+                  ? null
+                  : _editParentGuardianCodiceFiscaleController.text.trim();
+        }
+        if (_editParentGuardianRelationController.text !=
+            (user['parent_guardian_relation'] ?? '')) {
+          updates['parent_guardian_relation'] =
+              _editParentGuardianRelationController.text.trim().isEmpty
+                  ? null
+                  : _editParentGuardianRelationController.text.trim();
+        }
+      } else {
+        // Clear parent/guardian fields if not minor
+        updates['parent_guardian_name'] = null;
+        updates['parent_guardian_surname'] = null;
+        updates['parent_guardian_email'] = null;
+        updates['parent_guardian_phone'] = null;
+        updates['parent_guardian_codice_fiscale'] = null;
+        updates['parent_guardian_relation'] = null;
+      }
+
+      // Status & Settings Updates
+      if (_selectedRole != (user['role'] ?? 'student')) {
+        updates['role'] = _selectedRole;
+      }
+      if (_selectedStatus != (user['status'] ?? 'approved')) {
+        updates['status'] = _selectedStatus;
+      }
+      if (_selectedMedicalCertificateStatus !=
+          (user['medical_certificate_status'] ?? 'pending')) {
+        updates['medical_certificate_status'] =
+            _selectedMedicalCertificateStatus;
+      }
+      if (_isActive != (user['is_active'] ?? true)) {
+        updates['is_active'] = _isActive;
+      }
+
+      // Close loading dialog
+      Navigator.pop(context);
+
+      if (updates.isNotEmpty) {
+        // Close edit dialog
+        Navigator.pop(context);
+
+        // Apply updates
+        await _updateUserProfile(user['id'], updates);
+      } else {
+        // No changes made
+        Navigator.pop(context);
+        _showSuccessMessage('Nessuna modifica da salvare');
+      }
+    } catch (e) {
+      // Close loading dialog if still open
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+      print('Error saving complete user profile: $e');
+      _showErrorMessage('Errore nel salvataggio: ${e.toString()}');
+    }
   }
 
   void _showPromotionDialog(Map<String, dynamic> user) {
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(
-              'Gestisci Ruolo Utente',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Gestisci Ruolo Utente',
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Seleziona il nuovo ruolo per ${user['full_name']}:',
+              style: GoogleFonts.inter(fontSize: 14),
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Seleziona il nuovo ruolo per ${user['full_name']}:',
-                  style: GoogleFonts.inter(fontSize: 14),
-                ),
-                SizedBox(height: 16),
-                ...[
-                  'student',
-                  'instructor',
-                  'admin',
-                  if (isPrincipalAdmin) 'instructor_admin',
-                ].map(
-                  (role) => ListTile(
-                    title: Text(_getRoleLabel(role)),
-                    leading: Icon(_getRoleIcon(role)),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _promoteUser(user['id'], role);
-                    },
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Annulla'),
+            SizedBox(height: 16),
+            ...[
+              'student',
+              'instructor',
+              'admin',
+              if (isPrincipalAdmin) 'instructor_admin',
+            ].map(
+              (role) => ListTile(
+                title: Text(_getRoleLabel(role)),
+                leading: Icon(_getRoleIcon(role)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _promoteUser(user['id'], role);
+                },
               ),
-            ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Annulla'),
           ),
+        ],
+      ),
     );
   }
 

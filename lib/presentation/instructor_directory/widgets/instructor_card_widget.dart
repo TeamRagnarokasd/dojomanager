@@ -1,10 +1,13 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
+import '../../../services/instructor_service.dart';
+import '../../../theme/app_theme.dart';
 
 class InstructorCardWidget extends StatelessWidget {
-  final Map<String, dynamic> instructor;
+  final InstructorProfile instructor;
   final VoidCallback onTap;
   final bool canEdit;
   final VoidCallback? onEdit;
@@ -13,197 +16,236 @@ class InstructorCardWidget extends StatelessWidget {
     super.key,
     required this.instructor,
     required this.onTap,
-    required this.canEdit,
+    this.canEdit = false,
     this.onEdit,
   });
 
   @override
   Widget build(BuildContext context) {
-    final primaryDiscipline = instructor['primaryDiscipline'] as String;
-    final disciplineColor = _getDisciplineColor(primaryDiscipline);
-
     return GestureDetector(
       onTap: onTap,
-      child: Card(
-        color: Colors.grey[900],
-        shape: RoundedRectangleBorder(
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey[900],
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: disciplineColor.withValues(alpha: 0.3),
+          border: Border.all(
+            color: instructor.isActive
+                ? const Color(0xFFFF0000).withValues(alpha: 0.3)
+                : Colors.grey[800]!,
             width: 1,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.5),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Profile image with discipline indicator
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(16)),
-                  child: CustomImageWidget(
-                    imageUrl: instructor['profileImage'],
-                    height: 20.h,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
+            // Profile Image Section
+            Expanded(
+              flex: 3,
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
                   ),
+                  color: Colors.grey[800],
                 ),
-                Positioned(
-                  top: 3.w,
-                  right: 3.w,
-                  child: Container(
-                    padding:
-                        EdgeInsets.symmetric(horizontal: 2.w, vertical: 1.w),
-                    decoration: BoxDecoration(
-                      color: disciplineColor,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.5),
-                          blurRadius: 4,
-                        ),
-                      ],
-                    ),
-                    child: Text(
-                      primaryDiscipline,
-                      style: AppTheme.lightTheme.textTheme.labelSmall?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
                   ),
-                ),
-                if (canEdit && onEdit != null)
-                  Positioned(
-                    top: 3.w,
-                    left: 3.w,
-                    child: GestureDetector(
-                      onTap: onEdit,
-                      child: Container(
-                        padding: EdgeInsets.all(2.w),
-                        decoration: BoxDecoration(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Profile Image
+                      instructor.displayImageUrl != null
+                          ? CachedNetworkImage(
+                              imageUrl: instructor.displayImageUrl!,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => Container(
+                                color: Colors.grey[800],
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        const Color(0xFFFF0000)),
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              ),
+                              errorWidget: (context, url, error) =>
+                                  _buildPlaceholderImage(),
+                            )
+                          : _buildPlaceholderImage(),
+
+                      // Active/Inactive Overlay
+                      if (!instructor.isActive)
+                        Container(
                           color: Colors.black.withValues(alpha: 0.7),
-                          shape: BoxShape.circle,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.pause_circle_outline,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
+                                SizedBox(height: 1.h),
+                                Text(
+                                  'Non Attivo',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12.sp,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                        child: CustomIconWidget(
-                          iconName: 'edit',
-                          color: Colors.white,
-                          size: 16,
+
+                      // Edit Button (Admin Only)
+                      if (canEdit && onEdit != null)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: GestureDetector(
+                            onTap: onEdit,
+                            child: Container(
+                              padding: EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.7),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Icon(
+                                Icons.edit,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
+                    ],
                   ),
-              ],
+                ),
+              ),
             ),
 
-            // Instructor information
+            // Content Section
             Expanded(
+              flex: 2,
               child: Padding(
                 padding: EdgeInsets.all(3.w),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Name
-                    Text(
-                      instructor['name'],
-                      style:
-                          AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    SizedBox(height: 1.w),
-
-                    // Experience
-                    Row(
+                    // Name and Experience
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        CustomIconWidget(
-                          iconName: 'star',
-                          color: Colors.amber,
-                          size: 14,
-                        ),
-                        SizedBox(width: 1.w),
                         Text(
-                          instructor['experience'],
-                          style:
-                              AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                            color: Colors.grey[300],
+                          instructor.fullName ?? 'Nome non disponibile',
+                          style: AppTheme.lightTheme.textTheme.titleMedium
+                              ?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14.sp,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
+                        if (instructor.yearsExperience != null) ...[
+                          SizedBox(height: 0.5.h),
+                          Text(
+                            instructor.experienceText,
+                            style: AppTheme.lightTheme.textTheme.bodySmall
+                                ?.copyWith(
+                              color: Colors.grey[400],
+                              fontSize: 11.sp,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
-                    SizedBox(height: 2.w),
 
-                    // Disciplines chips
+                    // Disciplines
                     Wrap(
                       spacing: 1.w,
-                      runSpacing: 1.w,
-                      children: (instructor['disciplines'] as List<String>)
-                          .take(3)
-                          .map((discipline) => Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 2.w,
-                                  vertical: 0.5.w,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _getDisciplineColor(discipline)
-                                      .withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: _getDisciplineColor(discipline)
-                                        .withValues(alpha: 0.5),
-                                    width: 0.5,
-                                  ),
-                                ),
-                                child: Text(
-                                  discipline,
-                                  style: AppTheme
-                                      .lightTheme.textTheme.labelSmall
-                                      ?.copyWith(
-                                    color: _getDisciplineColor(discipline),
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ))
-                          .toList(),
+                      children:
+                          instructor.disciplines.take(2).map((discipline) {
+                        return Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 2.w,
+                            vertical: 0.5.w,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                const Color(0xFFFF0000).withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFFFF0000)
+                                  .withValues(alpha: 0.5),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: Text(
+                            discipline.toUpperCase(),
+                            style: AppTheme.lightTheme.textTheme.bodySmall
+                                ?.copyWith(
+                              color: const Color(0xFFFF0000),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 9.sp,
+                            ),
+                          ),
+                        );
+                      }).toList(),
                     ),
 
-                    const Spacer(),
-
-                    // Specializations
-                    Text(
-                      (instructor['specializations'] as List<String>)
-                          .take(2)
-                          .join(' • '),
-                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[400],
+                    // Specializations (if available)
+                    if (instructor.specializations.isNotEmpty)
+                      Text(
+                        instructor.specializations.take(2).join(' • '),
+                        style:
+                            AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[300],
+                          fontSize: 10.sp,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    SizedBox(height: 2.w),
 
-                    // View profile indicator
-                    Row(
-                      children: [
-                        Text(
+                    // View Profile Button
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.symmetric(vertical: 2.w),
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: const Color(0xFFFF0000).withValues(alpha: 0.5),
+                          width: 1,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
                           'Visualizza Profilo',
-                          style:
-                              AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                          style: AppTheme.lightTheme.textTheme.bodyMedium
+                              ?.copyWith(
                             color: const Color(0xFFFF0000),
                             fontWeight: FontWeight.w600,
+                            fontSize: 11.sp,
                           ),
                         ),
-                        const Spacer(),
-                        CustomIconWidget(
-                          iconName: 'arrow_forward_ios',
-                          color: const Color(0xFFFF0000),
-                          size: 14,
-                        ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
@@ -215,18 +257,28 @@ class InstructorCardWidget extends StatelessWidget {
     );
   }
 
-  Color _getDisciplineColor(String discipline) {
-    switch (discipline) {
-      case 'BJJ':
-        return const Color(0xFF2196F3);
-      case 'MMA':
-        return const Color(0xFFFF5722);
-      case 'SAMBO':
-        return const Color(0xFF4CAF50);
-      case 'Grappling':
-        return const Color(0xFF9C27B0);
-      default:
-        return Colors.grey;
-    }
+  Widget _buildPlaceholderImage() {
+    return Container(
+      color: Colors.grey[800],
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.person,
+            size: 40,
+            color: Colors.grey[600],
+          ),
+          SizedBox(height: 1.h),
+          Text(
+            'Foto non\ndisponibile',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.grey[500],
+              fontSize: 10.sp,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

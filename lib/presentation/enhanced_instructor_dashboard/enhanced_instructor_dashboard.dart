@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/app_export.dart';
 import '../../routes/app_routes.dart';
+import '../../services/enhanced_instructor_dashboard_service.dart';
+import '../../services/supabase_service.dart';
 import './widgets/class_history_section_widget.dart';
 import './widgets/instructor_dashboard_header_widget.dart';
 import './widgets/instructor_notification_center_widget.dart';
@@ -24,8 +26,22 @@ class _EnhancedInstructorDashboardState
     extends State<EnhancedInstructorDashboard> {
   final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey =
       GlobalKey<RefreshIndicatorState>();
+
+  final EnhancedInstructorDashboardService _dashboardService =
+      EnhancedInstructorDashboardService.instance;
+
   bool _isLoading = false;
   int _selectedIndex = 0;
+
+  // Dashboard data
+  Map<String, dynamic>? _instructorProfile;
+  List<Map<String, dynamic>> _todaySchedule = [];
+  List<Map<String, dynamic>> _upcomingClasses = [];
+  List<Map<String, dynamic>> _recentPayments = [];
+  Map<String, dynamic> _revenueAnalytics = {};
+  Map<String, dynamic> _studentProgressSummary = {};
+  List<Map<String, dynamic>> _classHistory = [];
+  List<Map<String, dynamic>> _notifications = [];
 
   @override
   void initState() {
@@ -35,25 +51,89 @@ class _EnhancedInstructorDashboardState
 
   Future<void> _initializeInstructorDashboard() async {
     setState(() => _isLoading = true);
+
     try {
-      // Initialize instructor dashboard data
-      await Future.delayed(const Duration(milliseconds: 800));
+      final userId = SupabaseService.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        _navigateToLogin();
+        return;
+      }
+
+      await _loadDashboardData(userId);
     } catch (e) {
       print('Instructor dashboard initialization error: $e');
+      _showErrorSnackBar('Errore caricamento dashboard: ${e.toString()}');
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadDashboardData(String userId) async {
+    try {
+      // Load all dashboard data concurrently
+      final futures = await Future.wait([
+        _dashboardService.getInstructorProfile(userId),
+        _dashboardService.getTodaySchedule(userId),
+        _dashboardService.getUpcomingClasses(userId),
+        _dashboardService.getRecentPayments(limit: 5),
+        _dashboardService.getRevenueAnalytics(),
+        _dashboardService.getStudentProgressSummary(),
+        _dashboardService.getClassHistory(userId, limit: 5),
+        _dashboardService.getInstructorNotifications(userId, limit: 5),
+      ]);
+
+      if (mounted) {
+        setState(() {
+          _instructorProfile = futures[0] as Map<String, dynamic>?;
+          _todaySchedule = futures[1] as List<Map<String, dynamic>>;
+          _upcomingClasses = futures[2] as List<Map<String, dynamic>>;
+          _recentPayments = futures[3] as List<Map<String, dynamic>>;
+          _revenueAnalytics = futures[4] as Map<String, dynamic>;
+          _studentProgressSummary = futures[5] as Map<String, dynamic>;
+          _classHistory = futures[6] as List<Map<String, dynamic>>;
+          _notifications = futures[7] as List<Map<String, dynamic>>;
+        });
+      }
+    } catch (e) {
+      print('Error loading dashboard data: $e');
+      throw Exception('Caricamento dati fallito');
     }
   }
 
   Future<void> _onRefresh() async {
     HapticFeedback.lightImpact();
     setState(() => _isLoading = true);
+
     try {
-      await Future.delayed(const Duration(milliseconds: 1200));
-    } catch (e) {
-      print('Refresh error: $e');
+      final userId = SupabaseService.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        await _loadDashboardData(userId);
+      }
+    } catch (error) {
+      print('Refresh error: $error');
+      _showErrorSnackBar('Errore aggiornamento dati');
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _navigateToLogin() {
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      AppRoutes.login,
+      (route) => false,
+    );
+  }
+
+  void _showErrorSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
 
@@ -63,7 +143,7 @@ class _EnhancedInstructorDashboardState
 
     switch (index) {
       case 0:
-        // Stay on instructor dashboard
+        // Already on instructor dashboard
         break;
       case 1:
         Navigator.pushNamed(context, AppRoutes.classSchedule);
@@ -116,13 +196,12 @@ class _EnhancedInstructorDashboardState
             ),
             const SizedBox(height: 24),
             _buildQuickActionItem(
-                'Crea Nuova Classe', Icons.add_circle_outline, isDark),
-            _buildQuickActionItem(
-                'Aggiorna Progresso Studente', Icons.trending_up, isDark),
+                'Visualizza Programma Classi', Icons.calendar_today, isDark),
+            _buildQuickActionItem('Gestisci Studenti', Icons.group, isDark),
             _buildQuickActionItem(
                 'Registra Presenze', Icons.check_circle_outline, isDark),
             _buildQuickActionItem(
-                'Invia Messaggio', Icons.message_outlined, isDark),
+                'Invia Comunicazione', Icons.message_outlined, isDark),
           ],
         ),
       ),
@@ -157,10 +236,26 @@ class _EnhancedInstructorDashboardState
         ),
         onTap: () {
           Navigator.pop(context);
-          // Handle action
+          _handleQuickAction(title);
         },
       ),
     );
+  }
+
+  void _handleQuickAction(String action) {
+    switch (action) {
+      case 'Visualizza Programma Classi':
+        Navigator.pushNamed(context, AppRoutes.classSchedule);
+        break;
+      case 'Gestisci Studenti':
+        Navigator.pushNamed(context, AppRoutes.instructorDirectory);
+        break;
+      case 'Registra Presenze':
+        // Navigate to attendance tracking if available
+        break;
+      case 'Invia Comunicazione':
+        break;
+    }
   }
 
   @override
@@ -181,7 +276,9 @@ class _EnhancedInstructorDashboardState
           slivers: [
             // Header
             SliverToBoxAdapter(
-              child: InstructorDashboardHeaderWidget(isLoading: _isLoading),
+              child: InstructorDashboardHeaderWidget(
+                isLoading: _isLoading,
+              ),
             ),
 
             // Main Content
@@ -190,32 +287,49 @@ class _EnhancedInstructorDashboardState
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   // Today's Classes
-                  TodaysClassesSectionWidget(isLoading: _isLoading),
+                  TodaysClassesSectionWidget(
+                    isLoading: _isLoading,
+                    onRefresh: _onRefresh,
+                  ),
 
                   const SizedBox(height: 24),
 
                   // Student Progress Management
-                  StudentProgressManagementWidget(isLoading: _isLoading),
+                  StudentProgressManagementWidget(
+                    isLoading: _isLoading,
+                    onRefresh: _onRefresh,
+                  ),
 
                   const SizedBox(height: 24),
 
                   // Revenue Analytics
-                  RevenueAnalyticsCardWidget(isLoading: _isLoading),
+                  RevenueAnalyticsCardWidget(
+                    isLoading: _isLoading,
+                    onRefresh: _onRefresh,
+                  ),
 
                   const SizedBox(height: 24),
 
                   // Quick Actions Panel
-                  QuickActionsPanelWidget(isLoading: _isLoading),
+                  QuickActionsPanelWidget(
+                    isLoading: _isLoading,
+                  ),
 
                   const SizedBox(height: 24),
 
                   // Notification Center
-                  InstructorNotificationCenterWidget(isLoading: _isLoading),
+                  InstructorNotificationCenterWidget(
+                    isLoading: _isLoading,
+                    onRefresh: _onRefresh,
+                  ),
 
                   const SizedBox(height: 24),
 
                   // Class History
-                  ClassHistorySectionWidget(isLoading: _isLoading),
+                  ClassHistorySectionWidget(
+                    isLoading: _isLoading,
+                    onRefresh: _onRefresh,
+                  ),
                 ]),
               ),
             ),
@@ -268,7 +382,7 @@ class _EnhancedInstructorDashboardState
             BottomNavigationBarItem(
               icon: Icon(Icons.people_outline),
               activeIcon: Icon(Icons.people),
-              label: 'Istruttori',
+              label: 'Studenti',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline),

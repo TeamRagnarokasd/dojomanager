@@ -26,4 +26,9 @@ class SupabaseService {
 
   // Get Supabase client
   SupabaseClient get client => Supabase.instance.client;
+
+  // Get current user ID
+  String? getCurrentUserId() {
+    return client.auth.currentUser?.id;
+  }
 }

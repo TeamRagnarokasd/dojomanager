@@ -3,10 +3,12 @@ import 'package:google_fonts/google_fonts.dart';
 
 class RevenueAnalyticsCardWidget extends StatelessWidget {
   final bool isLoading;
+  final VoidCallback? onRefresh;
 
   const RevenueAnalyticsCardWidget({
     Key? key,
     required this.isLoading,
+    this.onRefresh,
   }) : super(key: key);
 
   @override

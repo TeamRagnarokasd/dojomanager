@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import './routes/app_routes.dart';
 import './services/supabase_service.dart';
@@ -35,6 +36,16 @@ class TeamRagnarokAsdApp extends StatelessWidget {
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
           themeMode: ThemeMode.dark, // Force dark theme globally
+          locale: const Locale('it', 'IT'), // Italian locale
+          supportedLocales: const [
+            Locale('it', 'IT'),
+            Locale('en', 'US'),
+          ],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
           initialRoute: AppRoutes.login,
           routes: AppRoutes.routes,
           builder: (context, child) {

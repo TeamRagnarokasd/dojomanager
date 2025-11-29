@@ -62,18 +62,6 @@ class QuickAccessCardsWidget extends StatelessWidget {
         // Secondary Access Cards
         _buildSecondaryAccessCard(
           context,
-          title: 'Il Mio Profilo',
-          subtitle: 'Gestisci informazioni personali',
-          icon: Icons.person,
-          color: const Color(0xFF3498DB),
-          onTap: () => Navigator.pushNamed(context, '/user-profile'),
-          isDark: isDark,
-        ),
-
-        const SizedBox(height: 12),
-
-        _buildSecondaryAccessCard(
-          context,
           title: 'Certificato Medico',
           subtitle: 'Scade tra 45 giorni',
           icon: Icons.medical_services,
