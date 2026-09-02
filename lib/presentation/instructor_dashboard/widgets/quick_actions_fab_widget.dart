@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
-
 
 class QuickActionsFabWidget extends StatefulWidget {
   final VoidCallback onClassCreated;
@@ -63,7 +63,7 @@ class _QuickActionsFabWidgetState extends State<QuickActionsFabWidget>
                     ),
                     SizedBox(height: 2.h),
                     _buildActionButton(
-                      'Aggiorna Progresso',
+                      'instructor_dashboard_ui.update_progress'.tr(),
                       Icons.trending_up,
                       Colors.green,
                       _showProgressUpdateDialog,
@@ -151,7 +151,7 @@ class _QuickActionsFabWidgetState extends State<QuickActionsFabWidget>
       builder: (context) => AlertDialog(
         backgroundColor: Color(0xFF1E1E1E),
         title: Text(
-          'Crea Nuova Lezione',
+          'instructor_dashboard_ui.create_new_lesson'.tr(),
           style: GoogleFonts.inter(color: Colors.white, fontSize: 14.sp),
         ),
         content: Column(
@@ -159,7 +159,7 @@ class _QuickActionsFabWidgetState extends State<QuickActionsFabWidget>
           children: [
             _buildDialogField('Disciplina', Icons.sports_mma),
             SizedBox(height: 2.h),
-            _buildDialogField('Orario', Icons.access_time),
+            _buildDialogField('class_schedule.time'.tr(), Icons.access_time),
             SizedBox(height: 2.h),
             _buildDialogField('Livello', Icons.bar_chart),
             SizedBox(height: 2.h),
@@ -169,8 +169,8 @@ class _QuickActionsFabWidgetState extends State<QuickActionsFabWidget>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child:
-                Text('Annulla', style: GoogleFonts.inter(color: Colors.grey)),
+            child: Text('common.cancel'.tr(),
+                style: GoogleFonts.inter(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -178,13 +178,14 @@ class _QuickActionsFabWidgetState extends State<QuickActionsFabWidget>
               widget.onClassCreated();
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Nuova lezione creata con successo!'),
+                  content: Text('instructor_dashboard_ui.lesson_created'.tr()),
                   backgroundColor: Colors.green,
                 ),
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-            child: Text('Crea', style: GoogleFonts.inter(color: Colors.white)),
+            child: Text('common.create'.tr(),
+                style: GoogleFonts.inter(color: Colors.white)),
           ),
         ],
       ),
@@ -198,7 +199,7 @@ class _QuickActionsFabWidgetState extends State<QuickActionsFabWidget>
       builder: (context) => AlertDialog(
         backgroundColor: Color(0xFF1E1E1E),
         title: Text(
-          'Aggiorna Progresso Studente',
+          'instructor_dashboard_ui.update_student_progress'.tr(),
           style: GoogleFonts.inter(color: Colors.white, fontSize: 14.sp),
         ),
         content: Column(
@@ -208,7 +209,8 @@ class _QuickActionsFabWidgetState extends State<QuickActionsFabWidget>
             SizedBox(height: 2.h),
             _buildDialogField('Disciplina', Icons.sports_mma),
             SizedBox(height: 2.h),
-            _buildDialogField('Nuovo Livello/Cintura', Icons.emoji_events),
+            _buildDialogField('instructor_dashboard_ui.new_belt_level'.tr(),
+                Icons.emoji_events),
             SizedBox(height: 2.h),
             _buildDialogField('Note', Icons.note),
           ],
@@ -216,8 +218,8 @@ class _QuickActionsFabWidgetState extends State<QuickActionsFabWidget>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child:
-                Text('Annulla', style: GoogleFonts.inter(color: Colors.grey)),
+            child: Text('common.cancel'.tr(),
+                style: GoogleFonts.inter(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -225,14 +227,15 @@ class _QuickActionsFabWidgetState extends State<QuickActionsFabWidget>
               widget.onProgressUpdated();
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Progresso aggiornato con successo!'),
+                  content:
+                      Text('instructor_dashboard_ui.progress_updated'.tr()),
                   backgroundColor: Colors.green,
                 ),
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child:
-                Text('Aggiorna', style: GoogleFonts.inter(color: Colors.white)),
+            child: Text('common.update'.tr(),
+                style: GoogleFonts.inter(color: Colors.white)),
           ),
         ],
       ),
@@ -246,15 +249,16 @@ class _QuickActionsFabWidgetState extends State<QuickActionsFabWidget>
       builder: (context) => AlertDialog(
         backgroundColor: Color(0xFF1E1E1E),
         title: Text(
-          'Invia Messaggio',
+          'instructor_dashboard_ui.send_message'.tr(),
           style: GoogleFonts.inter(color: Colors.white, fontSize: 14.sp),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildDialogField('Destinatari', Icons.people),
+            _buildDialogField('communication.recipients'.tr(), Icons.people),
             SizedBox(height: 2.h),
-            _buildDialogField('Oggetto', Icons.subject),
+            _buildDialogField(
+                'communication.subject_label'.tr(), Icons.subject),
             SizedBox(height: 2.h),
             Container(
               height: 12.h,
@@ -262,7 +266,7 @@ class _QuickActionsFabWidgetState extends State<QuickActionsFabWidget>
                 maxLines: 5,
                 style: GoogleFonts.inter(color: Colors.white),
                 decoration: InputDecoration(
-                  labelText: 'Messaggio',
+                  labelText: 'communication.message_label'.tr(),
                   labelStyle: GoogleFonts.inter(color: Colors.grey[400]),
                   prefixIcon: Icon(Icons.message, color: Colors.orange),
                   enabledBorder: OutlineInputBorder(
@@ -281,21 +285,22 @@ class _QuickActionsFabWidgetState extends State<QuickActionsFabWidget>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child:
-                Text('Annulla', style: GoogleFonts.inter(color: Colors.grey)),
+            child: Text('common.cancel'.tr(),
+                style: GoogleFonts.inter(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Messaggio inviato con successo!'),
+                  content: Text('communication.sent_success'.tr()),
                   backgroundColor: Colors.green,
                 ),
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: Text('Invia', style: GoogleFonts.inter(color: Colors.white)),
+            child: Text('common.send'.tr(),
+                style: GoogleFonts.inter(color: Colors.white)),
           ),
         ],
       ),

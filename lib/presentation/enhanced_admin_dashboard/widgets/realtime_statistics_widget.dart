@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../services/italian_receipt_service.dart';
+import '../../../services/supabase_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/custom_icon_widget.dart';
 
 class RealtimeStatisticsWidget extends StatefulWidget {
-  final Map<String, dynamic> stats;
-
-  const RealtimeStatisticsWidget({
-    Key? key,
-    required this.stats,
-  }) : super(key: key);
+  const RealtimeStatisticsWidget({Key? key}) : super(key: key);
 
   @override
   State<RealtimeStatisticsWidget> createState() =>
@@ -20,80 +16,160 @@ class RealtimeStatisticsWidget extends StatefulWidget {
 
 class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
   bool _isLoading = true;
-
-  // 🔧 FIX 3: Real data instead of fake data
-  double _monthlyRevenue = 0.0;
-  int _totalStudents = 0;
-  int _activeSubscriptions = 0;
-  int _totalReceipts = 0;
+  Map<String, dynamic> _statistics = {};
 
   @override
   void initState() {
     super.initState();
-    _loadRealStatistics();
+    _loadStatistics();
   }
 
-  // 🎯 FIX 3: Load real statistics from non_fiscal_receipts table
-  Future<void> _loadRealStatistics() async {
+  /// Calculate the most recent August 28th date relative to today
+  DateTime _getMostRecentAugust28() {
+    final now = DateTime.now();
+    DateTime august28 = DateTime(now.year, 8, 28);
+    if (now.isBefore(august28)) {
+      august28 = DateTime(now.year - 1, 8, 28);
+    }
+    return august28;
+  }
+
+  Future<void> _loadStatistics() async {
     try {
       setState(() => _isLoading = true);
 
-      // Get current month's revenue from non_fiscal_receipts
+      final client = SupabaseService.instance.client;
       final now = DateTime.now();
-      final startOfMonth = DateTime(now.year, now.month, 1);
-      final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
 
-      final receiptsResponse = await Supabase.instance.client
-          .from('non_fiscal_receipts')
-          .select('amount')
-          .gte('created_at', startOfMonth.toIso8601String())
-          .lte('created_at', endOfMonth.toIso8601String());
+      // Monthly revenue and receipt count
+      final receiptStats = await ItalianReceiptService().getMonthlyStatistics(
+        year: now.year,
+        month: now.month,
+      );
 
-      // Calculate monthly revenue
-      double monthlyRevenue = 0.0;
-      for (final receipt in receiptsResponse) {
-        monthlyRevenue += (receipt['amount'] as num).toDouble();
-      }
-
-      // Get total students (approved users with student role)
-      final studentsResponse = await Supabase.instance.client
+      // MEMBRI REGISTRATI: ALL users in user_profiles (all roles: student, instructor, staff, etc.) + active child profiles
+      final registeredResponse = await client
           .from('user_profiles')
           .select('id')
-          .eq('role', 'student')
-          .eq('status', 'approved')
-          .count();
+          .neq(
+            'role',
+            'principal_admin',
+          ); // exclude only the main admin account
+      final adultUsersCount = (registeredResponse as List).length;
 
-      final totalStudents = studentsResponse.count;
+      // Count active child profiles
+      final childProfilesResponse = await client
+          .from('child_profiles')
+          .select('id, tax_code, codice_fiscale')
+          .eq('is_active', true);
+      final childProfiles = childProfilesResponse as List;
+      final childProfilesCount = childProfiles.length;
 
-      // Get active subscriptions
-      final subsResponse = await Supabase.instance.client
-          .from('user_subscriptions')
-          .select('id')
-          .eq('is_active', true)
-          .count();
+      final registeredMembersCount = adultUsersCount + childProfilesCount;
 
-      final activeSubscriptions = subsResponse.count;
+      // Collect all child tax codes (normalized uppercase)
+      final childTaxCodes = <String>{};
+      for (final child in childProfiles) {
+        final tc = (child['tax_code'] ?? child['codice_fiscale'])
+            ?.toString()
+            .trim()
+            .toUpperCase();
+        if (tc != null && tc.isNotEmpty) {
+          childTaxCodes.add(tc);
+        }
+      }
 
-      // Get total receipts count
-      final totalReceiptsResponse = await Supabase.instance.client
+      // MEMBRI ISCRITTI: unique tax codes with 'Iscrizione Annuale' receipt from most recent Aug 28
+      final mostRecentAugust28 = _getMostRecentAugust28();
+      final annualReceipts = await client
           .from('non_fiscal_receipts')
-          .select('id')
-          .count();
+          .select('customer_tax_code')
+          .ilike('description', '%Iscrizione Annuale%')
+          .gte(
+            'issue_date',
+            mostRecentAugust28.toIso8601String().split('T')[0],
+          );
 
-      final totalReceipts = totalReceiptsResponse.count;
+      // Collect all tax codes from annual receipts (adults + children together)
+      final allAnnualTaxCodes = <String>{};
+      for (final receipt in annualReceipts) {
+        final taxCode = receipt['customer_tax_code'];
+        if (taxCode != null && taxCode.toString().trim().isNotEmpty) {
+          allAnnualTaxCodes.add(taxCode.toString().trim().toUpperCase());
+        }
+      }
+
+      // Count adults with annual subscription (tax codes NOT belonging to children)
+      int adultSubscribedCount = 0;
+      int childSubscribedCount = 0;
+      for (final tc in allAnnualTaxCodes) {
+        if (childTaxCodes.contains(tc)) {
+          childSubscribedCount++;
+        } else {
+          adultSubscribedCount++;
+        }
+      }
+
+      final subscribedMembersCount =
+          adultSubscribedCount + childSubscribedCount;
+
+      // MEMBRI ABBONATI: unique tax codes with course receipts (NOT Iscrizione Annuale) from most recent Aug 28
+      final courseReceipts = await client
+          .from('non_fiscal_receipts')
+          .select('customer_tax_code')
+          .not('description', 'ilike', '%Iscrizione Annuale%')
+          .gte(
+            'issue_date',
+            mostRecentAugust28.toIso8601String().split('T')[0],
+          );
+
+      final allCourseTaxCodes = <String>{};
+      for (final receipt in courseReceipts) {
+        final taxCode = receipt['customer_tax_code'];
+        if (taxCode != null && taxCode.toString().trim().isNotEmpty) {
+          allCourseTaxCodes.add(taxCode.toString().trim().toUpperCase());
+        }
+      }
+
+      // Count adults and children with course subscriptions
+      int adultCourseCount = 0;
+      int childCourseCount = 0;
+      for (final tc in allCourseTaxCodes) {
+        if (childTaxCodes.contains(tc)) {
+          childCourseCount++;
+        } else {
+          adultCourseCount++;
+        }
+      }
+
+      final courseSubscribersCount = adultCourseCount + childCourseCount;
 
       if (mounted) {
         setState(() {
-          _monthlyRevenue = monthlyRevenue;
-          _totalStudents = totalStudents;
-          _activeSubscriptions = activeSubscriptions;
-          _totalReceipts = totalReceipts;
+          _statistics = {
+            'monthly_revenue': (receiptStats['total_revenue'] ?? 0.0)
+                .toDouble(),
+            'registered_members': registeredMembersCount,
+            'subscribed_members': subscribedMembersCount,
+            'course_subscribers': courseSubscribersCount,
+            'total_receipts': receiptStats['total_receipts'] ?? 0,
+          };
           _isLoading = false;
         });
       }
     } catch (e) {
+      print('❌ Error loading statistics: $e');
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _statistics = {
+            'monthly_revenue': 0.0,
+            'registered_members': 0,
+            'subscribed_members': 0,
+            'course_subscribers': 0,
+            'total_receipts': 0,
+          };
+        });
       }
     }
   }
@@ -130,9 +206,9 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
               SizedBox(width: 2.w),
               Text(
                 'Statistiche in Tempo Reale',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -143,27 +219,37 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
             context,
             icon: 'euro',
             label: 'Entrate Mese',
-            value: '€${_monthlyRevenue.toStringAsFixed(2)}',
+            value: '€${_statistics['monthly_revenue'].toStringAsFixed(2)}',
             color: Colors.green,
           ),
           SizedBox(height: 2.h),
 
-          // Students Card
+          // Membri Registrati
           _buildStatCard(
             context,
-            icon: 'people',
-            label: 'Studenti Attivi',
-            value: _totalStudents.toString(),
+            icon: 'how_to_reg',
+            label: 'Membri Registrati',
+            value: _statistics['registered_members'].toString(),
             color: Colors.blue,
           ),
           SizedBox(height: 2.h),
 
-          // Active Subscriptions Card
+          // Membri Iscritti (Iscrizione Annuale)
           _buildStatCard(
             context,
             icon: 'card_membership',
-            label: 'Abbonamenti Attivi',
-            value: _activeSubscriptions.toString(),
+            label: 'Membri Iscritti',
+            value: _statistics['subscribed_members'].toString(),
+            color: Colors.teal,
+          ),
+          SizedBox(height: 2.h),
+
+          // Membri Abbonati (corsi, not annual)
+          _buildStatCard(
+            context,
+            icon: 'fitness_center',
+            label: 'Membri Abbonati',
+            value: _statistics['course_subscribers'].toString(),
             color: Colors.orange,
           ),
           SizedBox(height: 2.h),
@@ -173,7 +259,7 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
             context,
             icon: 'receipt_long',
             label: 'Ricevute Totali',
-            value: _totalReceipts.toString(),
+            value: _statistics['total_receipts'].toString(),
             color: Colors.purple,
           ),
         ],
@@ -193,10 +279,7 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withValues(alpha: 0.3),
-          width: 1,
-        ),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
       ),
       child: Row(
         children: [
@@ -220,16 +303,16 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
                 Text(
                   label,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 SizedBox(height: 0.5.h),
                 Text(
                   value,
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: color,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
                 ),
               ],
             ),

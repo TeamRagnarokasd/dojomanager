@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../services/instructor_management_service.dart';
+import '../../../core/app_export.dart';
 
 class StudentSelectionDialogWidget extends StatefulWidget {
   final VoidCallback onStudentPromoted;
@@ -59,13 +60,12 @@ class _StudentSelectionDialogWidgetState
   void _filterStudents(String query) {
     setState(() {
       _searchQuery = query;
-      _filteredStudents =
-          _students.where((student) {
-            final name = student['full_name']?.toString().toLowerCase() ?? '';
-            final email = student['email']?.toString().toLowerCase() ?? '';
-            final searchLower = query.toLowerCase();
-            return name.contains(searchLower) || email.contains(searchLower);
-          }).toList();
+      _filteredStudents = _students.where((student) {
+        final name = student['full_name']?.toString().toLowerCase() ?? '';
+        final email = student['email']?.toString().toLowerCase() ?? '';
+        final searchLower = query.toLowerCase();
+        return name.contains(searchLower) || email.contains(searchLower);
+      }).toList();
     });
   }
 
@@ -88,7 +88,8 @@ class _StudentSelectionDialogWidgetState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore nella promozione: $e'),
+            content: Text(
+                'instructor_mgmt.promote_error'.tr(namedArgs: {'error': '$e'})),
             backgroundColor: Colors.red,
           ),
         );
@@ -120,7 +121,7 @@ class _StudentSelectionDialogWidgetState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Seleziona Studente',
+                        'student_reg_ui.select_student'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -128,7 +129,7 @@ class _StudentSelectionDialogWidgetState
                         ),
                       ),
                       Text(
-                        'Promuovi uno studente a istruttore',
+                        'student_reg_ui.promote_student_subtitle'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 14,
                           color: Colors.grey[400],
@@ -155,7 +156,7 @@ class _StudentSelectionDialogWidgetState
               child: TextField(
                 style: GoogleFonts.inter(color: Colors.white),
                 decoration: InputDecoration(
-                  hintText: 'Cerca per nome o email...',
+                  hintText: 'reminders.search_name_email'.tr(),
                   hintStyle: GoogleFonts.inter(color: Colors.grey),
                   prefixIcon: const Icon(Icons.search, color: Colors.grey),
                   border: InputBorder.none,
@@ -171,95 +172,98 @@ class _StudentSelectionDialogWidgetState
 
             // Content
             Expanded(
-              child:
-                  _isLoading
-                      ? const Center(
-                        child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Color(0xFF4CAF50),
-                          ),
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFF4CAF50),
                         ),
-                      )
-                      : _error != null
+                      ),
+                    )
+                  : _error != null
                       ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              size: 48,
-                              color: Colors.red,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Errore nel caricamento studenti',
-                              style: GoogleFonts.inter(
-                                fontSize: 16,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                size: 48,
                                 color: Colors.red,
                               ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _error!,
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                color: Colors.grey,
+                              const SizedBox(height: 16),
+                              Text(
+                                'student_reg_ui.load_students_error'.tr(),
+                                style: GoogleFonts.inter(
+                                  fontSize: 16,
+                                  color: Colors.red,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: _loadStudents,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF4CAF50),
+                              const SizedBox(height: 8),
+                              Text(
+                                _error!,
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
                               ),
-                              child: Text(
-                                'Riprova',
-                                style: GoogleFonts.inter(color: Colors.white),
+                              const SizedBox(height: 16),
+                              ElevatedButton(
+                                onPressed: _loadStudents,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF4CAF50),
+                                ),
+                                child: Text(
+                                  'common.retry'.tr(),
+                                  style: GoogleFonts.inter(color: Colors.white),
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      )
+                            ],
+                          ),
+                        )
                       : _filteredStudents.isEmpty
-                      ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.person_search,
-                              size: 64,
-                              color: Colors.grey[600],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              _searchQuery.isEmpty
-                                  ? 'Nessuno studente approvato'
-                                  : 'Nessun risultato trovato',
-                              style: GoogleFonts.inter(
-                                fontSize: 18,
-                                color: Colors.grey[600],
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.person_search,
+                                    size: 64,
+                                    color: Colors.grey[600],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _searchQuery.isEmpty
+                                        ? 'student_reg_ui.no_approved_students'
+                                            .tr()
+                                        : 'student_reg_ui.no_search_results'
+                                            .tr(),
+                                    style: GoogleFonts.inter(
+                                      fontSize: 18,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                  Text(
+                                    _searchQuery.isEmpty
+                                        ? 'student_reg_ui.no_students_to_promote'
+                                            .tr()
+                                        : 'student_reg_ui.try_different_search'
+                                            .tr(),
+                                    style: GoogleFonts.inter(
+                                      fontSize: 14,
+                                      color: Colors.grey[700],
+                                    ),
+                                  ),
+                                ],
                               ),
+                            )
+                          : ListView.builder(
+                              itemCount: _filteredStudents.length,
+                              itemBuilder: (context, index) {
+                                final student = _filteredStudents[index];
+                                return _buildStudentCard(student);
+                              },
                             ),
-                            Text(
-                              _searchQuery.isEmpty
-                                  ? 'Non ci sono studenti approvati da promuovere'
-                                  : 'Prova con un termine di ricerca diverso',
-                              style: GoogleFonts.inter(
-                                fontSize: 14,
-                                color: Colors.grey[700],
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                      : ListView.builder(
-                        itemCount: _filteredStudents.length,
-                        itemBuilder: (context, index) {
-                          final student = _filteredStudents[index];
-                          return _buildStudentCard(student);
-                        },
-                      ),
             ),
 
             // Footer Info
@@ -278,7 +282,7 @@ class _StudentSelectionDialogWidgetState
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'La promozione cambierà automaticamente il ruolo dello studente',
+                        'student_reg_ui.promotion_auto_role'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 12,
                           color: Colors.grey[400],
@@ -325,31 +329,11 @@ class _StudentSelectionDialogWidgetState
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(23),
-                    child:
-                        student['profile_image_url'] != null
-                            ? CachedNetworkImage(
-                              imageUrl: student['profile_image_url'],
-                              fit: BoxFit.cover,
-                              placeholder:
-                                  (context, url) => Container(
-                                    color: const Color(0xFF3A3A3A),
-                                    child: const Icon(
-                                      Icons.person,
-                                      color: Colors.grey,
-                                      size: 25,
-                                    ),
-                                  ),
-                              errorWidget:
-                                  (context, url, error) => Container(
-                                    color: const Color(0xFF3A3A3A),
-                                    child: const Icon(
-                                      Icons.person,
-                                      color: Colors.grey,
-                                      size: 25,
-                                    ),
-                                  ),
-                            )
-                            : Container(
+                    child: student['profile_image_url'] != null
+                        ? CachedNetworkImage(
+                            imageUrl: student['profile_image_url'],
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
                               color: const Color(0xFF3A3A3A),
                               child: const Icon(
                                 Icons.person,
@@ -357,6 +341,23 @@ class _StudentSelectionDialogWidgetState
                                 size: 25,
                               ),
                             ),
+                            errorWidget: (context, url, error) => Container(
+                              color: const Color(0xFF3A3A3A),
+                              child: const Icon(
+                                Icons.person,
+                                color: Colors.grey,
+                                size: 25,
+                              ),
+                            ),
+                          )
+                        : Container(
+                            color: const Color(0xFF3A3A3A),
+                            child: const Icon(
+                              Icons.person,
+                              color: Colors.grey,
+                              size: 25,
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -367,7 +368,8 @@ class _StudentSelectionDialogWidgetState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        student['full_name'] ?? 'Nome non disponibile',
+                        student['full_name'] ??
+                            'registration_mgmt.name_unavailable'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -375,7 +377,7 @@ class _StudentSelectionDialogWidgetState
                         ),
                       ),
                       Text(
-                        student['email'] ?? 'Email non disponibile',
+                        student['email'] ?? 'common.not_available'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 12,
                           color: Colors.grey[400],
@@ -383,7 +385,9 @@ class _StudentSelectionDialogWidgetState
                       ),
                       if (student['created_at'] != null)
                         Text(
-                          'Iscritto: ${_formatDate(student['created_at'])}',
+                          'student_reg_ui.enrolled_on'.tr(namedArgs: {
+                            'date': _formatDate(student['created_at']),
+                          }),
                           style: GoogleFonts.inter(
                             fontSize: 11,
                             color: Colors.grey[500],
@@ -412,80 +416,81 @@ class _StudentSelectionDialogWidgetState
       final date = DateTime.parse(dateString);
       return '${date.day}/${date.month}/${date.year}';
     } catch (e) {
-      return 'Data non valida';
+      return 'student_reg_ui.invalid_date'.tr();
     }
   }
 
   Future<void> _showPromotionConfirmation(Map<String, dynamic> student) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: const Color(0xFF2A2A2A),
-            title: Text(
-              'Conferma Promozione',
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: Text(
+          'student_reg_ui.confirm_promotion'.tr(),
+          style: GoogleFonts.inter(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'student_reg_ui.promote_confirm_message'.tr(namedArgs: {
+                'name': '${student['full_name']}',
+              }),
+              style: GoogleFonts.inter(color: Colors.grey[300]),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'student_reg_ui.what_will_happen'.tr(),
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '• Il ruolo cambierà da "student" a "instructor"',
+              style: GoogleFonts.inter(
+                color: Colors.grey[400],
+                fontSize: 12,
+              ),
+            ),
+            Text(
+              '• Verrà creato un profilo istruttore',
+              style: GoogleFonts.inter(
+                color: Colors.grey[400],
+                fontSize: 12,
+              ),
+            ),
+            Text(
+              '• Avrà accesso al dashboard istruttore',
+              style: GoogleFonts.inter(
+                color: Colors.grey[400],
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'common.cancel'.tr(),
+              style: GoogleFonts.inter(color: Colors.grey),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF4CAF50),
+            ),
+            child: Text(
+              'student_reg_ui.promote'.tr(),
               style: GoogleFonts.inter(color: Colors.white),
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Vuoi promuovere ${student['full_name']} a istruttore?',
-                  style: GoogleFonts.inter(color: Colors.grey[300]),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Cosa succederà:',
-                  style: GoogleFonts.inter(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '• Il ruolo cambierà da "student" a "instructor"',
-                  style: GoogleFonts.inter(
-                    color: Colors.grey[400],
-                    fontSize: 12,
-                  ),
-                ),
-                Text(
-                  '• Verrà creato un profilo istruttore',
-                  style: GoogleFonts.inter(
-                    color: Colors.grey[400],
-                    fontSize: 12,
-                  ),
-                ),
-                Text(
-                  '• Avrà accesso al dashboard istruttore',
-                  style: GoogleFonts.inter(
-                    color: Colors.grey[400],
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text(
-                  'Annulla',
-                  style: GoogleFonts.inter(color: Colors.grey),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4CAF50),
-                ),
-                child: Text(
-                  'Promuovi',
-                  style: GoogleFonts.inter(color: Colors.white),
-                ),
-              ),
-            ],
           ),
+        ],
+      ),
     );
 
     if (confirmed == true) {

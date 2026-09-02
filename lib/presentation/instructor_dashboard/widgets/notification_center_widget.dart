@@ -3,6 +3,7 @@ import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../constants/app_constants.dart';
+import '../../../core/app_export.dart';
 
 class NotificationCenterWidget extends StatefulWidget {
   final bool isFullScreen;
@@ -264,7 +265,7 @@ class _NotificationCenterWidgetState extends State<NotificationCenterWidget> {
                       children: [
                         Icon(Icons.delete, color: Colors.red, size: 4.w),
                         SizedBox(width: 2.w),
-                        Text('Elimina',
+                        Text('common.delete'.tr(),
                             style: GoogleFonts.inter(color: Colors.white)),
                       ],
                     ),
@@ -323,7 +324,7 @@ class _NotificationCenterWidgetState extends State<NotificationCenterWidget> {
   void _handleBookingNotification(Map<String, dynamic> notification) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Visualizza dettagli prenotazione'),
+        content: Text('instructor_dashboard_ui.booking_details'.tr()),
         backgroundColor: Colors.green,
       ),
     );
@@ -332,7 +333,7 @@ class _NotificationCenterWidgetState extends State<NotificationCenterWidget> {
   void _handleCertificateNotification(Map<String, dynamic> notification) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Gestione certificati medici'),
+        content: Text('instructor_dashboard_ui.medical_certs'.tr()),
         backgroundColor: Colors.orange,
       ),
     );
@@ -341,7 +342,7 @@ class _NotificationCenterWidgetState extends State<NotificationCenterWidget> {
   void _handleAdminNotification(Map<String, dynamic> notification) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Messaggio amministrazione'),
+        content: Text('instructor_dashboard_ui.admin_message'.tr()),
         backgroundColor: Colors.red,
       ),
     );
@@ -350,7 +351,7 @@ class _NotificationCenterWidgetState extends State<NotificationCenterWidget> {
   void _handlePaymentNotification(Map<String, dynamic> notification) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Dettagli pagamento'),
+        content: Text('instructor_dashboard_ui.payment_details'.tr()),
         backgroundColor: Colors.blue,
       ),
     );
@@ -359,7 +360,7 @@ class _NotificationCenterWidgetState extends State<NotificationCenterWidget> {
   void _handleAchievementNotification(Map<String, dynamic> notification) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Visualizza traguardo studente'),
+        content: Text('instructor_dashboard_ui.student_milestone'.tr()),
         backgroundColor: Colors.purple,
       ),
     );

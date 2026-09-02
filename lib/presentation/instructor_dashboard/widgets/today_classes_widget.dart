@@ -4,6 +4,7 @@ import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../constants/app_constants.dart';
+import '../../../core/app_export.dart';
 
 class TodayClassesWidget extends StatefulWidget {
   const TodayClassesWidget({Key? key}) : super(key: key);
@@ -126,14 +127,14 @@ class _TodayClassesWidgetState extends State<TodayClassesWidget> {
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
               icon: Icons.message,
-              label: 'Messaggio',
+              label: 'communication.message_label'.tr(),
             ),
             SlidableAction(
               onPressed: (_) => _editClass(classData),
               backgroundColor: Colors.orange,
               foregroundColor: Colors.white,
               icon: Icons.edit,
-              label: 'Modifica',
+              label: 'profile.modify'.tr(),
               borderRadius: BorderRadius.horizontal(right: Radius.circular(8)),
             ),
           ],

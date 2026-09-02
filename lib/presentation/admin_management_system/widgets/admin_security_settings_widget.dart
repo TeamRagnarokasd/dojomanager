@@ -4,7 +4,6 @@ import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
 import '../../../services/supabase_service.dart';
-import '../../../theme/app_theme.dart';
 
 class AdminSecuritySettingsWidget extends StatefulWidget {
   const AdminSecuritySettingsWidget({super.key});
@@ -54,7 +53,7 @@ class _AdminSecuritySettingsWidgetState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore caricamento dati sicurezza: $error'),
+            content: Text('admin_management.security_load_error'.tr()),
             backgroundColor: Colors.red,
           ),
         );
@@ -68,13 +67,12 @@ class _AdminSecuritySettingsWidgetState
 
       await client
           .from('admin_sessions')
-          .update({'is_active': false})
-          .eq('id', sessionId);
+          .update({'is_active': false}).eq('id', sessionId);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Sessione terminata con successo'),
+          SnackBar(
+            content: Text('admin_management.session_ended'.tr()),
             backgroundColor: Colors.green,
           ),
         );
@@ -85,7 +83,7 @@ class _AdminSecuritySettingsWidgetState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore terminazione sessione: $error'),
+            content: Text('admin_management.end_session_error'.tr()),
             backgroundColor: Colors.red,
           ),
         );
@@ -96,41 +94,40 @@ class _AdminSecuritySettingsWidgetState
   Future<void> _terminateAllSessions() async {
     final confirmResult = await showDialog<bool>(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(
-              'Conferma Terminazione',
-              style: GoogleFonts.inter(
-                fontSize: 18.sp,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            content: Text(
-              'Sei sicuro di voler terminare tutte le sessioni attive? '
-              'Dovrai effettuare nuovamente l\'accesso su tutti i dispositivi.',
-              style: GoogleFonts.inter(fontSize: 16.sp),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text(
-                  'Annulla',
-                  style: GoogleFonts.inter(color: Colors.grey[600]),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                ),
-                child: Text(
-                  'Termina Tutto',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w500),
-                ),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: Text(
+          'admin_management.confirm_termination'.tr(),
+          style: GoogleFonts.inter(
+            fontSize: 18.sp,
+            fontWeight: FontWeight.bold,
           ),
+        ),
+        content: Text(
+          'Sei sicuro di voler terminare tutte le sessioni attive? '
+          'Dovrai effettuare nuovamente l\'accesso su tutti i dispositivi.',
+          style: GoogleFonts.inter(fontSize: 16.sp),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'common.cancel'.tr(),
+              style: GoogleFonts.inter(color: Colors.grey[600]),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(
+              'Termina Tutto',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
     );
 
     if (confirmResult != true) return;
@@ -149,8 +146,8 @@ class _AdminSecuritySettingsWidgetState
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Tutte le sessioni sono state terminate'),
+          SnackBar(
+            content: Text('admin_management.all_sessions_ended'.tr()),
             backgroundColor: Colors.green,
           ),
         );
@@ -161,7 +158,7 @@ class _AdminSecuritySettingsWidgetState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore terminazione sessioni: $error'),
+            content: Text('admin_management.end_sessions_error'.tr()),
             backgroundColor: Colors.red,
           ),
         );
@@ -215,7 +212,7 @@ class _AdminSecuritySettingsWidgetState
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Sicurezza Account',
+                              'profile.account_security_title'.tr(),
                               style: GoogleFonts.inter(
                                 fontSize: 18.sp,
                                 fontWeight: FontWeight.bold,
@@ -223,7 +220,7 @@ class _AdminSecuritySettingsWidgetState
                               ),
                             ),
                             Text(
-                              'Il tuo account è protetto',
+                              'admin_management.account_protected'.tr(),
                               style: GoogleFonts.inter(
                                 fontSize: 14.sp,
                                 color: Colors.grey[600],
@@ -276,8 +273,8 @@ class _AdminSecuritySettingsWidgetState
                         SnackBar(
                           content: Text(
                             value
-                                ? '2FA sarà configurato nel prossimo aggiornamento'
-                                : '2FA disabilitato',
+                                ? 'admin_management.2fa_next_update'.tr()
+                                : 'profile.2fa_deactivated'.tr(),
                           ),
                           backgroundColor: AppTheme.primaryColor,
                         ),
@@ -378,7 +375,7 @@ class _AdminSecuritySettingsWidgetState
                           ),
                           SizedBox(height: 8.h),
                           Text(
-                            'Nessuna sessione attiva monitorata',
+                            'common.no_sessions'.tr(),
                             style: GoogleFonts.inter(
                               fontSize: 14.sp,
                               color: Colors.grey[600],
@@ -433,8 +430,8 @@ class _AdminSecuritySettingsWidgetState
                       // In a real app, you would navigate to change password screen
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: const Text(
-                            'Funzionalità cambio password disponibile nel prossimo aggiornamento',
+                          content: Text(
+                            'admin_management.password_change_next_update'.tr(),
                           ),
                           backgroundColor: AppTheme.primaryColor,
                         ),
@@ -442,7 +439,7 @@ class _AdminSecuritySettingsWidgetState
                     },
                     icon: const Icon(Icons.lock_reset, size: 16),
                     label: Text(
-                      'Cambia Password',
+                      'profile.change_password'.tr(),
                       style: GoogleFonts.inter(
                         fontSize: 14.sp,
                         fontWeight: FontWeight.w500,
@@ -509,7 +506,7 @@ class _AdminSecuritySettingsWidgetState
         Switch(
           value: value,
           onChanged: onChanged,
-          activeColor: AppTheme.primaryColor,
+          activeThumbColor: AppTheme.primaryColor,
         ),
       ],
     );
@@ -518,24 +515,21 @@ class _AdminSecuritySettingsWidgetState
   Widget _buildSessionCard(Map<String, dynamic> session) {
     final createdAt = DateTime.parse(session['created_at'] as String);
     final expiresAt = DateTime.parse(session['expires_at'] as String);
-    final isCurrentSession =
-        session['session_token'] ==
+    final isCurrentSession = session['session_token'] ==
         SupabaseService.instance.client.auth.currentSession?.accessToken;
 
     return Container(
       margin: EdgeInsets.only(bottom: 12.h),
       padding: EdgeInsets.all(12.sp),
       decoration: BoxDecoration(
-        color:
-            isCurrentSession
-                ? AppTheme.primaryColor.withAlpha(26)
-                : Colors.grey[50],
+        color: isCurrentSession
+            ? AppTheme.primaryColor.withAlpha(26)
+            : Colors.grey[50],
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color:
-              isCurrentSession
-                  ? AppTheme.primaryColor.withAlpha(77)
-                  : Colors.grey[300]!,
+          color: isCurrentSession
+              ? AppTheme.primaryColor.withAlpha(77)
+              : Colors.grey[300]!,
         ),
       ),
       child: Column(
@@ -556,10 +550,9 @@ class _AdminSecuritySettingsWidgetState
                   style: GoogleFonts.inter(
                     fontSize: 14.sp,
                     fontWeight: FontWeight.w500,
-                    color:
-                        isCurrentSession
-                            ? AppTheme.primaryColor
-                            : Colors.grey[800],
+                    color: isCurrentSession
+                        ? AppTheme.primaryColor
+                        : Colors.grey[800],
                   ),
                 ),
               ),
@@ -601,12 +594,11 @@ class _AdminSecuritySettingsWidgetState
             'Scade: ${_formatDateTime(expiresAt)}',
             style: GoogleFonts.inter(
               fontSize: 12.sp,
-              color:
-                  expiresAt.isBefore(
-                        DateTime.now().add(const Duration(days: 1)),
-                      )
-                      ? Colors.orange[800]
-                      : Colors.grey[600],
+              color: expiresAt.isBefore(
+                DateTime.now().add(const Duration(days: 1)),
+              )
+                  ? Colors.orange[800]
+                  : Colors.grey[600],
             ),
           ),
         ],

@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../models/receipt_model.dart';
+import '../../../core/app_export.dart';
 
 class ReceiptListWidget extends StatefulWidget {
   final List<ItalianReceiptModel> receipts;
   final Function(ItalianReceiptModel) onReceiptTap;
   final Function(ItalianReceiptModel) onGeneratePdf;
   final VoidCallback onRefresh;
+  final Future<void> Function(List<String> receiptIds, bool deleteSubscription)?
+  onDeleteReceipts;
 
   const ReceiptListWidget({
     Key? key,
@@ -15,6 +18,7 @@ class ReceiptListWidget extends StatefulWidget {
     required this.onReceiptTap,
     required this.onGeneratePdf,
     required this.onRefresh,
+    this.onDeleteReceipts,
   }) : super(key: key);
 
   @override
@@ -24,14 +28,17 @@ class ReceiptListWidget extends StatefulWidget {
 class _ReceiptListWidgetState extends State<ReceiptListWidget> {
   String _searchQuery = '';
   String _selectedPaymentMethod = 'all';
+  bool _isSelectionMode = false;
+  final Set<String> _selectedIds = {};
+  bool _isDeleting = false;
 
-  final Map<String, String> _paymentMethodFilters = {
-    'all': 'Tutti i metodi',
-    'cash': 'Contanti',
-    'satispay': 'Satispay',
-    'sumup': 'SumUp',
-    'bank_transfer': 'Bonifico Bancario',
-    'credit_card': 'Carta di Credito',
+  Map<String, String> get _paymentMethodFilters => {
+    'all': 'receipt.filter_all_receipts'.tr(),
+    'cash': 'payment.cash'.tr(),
+    'satispay': 'payment.satispay'.tr(),
+    'sumup': 'payment.sumup'.tr(),
+    'bank_transfer': 'payment.bank_transfer'.tr(),
+    'credit_card': 'payment.credit_card'.tr(),
   };
 
   List<ItalianReceiptModel> get _filteredReceipts {
@@ -50,35 +57,241 @@ class _ReceiptListWidgetState extends State<ReceiptListWidget> {
     }).toList();
   }
 
+  void _toggleSelectionMode() {
+    setState(() {
+      _isSelectionMode = !_isSelectionMode;
+      if (!_isSelectionMode) _selectedIds.clear();
+    });
+  }
+
+  void _toggleSelection(String id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
+  }
+
+  void _selectAll() {
+    setState(() {
+      if (_selectedIds.length == _filteredReceipts.length) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds.addAll(_filteredReceipts.map((r) => r.id));
+      }
+    });
+  }
+
+  Future<void> _showDeleteConfirmation() async {
+    if (_selectedIds.isEmpty) return;
+
+    final count = _selectedIds.length;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Elimina ${count == 1 ? 'ricevuta' : '$count ricevute'}',
+          style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Cosa vuoi eliminare?',
+              style: GoogleFonts.inter(fontSize: 14.sp),
+            ),
+            SizedBox(height: 8.sp),
+            Text(
+              'Eliminando anche l\'abbonamento associato, l\'utente perderà l\'accesso alle discipline acquistate.',
+              style: GoogleFonts.inter(
+                fontSize: 11.sp,
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: Text('Annulla', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'receipt_only'),
+            child: Text(
+              'Solo ricevuta',
+              style: TextStyle(color: Colors.orange.shade700),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, 'receipt_and_subscription'),
+            child: Text(
+              'Ricevuta + abbonamento',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+
+    final deleteSubscription = result == 'receipt_and_subscription';
+    final idsToDelete = List<String>.from(_selectedIds);
+
+    setState(() => _isDeleting = true);
+    try {
+      if (widget.onDeleteReceipts != null) {
+        await widget.onDeleteReceipts!(idsToDelete, deleteSubscription);
+      }
+      setState(() {
+        _selectedIds.clear();
+        _isSelectionMode = false;
+      });
+      widget.onRefresh();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              deleteSubscription
+                  ? '${count == 1 ? 'Ricevuta' : '$count ricevute'} e abbonamento eliminati'
+                  : '${count == 1 ? 'Ricevuta eliminata' : '$count ricevute eliminate'}',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore durante l\'eliminazione: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isDeleting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(16.sp),
-      child: Column(
-        children: [
-          // Filters
-          _buildFilters(),
-          SizedBox(height: 16.sp),
+    final filtered = _filteredReceipts;
+    final totalAmount = filtered.fold<double>(0, (s, r) => s + r.amount);
+    final totalVat = filtered.fold<double>(0, (s, r) => s + r.vatAmount);
 
-          // Statistics Card
-          _buildStatisticsCard(),
-          SizedBox(height: 16.sp),
-
-          // Receipts List
-          Expanded(
-            child:
-                _filteredReceipts.isEmpty
-                    ? _buildEmptyState()
-                    : RefreshIndicator(
-                      onRefresh: () async => widget.onRefresh(),
-                      child: ListView.builder(
-                        itemCount: _filteredReceipts.length,
-                        itemBuilder: (context, index) {
-                          final receipt = _filteredReceipts[index];
-                          return _buildReceiptCard(receipt);
-                        },
+    return Stack(
+      children: [
+        CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16.sp, 16.sp, 16.sp, 0),
+                child: Column(
+                  children: [
+                    // Selection mode toolbar
+                    if (_isSelectionMode) ...[
+                      _buildSelectionToolbar(filtered),
+                      SizedBox(height: 12.sp),
+                    ],
+                    // Filters
+                    _buildFilters(),
+                    SizedBox(height: 16.sp),
+                    // Statistics Card
+                    _buildStatisticsCard(filtered, totalAmount, totalVat),
+                    SizedBox(height: 16.sp),
+                  ],
+                ),
+              ),
+            ),
+            filtered.isEmpty
+                ? SliverFillRemaining(child: _buildEmptyState())
+                : SliverPadding(
+                    padding: EdgeInsets.fromLTRB(16.sp, 0, 16.sp, 100.sp),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => _buildReceiptCard(filtered[index]),
+                        childCount: filtered.length,
                       ),
                     ),
+                  ),
+          ],
+        ),
+        // FAB for selection mode toggle
+        Positioned(
+          bottom: 16.sp,
+          right: 16.sp,
+          child: _isSelectionMode
+              ? FloatingActionButton.extended(
+                  onPressed: _isDeleting ? null : _showDeleteConfirmation,
+                  backgroundColor: _selectedIds.isEmpty
+                      ? Colors.grey
+                      : Colors.red,
+                  icon: _isDeleting
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : Icon(Icons.delete, color: Colors.white),
+                  label: Text(
+                    _selectedIds.isEmpty
+                        ? 'Seleziona ricevute'
+                        : 'Elimina (${_selectedIds.length})',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                )
+              : FloatingActionButton(
+                  onPressed: _toggleSelectionMode,
+                  backgroundColor: Colors.blueGrey.shade700,
+                  mini: true,
+                  child: Icon(Icons.checklist, color: Colors.white),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSelectionToolbar(List<ItalianReceiptModel> filtered) {
+    final allSelected =
+        _selectedIds.length == filtered.length && filtered.isNotEmpty;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+      decoration: BoxDecoration(
+        color: Colors.blueGrey.shade800,
+        borderRadius: BorderRadius.circular(8.0),
+      ),
+      child: Row(
+        children: [
+          Checkbox(
+            value: allSelected,
+            tristate: _selectedIds.isNotEmpty && !allSelected,
+            onChanged: (_) => _selectAll(),
+            activeColor: Colors.white,
+            checkColor: Colors.blueGrey.shade800,
+          ),
+          Expanded(
+            child: Text(
+              _selectedIds.isEmpty
+                  ? 'Seleziona ricevute'
+                  : '${_selectedIds.length} selezionat${_selectedIds.length == 1 ? 'a' : 'e'}',
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                fontSize: 13.sp,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: _toggleSelectionMode,
+            child: Text('Annulla', style: TextStyle(color: Colors.white70)),
           ),
         ],
       ),
@@ -88,70 +301,60 @@ class _ReceiptListWidgetState extends State<ReceiptListWidget> {
   Widget _buildFilters() {
     return Column(
       children: [
-        // Search bar
         TextField(
           decoration: InputDecoration(
             hintText: 'Cerca per cliente o numero ricevuta...',
             prefixIcon: const Icon(Icons.search),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.sp),
+              borderRadius: BorderRadius.circular(8.0),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.sp),
+              borderRadius: BorderRadius.circular(8.0),
               borderSide: BorderSide(color: Colors.grey.shade300),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.sp),
+              borderRadius: BorderRadius.circular(8.0),
               borderSide: BorderSide(color: Theme.of(context).primaryColor),
             ),
           ),
           onChanged: (value) => setState(() => _searchQuery = value),
         ),
         SizedBox(height: 12.sp),
-
-        // Payment method filter
         DropdownButtonFormField<String>(
-          value: _selectedPaymentMethod,
+          initialValue: _selectedPaymentMethod,
           decoration: InputDecoration(
             labelText: 'Filtra per metodo di pagamento',
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.sp),
+              borderRadius: BorderRadius.circular(8.0),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.sp),
+              borderRadius: BorderRadius.circular(8.0),
               borderSide: BorderSide(color: Colors.grey.shade300),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.sp),
+              borderRadius: BorderRadius.circular(8.0),
               borderSide: BorderSide(color: Theme.of(context).primaryColor),
             ),
           ),
-          items:
-              _paymentMethodFilters.entries
-                  .map(
-                    (entry) => DropdownMenuItem(
-                      value: entry.key,
-                      child: Text(entry.value),
-                    ),
-                  )
-                  .toList(),
+          items: _paymentMethodFilters.entries
+              .map(
+                (entry) => DropdownMenuItem(
+                  value: entry.key,
+                  child: Text(entry.value),
+                ),
+              )
+              .toList(),
           onChanged: (value) => setState(() => _selectedPaymentMethod = value!),
         ),
       ],
     );
   }
 
-  Widget _buildStatisticsCard() {
-    final totalAmount = _filteredReceipts.fold<double>(
-      0,
-      (sum, receipt) => sum + receipt.amount,
-    );
-
-    final totalVat = _filteredReceipts.fold<double>(
-      0,
-      (sum, receipt) => sum + receipt.vatAmount,
-    );
-
+  Widget _buildStatisticsCard(
+    List<ItalianReceiptModel> filtered,
+    double totalAmount,
+    double totalVat,
+  ) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -171,7 +374,7 @@ class _ReceiptListWidgetState extends State<ReceiptListWidget> {
                 Expanded(
                   child: _buildStatItem(
                     'Totale Ricevute',
-                    _filteredReceipts.length.toString(),
+                    filtered.length.toString(),
                     Icons.receipt,
                     Colors.blue,
                   ),
@@ -212,7 +415,7 @@ class _ReceiptListWidgetState extends State<ReceiptListWidget> {
           padding: EdgeInsets.all(8.sp),
           decoration: BoxDecoration(
             color: color.withAlpha(26),
-            borderRadius: BorderRadius.circular(8.sp),
+            borderRadius: BorderRadius.circular(8.0),
           ),
           child: Icon(icon, color: color, size: 20.sp),
         ),
@@ -238,120 +441,169 @@ class _ReceiptListWidgetState extends State<ReceiptListWidget> {
   }
 
   Widget _buildReceiptCard(ItalianReceiptModel receipt) {
+    final isSelected = _selectedIds.contains(receipt.id);
     return Card(
       margin: EdgeInsets.only(bottom: 12.sp),
       elevation: 2,
+      color: isSelected ? Colors.blueGrey.shade50 : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8.0),
+        side: isSelected
+            ? BorderSide(color: Colors.blueGrey.shade400, width: 2)
+            : BorderSide.none,
+      ),
       child: InkWell(
-        onTap: () => widget.onReceiptTap(receipt),
-        borderRadius: BorderRadius.circular(8.sp),
+        onTap: () {
+          if (_isSelectionMode) {
+            _toggleSelection(receipt.id);
+          } else {
+            widget.onReceiptTap(receipt);
+          }
+        },
+        onLongPress: () {
+          if (!_isSelectionMode) {
+            setState(() => _isSelectionMode = true);
+          }
+          _toggleSelection(receipt.id);
+        },
+        borderRadius: BorderRadius.circular(8.0),
         child: Padding(
           padding: EdgeInsets.all(16.sp),
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              if (_isSelectionMode) ...[
+                Checkbox(
+                  value: isSelected,
+                  onChanged: (_) => _toggleSelection(receipt.id),
+                  activeColor: Colors.blueGrey.shade700,
+                ),
+                SizedBox(width: 4.sp),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          receipt.receiptNumber,
-                          style: GoogleFonts.inter(
-                            fontSize: 14.sp,
-                            fontWeight: FontWeight.bold,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                receipt.receiptNumber,
+                                style: GoogleFonts.inter(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: 4.sp),
+                              Text(
+                                receipt.customerName,
+                                style: GoogleFonts.inter(fontSize: 12.sp),
+                              ),
+                            ],
                           ),
                         ),
-                        SizedBox(height: 4.sp),
-                        Text(
-                          receipt.customerName,
-                          style: GoogleFonts.inter(fontSize: 12.sp),
+                        Row(
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '€${receipt.amount.toStringAsFixed(2).replaceAll('.', ',')}',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 16.sp,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green.shade700,
+                                  ),
+                                ),
+                                SizedBox(height: 4.sp),
+                                Text(
+                                  receipt.formattedIssueDate,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10.sp,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(width: 12.sp),
+                            InkWell(
+                              onTap: () => widget.onGeneratePdf(receipt),
+                              borderRadius: BorderRadius.circular(8.0),
+                              child: Container(
+                                padding: EdgeInsets.all(8.sp),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade50,
+                                  borderRadius: BorderRadius.circular(8.0),
+                                  border: Border.all(
+                                    color: Colors.red.shade200,
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.picture_as_pdf,
+                                  color: Colors.red.shade600,
+                                  size: 24.sp,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '€${receipt.amount.toStringAsFixed(2).replaceAll('.', ',')}',
-                        style: GoogleFonts.inter(
-                          fontSize: 16.sp,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green.shade700,
+                    SizedBox(height: 12.sp),
+                    Row(
+                      children: [
+                        _buildInfoChip(
+                          receipt.paymentMethodText,
+                          Icons.payment,
+                          Colors.blue,
                         ),
-                      ),
-                      SizedBox(height: 4.sp),
-                      Text(
-                        receipt.formattedIssueDate,
-                        style: GoogleFonts.inter(
-                          fontSize: 10.sp,
-                          color: Colors.grey.shade600,
+                        SizedBox(width: 8.sp),
+                        _buildInfoChip(
+                          'IVA ${receipt.vatRate}%',
+                          Icons.percent,
+                          Colors.orange,
                         ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              SizedBox(height: 12.sp),
-
-              Row(
-                children: [
-                  _buildInfoChip(
-                    receipt.paymentMethodText,
-                    Icons.payment,
-                    Colors.blue,
-                  ),
-                  SizedBox(width: 8.sp),
-                  _buildInfoChip(
-                    'IVA ${receipt.vatRate}%',
-                    Icons.percent,
-                    Colors.orange,
-                  ),
-                  const Spacer(),
-
-                  // PDF Button
-                  IconButton(
-                    onPressed: () => widget.onGeneratePdf(receipt),
-                    icon: const Icon(Icons.picture_as_pdf),
-                    color: Colors.red.shade600,
-                    tooltip: 'Genera PDF',
-                  ),
-                ],
-              ),
-
-              if (receipt.description.isNotEmpty) ...[
-                SizedBox(height: 8.sp),
-                Container(
-                  padding: EdgeInsets.all(8.sp),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(6.sp),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.description,
-                        size: 14.sp,
-                        color: Colors.grey.shade600,
-                      ),
-                      SizedBox(width: 8.sp),
-                      Expanded(
-                        child: Text(
-                          receipt.description,
-                          style: GoogleFonts.inter(
-                            fontSize: 11.sp,
-                            color: Colors.grey.shade700,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                      ],
+                    ),
+                    if (receipt.description.isNotEmpty) ...[
+                      SizedBox(height: 8.sp),
+                      Container(
+                        padding: EdgeInsets.all(8.sp),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(6.0),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.description,
+                              size: 14.sp,
+                              color: Colors.grey.shade600,
+                            ),
+                            SizedBox(width: 8.sp),
+                            Expanded(
+                              child: Text(
+                                receipt.description,
+                                style: GoogleFonts.inter(
+                                  fontSize: 11.sp,
+                                  color: Colors.grey.shade700,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ],
           ),
         ),
@@ -364,7 +616,7 @@ class _ReceiptListWidgetState extends State<ReceiptListWidget> {
       padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
       decoration: BoxDecoration(
         color: color.withAlpha(26),
-        borderRadius: BorderRadius.circular(12.sp),
+        borderRadius: BorderRadius.circular(12.0),
         border: Border.all(color: color.withAlpha(77)),
       ),
       child: Row(
@@ -393,7 +645,7 @@ class _ReceiptListWidgetState extends State<ReceiptListWidget> {
           Icon(Icons.receipt_long, size: 64.sp, color: Colors.grey.shade400),
           SizedBox(height: 16.sp),
           Text(
-            'Nessuna ricevuta trovata',
+            'receipt.no_receipts_found'.tr(),
             style: GoogleFonts.inter(
               fontSize: 18.sp,
               fontWeight: FontWeight.w500,
@@ -414,7 +666,7 @@ class _ReceiptListWidgetState extends State<ReceiptListWidget> {
           SizedBox(height: 24.sp),
           ElevatedButton(
             onPressed: widget.onRefresh,
-            child: const Text('Aggiorna'),
+            child: Text('italian_receipt.refresh'.tr()),
           ),
         ],
       ),

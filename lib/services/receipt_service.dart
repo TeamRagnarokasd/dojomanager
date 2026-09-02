@@ -68,12 +68,16 @@ class ReceiptService {
 
   // Get receipts by date range (production-ready)
   Future<List<ReceiptModel>> getReceiptsByDateRange(
-      String userId, DateTime startDate, DateTime endDate) async {
+    String userId,
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
     try {
       // Validate date range
       if (startDate.isAfter(endDate)) {
         throw Exception(
-            'La data di inizio deve essere precedente alla data di fine');
+          'La data di inizio deve essere precedente alla data di fine',
+        );
       }
 
       final response = await _client
@@ -184,9 +188,11 @@ class ReceiptService {
       // Add search filter if provided
       if (searchFilter != null && searchFilter.trim().isNotEmpty) {
         final filter = '%${searchFilter.trim()}%';
-        query = query.or('customer_name.ilike.$filter,'
-            'description.ilike.$filter,'
-            'receipt_number.ilike.$filter');
+        query = query.or(
+          'customer_name.ilike.$filter,'
+          'description.ilike.$filter,'
+          'receipt_number.ilike.$filter',
+        );
       }
 
       final response = await query.order('created_at', ascending: false);
@@ -199,13 +205,191 @@ class ReceiptService {
     }
   }
 
+  // NEW METHOD: Get all confirmed payments from payment_confirmations (ADMIN)
+  Future<List<Map<String, dynamic>>> getAllConfirmedPayments({
+    String? searchFilter,
+  }) async {
+    try {
+      // CRITICAL FIX: Change search strategy to use .or() with proper PostgreSQL syntax
+      var query = _client.from('payment_confirmations').select('''
+            id,
+            amount,
+            status,
+            payment_method,
+            created_at,
+            confirmed_at,
+            external_payment_id,
+            user_id,
+            user_profiles!inner(
+              id,
+              full_name,
+              email,
+              phone,
+              codice_fiscale
+            )
+          ''').eq('status', 'confirmed');
+
+      // CRITICAL FIX: Apply filter using .or() instead of .ilike() for joined columns
+      // This ensures proper search across user full_name field
+      if (searchFilter != null && searchFilter.trim().isNotEmpty) {
+        final filter = searchFilter.trim();
+        // Use textSearch for more flexible matching on user_profiles
+        query = query.textSearch(
+          'user_profiles.full_name',
+          "'$filter':*",
+          config: 'italian',
+        );
+      }
+
+      // Apply ordering AFTER all filters
+      final response = await query.order('created_at', ascending: false);
+
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('❌ Error fetching confirmed payments: $e');
+
+      // FALLBACK: If textSearch fails, try with contains filter
+      try {
+        var fallbackQuery = _client.from('payment_confirmations').select('''
+              id,
+              amount,
+              status,
+              payment_method,
+              created_at,
+              confirmed_at,
+              external_payment_id,
+              user_id,
+              user_profiles!inner(
+                id,
+                full_name,
+                email,
+                phone,
+                codice_fiscale
+              )
+            ''').eq('status', 'confirmed');
+
+        if (searchFilter != null && searchFilter.trim().isNotEmpty) {
+          // Fallback: Filter in memory after fetching
+          final allData = await fallbackQuery.order(
+            'created_at',
+            ascending: false,
+          );
+
+          final filtered = (allData as List).where((payment) {
+            final userProfile =
+                payment['user_profiles'] as Map<String, dynamic>?;
+            if (userProfile == null) return false;
+
+            final fullName =
+                (userProfile['full_name'] as String?)?.toLowerCase() ?? '';
+            final searchTerm = searchFilter.toLowerCase();
+
+            return fullName.contains(searchTerm);
+          }).toList();
+
+          return filtered.cast<Map<String, dynamic>>();
+        }
+
+        final response = await fallbackQuery.order(
+          'created_at',
+          ascending: false,
+        );
+        return (response as List).cast<Map<String, dynamic>>();
+      } catch (fallbackError) {
+        print('❌ Fallback also failed: $fallbackError');
+        throw Exception('Errore nel recupero dei pagamenti confermati: $e');
+      }
+    }
+  }
+
+  // NEW METHOD: Get user's confirmed payments from payment_confirmations
+  Future<List<Map<String, dynamic>>> getUserConfirmedPayments(
+    String userId,
+  ) async {
+    try {
+      final response = await _client
+          .from('payment_confirmations')
+          .select('''
+            id,
+            amount,
+            status,
+            payment_method,
+            created_at,
+            confirmed_at,
+            external_payment_id,
+            user_id,
+            user_profiles!inner(
+              id,
+              full_name,
+              email,
+              phone,
+              codice_fiscale
+            )
+          ''')
+          .eq('user_id', userId)
+          .eq('status', 'confirmed')
+          .order('created_at', ascending: false);
+
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('❌ Error fetching user payments: $e');
+      throw Exception('Errore nel recupero dei pagamenti utente: $e');
+    }
+  }
+
+  // NEW METHOD: Get payment statistics from payment_confirmations
+  Future<Map<String, dynamic>> getPaymentStatistics() async {
+    try {
+      final now = DateTime.now();
+      final currentMonthStart = DateTime(now.year, now.month, 1);
+      final nextMonthStart = DateTime(now.year, now.month + 1, 1);
+
+      // Get all confirmed payments
+      final allPayments = await _client
+          .from('payment_confirmations')
+          .select('amount, confirmed_at')
+          .eq('status', 'confirmed');
+
+      // CRITICAL FIX: Use confirmed_at instead of created_at for monthly revenue calculation
+      // This ensures we're calculating revenue based on when payments were ACTUALLY CONFIRMED
+      final monthlyPayments = await _client
+          .from('payment_confirmations')
+          .select('amount')
+          .eq('status', 'confirmed')
+          .gte('confirmed_at', currentMonthStart.toIso8601String())
+          .lt('confirmed_at', nextMonthStart.toIso8601String());
+
+      double totalAmount = 0.0;
+      double monthlyRevenue = 0.0;
+
+      for (var payment in allPayments) {
+        totalAmount += (payment['amount'] as num).toDouble();
+      }
+
+      for (var payment in monthlyPayments) {
+        monthlyRevenue += (payment['amount'] as num).toDouble();
+      }
+
+      return {
+        'total_receipts': allPayments.length,
+        'monthly_revenue': monthlyRevenue,
+        'pending_receipts': 0, // No pending in confirmed payments
+        'current_month_receipts': monthlyPayments.length,
+        'total_amount': totalAmount,
+      };
+    } catch (e) {
+      print('❌ Error calculating payment statistics: $e');
+      throw Exception('Errore nel calcolo delle statistiche pagamenti: $e');
+    }
+  }
+
   // Check if a payment reminder is needed for the given user (uses Supabase RPC)
   Future<bool> needsPaymentReminder(String userId) async {
     try {
-      final result =
-          await _client.rpc('check_payment_reminder_needed', params: {
-        'p_user_id': userId,
-      });
+      final result = await _client.rpc(
+        'check_payment_reminder_needed',
+        params: {'p_user_id': userId},
+      );
 
       if (result is bool) {
         return result;

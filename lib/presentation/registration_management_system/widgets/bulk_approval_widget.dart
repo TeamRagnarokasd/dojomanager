@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
-
 
 class BulkApprovalWidget extends StatelessWidget {
   final int selectedCount;
@@ -82,7 +82,7 @@ class BulkApprovalWidget extends StatelessWidget {
                         ),
                         SizedBox(width: 4.w),
                         Text(
-                          'Annulla',
+                          'common.cancel'.tr(),
                           style: GoogleFonts.inter(
                             color: Colors.white,
                             fontWeight: FontWeight.w500,
@@ -218,7 +218,7 @@ class BulkApprovalWidget extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Annulla'),
+            child: Text('common.cancel'.tr()),
           ),
           ElevatedButton.icon(
             onPressed: () {
@@ -226,7 +226,7 @@ class BulkApprovalWidget extends StatelessWidget {
               onBulkApprove();
             },
             icon: Icon(Icons.done_all, size: 16.sp),
-            label: Text('Conferma Approvazione'),
+            label: Text('registration_mgmt.confirm_approval'.tr()),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../models/receipt_model.dart';
+import '../../../core/app_export.dart';
 
 class ReceiptPreviewWidget extends StatelessWidget {
   final ReceiptModel receipt;
@@ -165,7 +165,7 @@ class ReceiptPreviewWidget extends StatelessWidget {
                 SizedBox(width: 12.w),
                 Expanded(
                   child: _buildActionButton(
-                    'Email',
+                    'common.email'.tr(),
                     Icons.email,
                     Colors.green,
                     onEmail,
@@ -517,11 +517,11 @@ class ReceiptPreviewWidget extends StatelessWidget {
       case 'sumup':
         return 'SumUp';
       case 'satispay':
-        return 'Satispay';
+        return 'payment.satispay'.tr();
       case 'cash':
-        return 'Contanti';
+        return 'payment.cash'.tr();
       case 'bank_transfer':
-        return 'Bonifico Bancario';
+        return 'payment.bank_transfer'.tr();
       default:
         return method;
     }

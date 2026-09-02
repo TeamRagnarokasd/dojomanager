@@ -48,7 +48,9 @@ class UpcomingClassCardWidget extends StatelessWidget {
                   isBooked ? AppTheme.successLight : AppTheme.primaryLight,
               foregroundColor: AppTheme.onPrimaryLight,
               icon: isBooked ? Icons.check_circle : Icons.book_online,
-              label: isBooked ? 'Prenotato' : 'Prenota',
+              label: isBooked
+                  ? 'class_schedule.status_booked'.tr()
+                  : 'class_schedule.book'.tr(),
               borderRadius: BorderRadius.circular(12),
             ),
             SlidableAction(
@@ -56,7 +58,7 @@ class UpcomingClassCardWidget extends StatelessWidget {
               backgroundColor: AppTheme.secondaryLight,
               foregroundColor: AppTheme.onSecondaryLight,
               icon: Icons.info_outline,
-              label: 'Dettagli',
+              label: 'receipt.details_label'.tr(),
               borderRadius: BorderRadius.circular(12),
             ),
             SlidableAction(
@@ -139,7 +141,9 @@ class UpcomingClassCardWidget extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        isBooked ? 'Prenotato' : 'Disponibile',
+                        isBooked
+                            ? 'class_schedule.status_booked'.tr()
+                            : 'Disponibile',
                         style:
                             AppTheme.lightTheme.textTheme.labelSmall?.copyWith(
                           color: AppTheme.onPrimaryLight,

@@ -197,7 +197,7 @@ class EventManagementHeaderWidget extends StatelessWidget {
   String _getFilterLabel(String filter) {
     switch (filter) {
       case 'all':
-        return 'Tutti';
+        return 'disciplines.all'.tr();
       case 'seminari':
         return 'Seminari';
       case 'stage':

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../core/app_export.dart';
 
 class ManualAmountDialogWidget extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -64,14 +65,15 @@ class _ManualAmountDialogWidgetState extends State<ManualAmountDialogWidget> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Pagamento ${widget.paymentMethod}',
+                'receipt.payment_label'
+                    .tr(namedArgs: {'method': widget.paymentMethod}),
                 style: GoogleFonts.inter(
                   fontSize: 16.sp,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               Text(
-                'Inserimento manuale dati',
+                'receipt.manual_entry_subtitle'.tr(),
                 style: GoogleFonts.inter(
                   fontSize: 12.sp,
                   color: Colors.grey.shade600,
@@ -86,7 +88,6 @@ class _ManualAmountDialogWidgetState extends State<ManualAmountDialogWidget> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Client info
             Container(
               padding: EdgeInsets.all(12.w),
               decoration: BoxDecoration(
@@ -97,7 +98,9 @@ class _ManualAmountDialogWidgetState extends State<ManualAmountDialogWidget> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Cliente: ${widget.user['full_name']}',
+                    'receipt.client_label'.tr(namedArgs: {
+                      'name': widget.user['full_name'] as String? ?? '',
+                    }),
                     style: GoogleFonts.inter(
                       fontSize: 14.sp,
                       fontWeight: FontWeight.w500,
@@ -114,12 +117,9 @@ class _ManualAmountDialogWidgetState extends State<ManualAmountDialogWidget> {
                 ],
               ),
             ),
-
             SizedBox(height: 20.h),
-
-            // Subscription type selection
             Text(
-              'Tipo Abbonamento',
+              'payment_confirm.subscription_type'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 14.sp,
                 fontWeight: FontWeight.w600,
@@ -132,8 +132,8 @@ class _ManualAmountDialogWidgetState extends State<ManualAmountDialogWidget> {
                 Expanded(
                   child: _buildSubscriptionTypeCard(
                     'monthly',
-                    'Mensile',
-                    '€30,00 standard',
+                    'payment.monthly_plan'.tr(),
+                    'receipt.monthly_standard'.tr(),
                     _selectedType == 'monthly',
                     () => setState(() => _selectedType = 'monthly'),
                   ),
@@ -142,20 +142,17 @@ class _ManualAmountDialogWidgetState extends State<ManualAmountDialogWidget> {
                 Expanded(
                   child: _buildSubscriptionTypeCard(
                     'annual',
-                    'Annuale',
-                    '€300,00 standard',
+                    'payment.annual_plan'.tr(),
+                    'receipt.annual_standard'.tr(),
                     _selectedType == 'annual',
                     () => setState(() => _selectedType = 'annual'),
                   ),
                 ),
               ],
             ),
-
             SizedBox(height: 20.h),
-
-            // Manual amount input
             Text(
-              'Importo Pagamento',
+              'receipt.payment_amount'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 14.sp,
                 fontWeight: FontWeight.w600,
@@ -167,7 +164,7 @@ class _ManualAmountDialogWidgetState extends State<ManualAmountDialogWidget> {
               controller: _amountController,
               keyboardType: TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
-                hintText: 'Inserisci importo (es. 30.00)',
+                hintText: 'receipt.amount_hint'.tr(),
                 prefixText: '€ ',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -180,10 +177,7 @@ class _ManualAmountDialogWidgetState extends State<ManualAmountDialogWidget> {
                 fillColor: Colors.grey.shade50,
               ),
             ),
-
             SizedBox(height: 16.h),
-
-            // Subscription dates info
             Container(
               padding: EdgeInsets.all(12.w),
               decoration: BoxDecoration(
@@ -203,7 +197,7 @@ class _ManualAmountDialogWidgetState extends State<ManualAmountDialogWidget> {
                       ),
                       SizedBox(width: 8.w),
                       Text(
-                        'Regole di Scadenza',
+                        'receipt.expiry_rules'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 13.sp,
                           fontWeight: FontWeight.w600,
@@ -215,8 +209,8 @@ class _ManualAmountDialogWidgetState extends State<ManualAmountDialogWidget> {
                   SizedBox(height: 8.h),
                   Text(
                     _selectedType == 'monthly'
-                        ? 'Mensile: dal 10 del mese corrente al 10 del mese successivo'
-                        : 'Annuale: fino al 28 agosto (basato sulla data di pagamento)',
+                        ? 'receipt.monthly_expiry_rule'.tr()
+                        : 'receipt.annual_expiry_rule'.tr(),
                     style: GoogleFonts.inter(
                       fontSize: 12.sp,
                       color: Colors.blue.shade700,
@@ -232,20 +226,19 @@ class _ManualAmountDialogWidgetState extends State<ManualAmountDialogWidget> {
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: Text(
-            'Annulla',
+            'common.cancel'.tr(),
             style: GoogleFonts.inter(color: Colors.grey.shade600),
           ),
         ),
         ElevatedButton(
-          onPressed:
-              _isValid
-                  ? () {
-                    Navigator.pop(context, {
-                      'amount': double.parse(_amountController.text),
-                      'type': _selectedType,
-                    });
-                  }
-                  : null,
+          onPressed: _isValid
+              ? () {
+                  Navigator.pop(context, {
+                    'amount': double.parse(_amountController.text),
+                    'type': _selectedType,
+                  });
+                }
+              : null,
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.orange.shade600,
             foregroundColor: Colors.white,
@@ -254,7 +247,7 @@ class _ManualAmountDialogWidgetState extends State<ManualAmountDialogWidget> {
             ),
           ),
           child: Text(
-            'Genera Ricevuta',
+            'receipt.generate_receipt'.tr(),
             style: GoogleFonts.inter(fontWeight: FontWeight.w600),
           ),
         ),
@@ -291,22 +284,22 @@ class _ManualAmountDialogWidgetState extends State<ManualAmountDialogWidget> {
                   isSelected
                       ? Icons.radio_button_checked
                       : Icons.radio_button_unchecked,
-                  color:
-                      isSelected
-                          ? Colors.orange.shade700
-                          : Colors.grey.shade500,
+                  color: isSelected
+                      ? Colors.orange.shade700
+                      : Colors.grey.shade500,
                   size: 20.sp,
                 ),
                 SizedBox(width: 8.w),
-                Text(
-                  title,
-                  style: GoogleFonts.inter(
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w600,
-                    color:
-                        isSelected
-                            ? Colors.orange.shade800
-                            : Colors.grey.shade800,
+                Expanded(
+                  child: Text(
+                    title,
+                    style: GoogleFonts.inter(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w600,
+                      color: isSelected
+                          ? Colors.orange.shade800
+                          : Colors.grey.shade800,
+                    ),
                   ),
                 ),
               ],

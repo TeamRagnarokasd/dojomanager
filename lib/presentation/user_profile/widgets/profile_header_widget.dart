@@ -4,12 +4,21 @@ import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../../core/app_export.dart';
 import '../../../constants/app_constants.dart';
+import '../../../constants/profile_typography.dart';
 import '../../../services/supabase_service.dart';
 import '../../../services/user_profile_service.dart';
 
 class ProfileHeaderWidget extends StatefulWidget {
-  const ProfileHeaderWidget({Key? key}) : super(key: key);
+  final String? userId;
+  final bool isChildProfile;
+
+  const ProfileHeaderWidget({
+    Key? key,
+    this.userId,
+    this.isChildProfile = false,
+  }) : super(key: key);
 
   @override
   State<ProfileHeaderWidget> createState() => _ProfileHeaderWidgetState();
@@ -19,51 +28,120 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
   String? _userAvatar;
   String _userName = '';
   String _userRole = '';
+  String _roleTitle = ''; // 🎯 NEW: Display role from role_title column
   bool _isLoading = false;
+  bool _isCurrentUser = true;
   final ImagePicker _picker = ImagePicker();
   final UserProfileService _userProfileService = UserProfileService();
 
   @override
   void initState() {
     super.initState();
+    _checkIfCurrentUser();
     _loadUserProfile();
+  }
+
+  Future<void> _checkIfCurrentUser() async {
+    try {
+      final client = SupabaseService.instance.client;
+      final currentUser = client.auth.currentUser;
+
+      if (currentUser != null && widget.userId != null) {
+        if (mounted) {
+          setState(() {
+            _isCurrentUser = currentUser.id == widget.userId;
+          });
+        }
+      } else if (widget.userId == null) {
+        if (mounted) {
+          setState(() {
+            _isCurrentUser = true;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error checking if current user: $e');
+    }
   }
 
   Future<void> _loadUserProfile() async {
     try {
       final client = SupabaseService.instance.client;
-      final user = client.auth.currentUser;
 
-      if (user == null) return;
+      String? targetUserId = widget.userId ?? client.auth.currentUser?.id;
+
+      if (targetUserId == null) {
+        print('❌ Error: No user ID available');
+        return;
+      }
+
+      // 🎯 FIX: If this is a child profile, query child_profiles table instead
+      if (widget.isChildProfile) {
+        final response = await client
+            .from('child_profiles')
+            .select('first_name, last_name, full_name, profile_photo_url')
+            .eq('id', targetUserId)
+            .maybeSingle();
+
+        if (mounted) {
+          setState(() {
+            final firstName = response?['first_name'] as String? ?? '';
+            final lastName = response?['last_name'] as String? ?? '';
+            final fullName =
+                response?['full_name'] as String? ??
+                '$firstName $lastName'.trim();
+            _userName = fullName.isNotEmpty ? fullName : 'Profilo Minore';
+            _userRole = 'Allievo';
+            _roleTitle = 'Minore';
+            _userAvatar = response?['profile_photo_url'];
+            _isCurrentUser = false;
+          });
+        }
+        return;
+      }
 
       final response = await client
           .from('user_profiles')
-          .select('full_name, role, profile_image_url')
-          .eq('id', user.id)
-          .single();
+          .select(
+            'first_name, last_name, full_name, role, role_title, profile_image_url',
+          )
+          .eq('id', targetUserId)
+          .maybeSingle();
 
-      setState(() {
-        _userName = response['full_name'] ?? 'Utente';
-        _userRole = _formatRole(response['role'] ?? 'student');
-        _userAvatar = response['profile_image_url'];
-      });
+      if (mounted) {
+        setState(() {
+          _userName = response?['full_name'] ?? 'common.user'.tr();
+          _userRole = _formatRole(response?['role'] ?? 'student');
+          _roleTitle =
+              response?['role_title'] ??
+              'profile.default_student_role'
+                  .tr(); // 🎯 NEW: Load role_title from database
+          _userAvatar = response?['profile_image_url'];
+        });
+
+        if (response != null) {
+          print(
+            '✅ Profile loaded: ${response['full_name']}, role: $_roleTitle, avatar: ${_userAvatar != null ? "exists" : "null"}',
+          );
+        }
+      }
     } catch (e) {
-      print('Error loading user profile: $e');
+      print('❌ Error loading user profile: $e');
     }
   }
 
   String _formatRole(String role) {
     switch (role) {
       case 'student':
-        return 'Team Ragnarok Member';
+        return 'roles.team_member'.tr();
       case 'instructor':
-        return 'Istruttore';
+        return 'roles.instructor'.tr();
       case 'admin':
-        return 'Amministratore';
+        return 'roles.admin'.tr();
       case 'principal_admin':
-        return 'Amministratore Principale';
+        return 'roles.principal_admin'.tr();
       default:
-        return 'Team Ragnarok Member';
+        return 'roles.team_member'.tr();
     }
   }
 
@@ -83,75 +161,107 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
       child: Column(
         children: [
           Stack(
+            clipBehavior: Clip.none,
             children: [
               Container(
-                width: 25.w,
-                height: 25.w,
+                width: 30.w,
+                height: 30.w,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.red, width: 3),
                   color: Colors.grey[800],
                 ),
-                child: _userAvatar != null
+                child: _userAvatar != null && _userAvatar!.isNotEmpty
                     ? ClipRRect(
-                        borderRadius: BorderRadius.circular(25.w),
+                        borderRadius: BorderRadius.circular(30.w),
                         child: Image.network(
                           _userAvatar!,
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) {
                             return _buildDefaultAvatar();
                           },
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.red,
+                                value:
+                                    loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                          loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            );
+                          },
                         ),
                       )
                     : _buildDefaultAvatar(),
               ),
-              Positioned(
-                bottom: 0,
-                right: 0,
-                child: GestureDetector(
-                  onTap: _isLoading ? null : _updateProfilePhoto,
-                  child: Container(
-                    width: 8.w,
-                    height: 8.w,
-                    decoration: BoxDecoration(
-                      color: _isLoading ? Colors.grey : Colors.red,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                    child: _isLoading
-                        ? Padding(
-                            padding: EdgeInsets.all(1.w),
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
+              if (_isCurrentUser)
+                Positioned(
+                  bottom: -2,
+                  right: -2,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _isLoading ? null : _updateProfilePhoto,
+                      borderRadius: BorderRadius.circular(50),
+                      child: Container(
+                        width: 12.w,
+                        height: 12.w,
+                        decoration: BoxDecoration(
+                          color: _isLoading ? Colors.grey[700] : Colors.red,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(77),
+                              blurRadius: 8,
+                              offset: Offset(0, 2),
                             ),
-                          )
-                        : Icon(
-                            Icons.camera_alt,
-                            color: Colors.white,
-                            size: 4.w,
-                          ),
+                          ],
+                        ),
+                        child: _isLoading
+                            ? Padding(
+                                padding: EdgeInsets.all(2.w),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Icon(
+                                Icons.camera_alt,
+                                color: Colors.white,
+                                size: 6.w,
+                              ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           SizedBox(height: 2.h),
+          // 🎯 NEW: Display role_title BEFORE name as requested
           Text(
-            _userName.isEmpty ? 'Caricamento...' : _userName,
+            _roleTitle.isEmpty
+                ? 'profile.default_student_role'.tr()
+                : _roleTitle,
+            style: GoogleFonts.inter(
+              color: Colors.red,
+              fontSize: 13.sp,
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 0.5.h),
+          Text(
+            _userName.isEmpty ? 'common.loading'.tr() : _userName,
             style: GoogleFonts.inter(
               color: Colors.white,
               fontSize: 16.sp,
               fontWeight: FontWeight.w700,
             ),
-          ),
-          Text(
-            _userRole,
-            style: GoogleFonts.inter(
-              color: Colors.red,
-              fontSize: 12.sp,
-              fontWeight: FontWeight.w500,
-            ),
+            textAlign: TextAlign.center,
           ),
           SizedBox(height: 1.h),
           Row(
@@ -165,10 +275,10 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
               ),
               SizedBox(width: 2.w),
               Text(
-                'MMA • BJJ • SAMBO • GRAPPLING',
+                'profile.disciplines_tagline'.tr(),
                 style: GoogleFonts.inter(
                   color: Colors.grey[400],
-                  fontSize: 10.sp,
+                  fontSize: ProfileTypography.caption,
                   fontWeight: FontWeight.w400,
                 ),
               ),
@@ -181,17 +291,13 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
 
   Widget _buildDefaultAvatar() {
     return Container(
-      width: 25.w,
-      height: 25.w,
+      width: 30.w,
+      height: 30.w,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.grey[700],
       ),
-      child: Icon(
-        Icons.person,
-        color: Colors.grey[400],
-        size: 12.w,
-      ),
+      child: Icon(Icons.person, color: Colors.grey[400], size: 15.w),
     );
   }
 
@@ -207,68 +313,95 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Container(
+              width: 12.w,
+              height: 0.5.h,
+              margin: EdgeInsets.only(bottom: 2.h),
+              decoration: BoxDecoration(
+                color: Colors.grey[600],
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
             Text(
-              'Aggiorna Foto Profilo',
+              'profile.update_profile_photo'.tr(),
               style: GoogleFonts.inter(
                 color: Colors.white,
-                fontSize: 16.sp,
+                fontSize: 18.sp,
                 fontWeight: FontWeight.w600,
               ),
             ),
-            SizedBox(height: 3.h),
+            SizedBox(height: 1.h),
+            Text(
+              'profile.choose_photo_method'.tr(),
+              style: GoogleFonts.inter(
+                color: Colors.grey[400],
+                fontSize: ProfileTypography.subtitle,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 4.h),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _photoOption(
                   icon: Icons.camera_alt,
-                  label: 'Fotocamera',
+                  label: 'profile.take_photo'.tr(),
                   onTap: () => _pickImage(ImageSource.camera),
                 ),
                 _photoOption(
                   icon: Icons.photo_library,
-                  label: 'Galleria',
+                  label: 'profile.choose_from_gallery'.tr(),
                   onTap: () => _pickImage(ImageSource.gallery),
                 ),
               ],
             ),
-            SizedBox(height: 2.h),
+            SizedBox(height: 3.h),
           ],
         ),
       ),
     );
   }
 
-  Widget _photoOption(
-      {required IconData icon,
-      required String label,
-      required VoidCallback onTap}) {
+  Widget _photoOption({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            width: 15.w,
-            height: 15.w,
-            decoration: BoxDecoration(
-              color: Colors.red.withAlpha(51),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.red),
+      child: Container(
+        width: 35.w,
+        padding: EdgeInsets.symmetric(vertical: 2.h),
+        decoration: BoxDecoration(
+          color: Colors.grey[850],
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: Colors.red.withAlpha(102)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 18.w,
+              height: 18.w,
+              decoration: BoxDecoration(
+                color: Colors.red.withAlpha(51),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.red, width: 2),
+              ),
+              child: Icon(icon, color: Colors.red, size: 8.w),
             ),
-            child: Icon(
-              icon,
-              color: Colors.red,
-              size: 6.w,
+            SizedBox(height: 1.5.h),
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: ProfileTypography.subtitle,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
             ),
-          ),
-          SizedBox(height: 1.h),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              color: Colors.white,
-              fontSize: 11.sp,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -276,90 +409,127 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
   Future<void> _pickImage(ImageSource source) async {
     Navigator.pop(context);
 
-    // Request permissions
     if (source == ImageSource.camera) {
       final permission = await Permission.camera.request();
       if (!permission.isGranted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Permesso fotocamera necessario'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('profile.camera_permission_required'.tr()),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+              action: SnackBarAction(
+                label: 'common.settings'.tr(),
+                textColor: Colors.white,
+                onPressed: () => openAppSettings(),
+              ),
+            ),
+          );
+        }
         return;
       }
     }
 
+    if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
       final XFile? image = await _picker.pickImage(
         source: source,
-        maxWidth: 512,
-        maxHeight: 512,
-        imageQuality: 80,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
       );
+
+      if (!mounted) return;
 
       if (image != null) {
         await _uploadProfileImage(image);
+      } else {
+        setState(() => _isLoading = false);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Errore durante la selezione dell\'immagine'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      setState(() => _isLoading = false);
+      print('Error picking image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('profile.image_selection_error'.tr()),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _uploadProfileImage(XFile image) async {
     try {
-      // Use the improved upload service
+      print('🔄 Starting profile photo upload...');
+
       final result = await _userProfileService.uploadProfilePhoto(image);
 
+      if (!mounted) return;
+
       if (result['success'] == true) {
-        setState(() {
-          _userAvatar = result['profile_image_url'];
-        });
+        await _loadUserProfile();
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-                result['message'] ?? 'Foto profilo aggiornata con successo!'),
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 2.w),
+                Expanded(
+                  child: Text(
+                    result['message'] ?? 'profile.photo_updated_success'.tr(),
+                    style: GoogleFonts.inter(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['message'] ??
-                'Errore durante l\'aggiornamento della foto'),
+            content: Text(
+              result['message'] ?? 'profile.photo_update_error'.tr(),
+            ),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 4),
             action: SnackBarAction(
-              label: 'Riprova',
+              label: 'common.retry'.tr(),
+              textColor: Colors.white,
               onPressed: () => _updateProfilePhoto(),
             ),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
     } catch (e) {
-      print('Error uploading profile image: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Errore imprevisto durante il caricamento'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 4),
-          action: SnackBarAction(
-            label: 'Riprova',
-            onPressed: () => _updateProfilePhoto(),
+      print('❌ Error uploading profile image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('profile.upload_unexpected_error'.tr()),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'common.retry'.tr(),
+              textColor: Colors.white,
+              onPressed: () => _updateProfilePhoto(),
+            ),
+            behavior: SnackBarBehavior.floating,
           ),
-        ),
-      );
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 }

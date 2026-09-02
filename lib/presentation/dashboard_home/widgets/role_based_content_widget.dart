@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
-import '../../../routes/app_routes.dart';
 import '../../../services/auth_service.dart';
 
 enum UserRole { student, instructor, admin }
@@ -59,13 +58,14 @@ class _RoleBasedContentWidgetState extends State<RoleBasedContentWidget> {
       try {
         final currentUser = AuthService.instance.currentUser;
         if (currentUser != null) {
-          final profile =
-              await AuthService.instance.getUserProfile(currentUser.id);
+          final profile = await AuthService.instance.getUserProfile(
+            currentUser.id,
+          );
           final fallbackRole = profile?['role']?.toString() ?? 'student';
           final fallbackIsAdmin = [
             'admin',
             'instructor_admin',
-            'principal_admin'
+            'principal_admin',
           ].contains(fallbackRole);
 
           if (mounted) {
@@ -117,17 +117,18 @@ class _RoleBasedContentWidgetState extends State<RoleBasedContentWidget> {
 
     switch (_userRole) {
       case 'student':
+      case 'instructor_student':
         roleDisplayName = 'Studente';
         roleColor = Colors.blue;
         roleIcon = Icons.school;
         break;
       case 'instructor':
-        roleDisplayName = 'Istruttore';
+        roleDisplayName = 'class_schedule.instructor'.tr();
         roleColor = Colors.green;
         roleIcon = Icons.sports_martial_arts;
         break;
       case 'admin':
-        roleDisplayName = 'Amministratore';
+        roleDisplayName = 'roles.admin'.tr();
         roleColor = Colors.orange;
         roleIcon = Icons.admin_panel_settings;
         break;
@@ -137,7 +138,7 @@ class _RoleBasedContentWidgetState extends State<RoleBasedContentWidget> {
         roleIcon = Icons.supervisor_account;
         break;
       case 'principal_admin':
-        roleDisplayName = 'Amministratore Principale';
+        roleDisplayName = 'roles.principal_admin'.tr();
         roleColor = Colors.red;
         roleIcon = Icons.shield;
         break;
@@ -215,6 +216,7 @@ class _RoleBasedContentWidgetState extends State<RoleBasedContentWidget> {
   Widget _buildRoleSpecificContent() {
     switch (_userRole) {
       case 'student':
+      case 'instructor_student':
         return _buildStudentContent();
       case 'instructor':
         return _buildInstructorContent();
@@ -228,24 +230,63 @@ class _RoleBasedContentWidgetState extends State<RoleBasedContentWidget> {
   }
 
   Widget _buildStudentContent() {
-    return Column(
-      children: [
-        _buildQuickActionCard(
-          'Le Mie Lezioni',
-          'Visualizza e prenota lezioni',
-          Icons.calendar_today,
-          Colors.blue,
-          () => Navigator.pushNamed(context, AppRoutes.classSchedule),
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(context, AppRoutes.studentProgress),
+      child: Container(
+        padding: EdgeInsets.all(4.w),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFCC0000), Color(0xFF8B0000)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16.0),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFCC0000).withAlpha(77),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        SizedBox(height: 2.w),
-        _buildQuickActionCard(
-          'Profilo',
-          'Gestisci i tuoi dati',
-          Icons.person,
-          Colors.green,
-          () => Navigator.pushNamed(context, AppRoutes.userProfile),
+        child: Row(
+          children: [
+            Container(
+              padding: EdgeInsets.all(3.w),
+              decoration: BoxDecoration(
+                color: Colors.white.withAlpha(51),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.military_tech, color: Colors.white, size: 7.w),
+            ),
+            SizedBox(width: 4.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Progressi Studente',
+                    style: GoogleFonts.inter(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(height: 0.5.h),
+                  Text(
+                    'Lezioni, cinture e strips',
+                    style: GoogleFonts.inter(
+                      fontSize: 12.sp,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 4.w),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -283,7 +324,7 @@ class _RoleBasedContentWidgetState extends State<RoleBasedContentWidget> {
         ),
         SizedBox(height: 2.w),
         _buildQuickActionCard(
-          'Gestione Sistema',
+          'admin_management.title'.tr(),
           'Configura piattaforma',
           Icons.settings,
           Colors.red,

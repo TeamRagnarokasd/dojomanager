@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
-import '../../../theme/app_theme.dart';
 
 class RoleManagementWidget extends StatefulWidget {
   final List<dynamic> users;
@@ -54,11 +53,7 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
                   color: Colors.purple.withAlpha(26),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  Icons.people,
-                  color: Colors.purple,
-                  size: 24.sp,
-                ),
+                child: Icon(Icons.people, color: Colors.purple, size: 24.sp),
               ),
               SizedBox(width: 12.w),
               Expanded(
@@ -66,7 +61,7 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Gestione Ruoli',
+                      'admin_management.role_management_title'.tr(),
                       style: GoogleFonts.inter(
                         fontSize: 18.sp,
                         fontWeight: FontWeight.bold,
@@ -74,7 +69,7 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
                       ),
                     ),
                     Text(
-                      'Organizzati per livello di permessi',
+                      'admin_management.role_management_subtitle'.tr(),
                       style: GoogleFonts.inter(
                         fontSize: 14.sp,
                         color: AppTheme.textSecondaryLight,
@@ -85,8 +80,10 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
               ),
               if (widget.canModify)
                 Container(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 12.w,
+                    vertical: 6.h,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.green.withAlpha(26),
                     borderRadius: BorderRadius.circular(20),
@@ -97,7 +94,7 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
                       Icon(Icons.edit, size: 14.sp, color: Colors.green),
                       SizedBox(width: 4.w),
                       Text(
-                        'Modifica abilitata',
+                        'admin_management.edit_enabled'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 12.sp,
                           fontWeight: FontWeight.w600,
@@ -137,13 +134,15 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
                   setState(() => searchQuery = value);
                 },
                 decoration: InputDecoration(
-                  hintText: 'Cerca utenti...',
+                  hintText: 'admin_management.search_users'.tr(),
                   prefixIcon: Icon(Icons.search),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 16.w,
+                    vertical: 12.h,
+                  ),
                 ),
               ),
             ),
@@ -161,11 +160,23 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
                 setState(() => selectedFilter = value);
               },
               itemBuilder: (context) => [
-                PopupMenuItem(value: 'all', child: Text('Tutti i ruoli')),
-                PopupMenuItem(value: 'admin', child: Text('Admin')),
-                PopupMenuItem(value: 'instructor', child: Text('Istruttori')),
-                PopupMenuItem(value: 'member', child: Text('Membri')),
-                PopupMenuItem(value: 'student', child: Text('Studenti')),
+                PopupMenuItem(
+                  value: 'all',
+                  child: Text('admin_management.all_roles'.tr()),
+                ),
+                PopupMenuItem(value: 'admin', child: Text('roles.admin'.tr())),
+                PopupMenuItem(
+                  value: 'instructor',
+                  child: Text('admin_management.instructors_filter'.tr()),
+                ),
+                PopupMenuItem(
+                  value: 'member',
+                  child: Text('admin_management.members'.tr()),
+                ),
+                PopupMenuItem(
+                  value: 'student',
+                  child: Text('admin_management.students_filter'.tr()),
+                ),
               ],
             ),
           ],
@@ -187,7 +198,7 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Distribuzione Ruoli',
+            'admin_management.role_distribution'.tr(),
             style: GoogleFonts.inter(
               fontSize: 16.sp,
               fontWeight: FontWeight.w600,
@@ -223,10 +234,7 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
           Container(
             width: 8.w,
             height: 8.h,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           SizedBox(width: 6.w),
           Text(
@@ -254,7 +262,7 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
           ),
           SizedBox(height: 16.h),
           Text(
-            'Nessun utente trovato',
+            'reminders.no_users_found'.tr(),
             style: GoogleFonts.inter(
               fontSize: 16.sp,
               fontWeight: FontWeight.w500,
@@ -263,7 +271,7 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
           ),
           SizedBox(height: 8.h),
           Text(
-            'Modifica i filtri di ricerca per visualizzare più utenti',
+            'admin_management.modify_search_filters'.tr(),
             style: GoogleFonts.inter(
               fontSize: 14.sp,
               color: AppTheme.textSecondaryLight.withAlpha(179),
@@ -304,7 +312,8 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  user['full_name'] ?? 'Nome non disponibile',
+                  user['full_name'] ??
+                      'registration_mgmt.name_unavailable'.tr(),
                   style: GoogleFonts.inter(
                     fontSize: 14.sp,
                     fontWeight: FontWeight.w600,
@@ -346,12 +355,27 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
                 }
               },
               itemBuilder: (context) => [
-                PopupMenuItem(value: 'member', child: Text('Membro')),
-                PopupMenuItem(value: 'student', child: Text('Studente')),
-                PopupMenuItem(value: 'instructor', child: Text('Istruttore')),
-                PopupMenuItem(value: 'admin', child: Text('Admin')),
                 PopupMenuItem(
-                    value: 'instructor_admin', child: Text('Istruttore/Admin')),
+                  value: 'member',
+                  child: Text('roles.member'.tr()),
+                ),
+                PopupMenuItem(
+                  value: 'student',
+                  child: Text('roles.student'.tr()),
+                ),
+                PopupMenuItem(
+                  value: 'instructor',
+                  child: Text('class_schedule.instructor'.tr()),
+                ),
+                PopupMenuItem(value: 'admin', child: Text('roles.admin'.tr())),
+                PopupMenuItem(
+                  value: 'instructor_admin',
+                  child: Text('roles.instructor_admin'.tr()),
+                ),
+                PopupMenuItem(
+                  value: 'instructor_student',
+                  child: Text('Istruttore Allievo'),
+                ),
               ],
             ),
           ],
@@ -364,8 +388,9 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
     var filtered = widget.users;
 
     if (selectedFilter != 'all') {
-      filtered =
-          filtered.where((user) => user['role'] == selectedFilter).toList();
+      filtered = filtered
+          .where((user) => user['role'] == selectedFilter)
+          .toList();
     }
 
     if (searchQuery.isNotEmpty) {
@@ -394,14 +419,14 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          'Conferma Modifica Ruolo',
+          'admin_management.confirm_role_change_title'.tr(),
           style: GoogleFonts.inter(fontWeight: FontWeight.bold),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Vuoi modificare il ruolo di questo utente?'),
+            Text('admin_management.confirm_role_change'.tr()),
             SizedBox(height: 16.h),
             Container(
               padding: EdgeInsets.all(12.w),
@@ -413,12 +438,22 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Utente: ${user['full_name']}',
+                    'admin_management.user_label'.tr(
+                      namedArgs: {'name': '${user['full_name']}'},
+                    ),
                     style: GoogleFonts.inter(fontWeight: FontWeight.w500),
                   ),
                   SizedBox(height: 8.h),
-                  Text('Ruolo attuale: ${_getRoleDisplayName(user['role'])}'),
-                  Text('Nuovo ruolo: ${_getRoleDisplayName(newRole)}'),
+                  Text(
+                    'admin_management.current_role_label'.tr(
+                      namedArgs: {'role': _getRoleDisplayName(user['role'])},
+                    ),
+                  ),
+                  Text(
+                    'admin_management.new_role'.tr(
+                      namedArgs: {'role': _getRoleDisplayName(newRole)},
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -427,7 +462,7 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Annulla'),
+            child: Text('common.cancel'.tr()),
           ),
           ElevatedButton(
             onPressed: () {
@@ -438,7 +473,7 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
               backgroundColor: Colors.blue,
               foregroundColor: Colors.white,
             ),
-            child: Text('Conferma'),
+            child: Text('common.confirm'.tr()),
           ),
         ],
       ),
@@ -453,6 +488,8 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
         return Colors.green;
       case 'instructor_admin':
         return Colors.purple;
+      case 'instructor_student':
+        return Colors.teal;
       case 'member':
         return Colors.orange;
       case 'student':
@@ -465,15 +502,17 @@ class _RoleManagementWidgetState extends State<RoleManagementWidget> {
   String _getRoleDisplayName(String? role) {
     switch (role) {
       case 'admin':
-        return 'Admin';
+        return 'roles.admin'.tr();
       case 'instructor':
-        return 'Istruttore';
+        return 'dashboard.role_instructor'.tr();
       case 'instructor_admin':
         return 'Istruttore/Admin';
+      case 'instructor_student':
+        return 'Istruttore Allievo';
       case 'member':
         return 'Membro';
       case 'student':
-        return 'Studente';
+        return 'dashboard.role_student'.tr();
       default:
         return role ?? 'Sconosciuto';
     }

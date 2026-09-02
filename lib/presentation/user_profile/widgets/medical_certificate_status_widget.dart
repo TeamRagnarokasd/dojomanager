@@ -1,15 +1,21 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:math'; // Add this import
 
 import '../../../constants/app_constants.dart';
 import '../../../core/app_export.dart';
 import '../../../services/supabase_service.dart';
-import '../../../services/user_profile_service.dart';
+
+// Add this import for min function
+// Add this import for launchUrl
 
 class MedicalCertificateStatusWidget extends StatefulWidget {
-  const MedicalCertificateStatusWidget({Key? key}) : super(key: key);
+  final String? userId; // NEW: Optional user ID parameter
+
+  const MedicalCertificateStatusWidget({Key? key, this.userId})
+      : super(key: key);
 
   @override
   State<MedicalCertificateStatusWidget> createState() =>
@@ -18,16 +24,8 @@ class MedicalCertificateStatusWidget extends StatefulWidget {
 
 class _MedicalCertificateStatusWidgetState
     extends State<MedicalCertificateStatusWidget> {
-  final UserProfileService _userProfileService = UserProfileService();
-  Map<String, dynamic>? _certificateStatus;
-  bool _isLoading = false;
-  String? _certificateUrl;
-  DateTime? _startDate;
-  DateTime? _expiryDate;
-  String? _doctorName;
-  String? _medicalCenter;
-  String? _certificateType;
-  String? _status;
+  Map<String, dynamic>? _certificateData;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -36,79 +34,34 @@ class _MedicalCertificateStatusWidgetState
   }
 
   Future<void> _loadCertificateStatus() async {
-    setState(() => _isLoading = true);
     try {
-      debugPrint('🔄 Loading certificate status...');
-      final result = await _userProfileService.getUserUploadStatus();
+      final client = SupabaseService.instance.client;
 
-      debugPrint('📊 Result received - success: ${result['success']}');
+      String? targetUserId = widget.userId;
 
-      if (result['success'] == true) {
-        setState(() {
-          _certificateStatus = result;
-          // Extract certificate data
-          _certificateUrl = result['medical_certificate_url'];
+      final response = await client
+          .from('user_profiles')
+          .select(
+            'medical_certificate_url, medical_certificate_expiry, medical_certificate_start_date',
+          )
+          .eq('id', targetUserId ?? '')
+          .maybeSingle();
 
-          debugPrint(
-            '📄 Certificate URL: ${_certificateUrl != null ? "Present (${_certificateUrl!.substring(0, 50)}...)" : "NULL"}',
-          );
-          debugPrint(
-            '📅 Start Date: ${result['medical_certificate_start_date']}',
-          );
-          debugPrint('📅 Expiry Date: ${result['medical_certificate_expiry']}');
-          debugPrint(
-            '👨‍⚕️ Doctor: ${result['medical_certificate_doctor_name']}',
-          );
-          debugPrint(
-            '🏥 Center: ${result['medical_certificate_medical_center']}',
-          );
-          debugPrint('📋 Type: ${result['medical_certificate_type']}');
-          debugPrint('✅ Status: ${result['medical_certificate_status']}');
-
-          // Parse dates
-          if (result['medical_certificate_start_date'] != null) {
-            _startDate = DateTime.tryParse(
-              result['medical_certificate_start_date'].toString(),
-            );
-            debugPrint('📆 Parsed start date: $_startDate');
-          }
-          if (result['medical_certificate_expiry'] != null) {
-            _expiryDate = DateTime.tryParse(
-              result['medical_certificate_expiry'].toString(),
-            );
-            debugPrint('📆 Parsed expiry date: $_expiryDate');
-          }
-
-          _doctorName = result['medical_certificate_doctor_name'];
-          _medicalCenter = result['medical_certificate_medical_center'];
-          _certificateType = result['medical_certificate_type'];
-          _status = result['medical_certificate_status'] ?? 'pending';
-        });
-
-        debugPrint('✅ Certificate status loaded successfully');
-      } else {
-        debugPrint('⚠️ Failed to load certificate status');
-      }
+      if (!mounted) return;
+      setState(() {
+        _certificateData = response;
+        _isLoading = false;
+      });
     } catch (e) {
-      debugPrint('❌ Error loading certificate status: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Errore nel caricamento del certificato: ${e.toString()}',
-            ),
-            backgroundColor: AppTheme.darkTheme.colorScheme.error,
-            duration: Duration(seconds: 5),
-          ),
-        );
-      }
-    } finally {
+      debugPrint('Error loading certificate status: $e');
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }
 
   Widget _buildCertificateLinkButton() {
-    if (_certificateUrl == null || _certificateUrl!.isEmpty) {
+    if (_certificateData == null ||
+        _certificateData!['medical_certificate_url'] == null) {
       return const SizedBox.shrink();
     }
 
@@ -160,7 +113,7 @@ class _MedicalCertificateStatusWidgetState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Clicca per aprire',
+                    'profile.click_to_open'.tr(),
                     style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
                       color: AppTheme.darkTheme.colorScheme.primary,
                       fontWeight: FontWeight.bold,
@@ -168,7 +121,7 @@ class _MedicalCertificateStatusWidgetState
                   ),
                   SizedBox(height: 0.3.h),
                   Text(
-                    'Certificato Medico',
+                    'profile.medical_certificate'.tr(),
                     style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
                       color: AppTheme.darkTheme.colorScheme.onSurface.withAlpha(
                         179,
@@ -191,12 +144,13 @@ class _MedicalCertificateStatusWidgetState
   }
 
   Future<void> _openCertificateFullScreen() async {
-    if (_certificateUrl == null || _certificateUrl!.isEmpty) {
+    if (_certificateData == null ||
+        _certificateData!['medical_certificate_url'] == null) {
       debugPrint('⚠️ Cannot open certificate: URL is null or empty');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('URL del certificato non disponibile'),
+            content: Text('profile.certificate_url_unavailable'.tr()),
             backgroundColor: AppTheme.darkTheme.colorScheme.error,
           ),
         );
@@ -204,8 +158,12 @@ class _MedicalCertificateStatusWidgetState
       return;
     }
 
+    final String certificateUrl =
+        _certificateData!['medical_certificate_url'] as String;
+    final int urlLength = certificateUrl.length;
+
     debugPrint(
-      '🔗 Opening certificate URL: ${_certificateUrl!.substring(0, min(100, _certificateUrl!.length))}...',
+      '🔗 Opening certificate URL: ${certificateUrl.substring(0, min(100, urlLength))}...',
     );
 
     try {
@@ -224,7 +182,7 @@ class _MedicalCertificateStatusWidgetState
                   ),
                 ),
                 SizedBox(width: 3.w),
-                Text('Apertura certificato...'),
+                Text('profile.opening_certificate'.tr()),
               ],
             ),
             duration: Duration(seconds: 2),
@@ -234,11 +192,11 @@ class _MedicalCertificateStatusWidgetState
       }
 
       // Regenerate signed URL before opening (handles expired URLs)
-      String? freshUrl = _certificateUrl;
+      String? freshUrl = _certificateData!['medical_certificate_url'];
 
       try {
         final client = SupabaseService.instance.client;
-        final uri = Uri.parse(_certificateUrl!);
+        final uri = Uri.parse(freshUrl!);
         final pathSegments = uri.pathSegments;
 
         // Extract filename from URL path
@@ -256,8 +214,10 @@ class _MedicalCertificateStatusWidgetState
 
         debugPrint('✅ Fresh signed URL generated');
 
-        // Update local state with new URL
-        setState(() => _certificateUrl = freshUrl);
+        if (mounted) {
+          setState(
+              () => _certificateData!['medical_certificate_url'] = freshUrl);
+        }
       } catch (urlError) {
         debugPrint('⚠️ Could not regenerate URL: $urlError');
         // Continue with existing URL if regeneration fails
@@ -299,7 +259,7 @@ class _MedicalCertificateStatusWidgetState
                 children: [
                   Icon(Icons.check_circle, color: Colors.white),
                   SizedBox(width: 2.w),
-                  Text('Certificato aperto'),
+                  Text('profile.certificate_opened'.tr()),
                 ],
               ),
               backgroundColor: AppTheme.darkTheme.colorScheme.secondary,
@@ -312,7 +272,7 @@ class _MedicalCertificateStatusWidgetState
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Impossibile aprire il certificato'),
+              content: Text('profile.cannot_open_certificate'.tr()),
               backgroundColor: AppTheme.darkTheme.colorScheme.error,
               duration: Duration(seconds: 3),
             ),
@@ -324,7 +284,10 @@ class _MedicalCertificateStatusWidgetState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore: ${e.toString()}'),
+            content: Text(
+              'profile.certificate_error'
+                  .tr(namedArgs: {'error': e.toString()}),
+            ),
             backgroundColor: AppTheme.darkTheme.colorScheme.error,
             duration: Duration(seconds: 4),
           ),
@@ -334,9 +297,15 @@ class _MedicalCertificateStatusWidgetState
   }
 
   Widget _buildExpiryDateSection() {
-    if (_expiryDate == null) return const SizedBox.shrink();
+    // 🎯 FIX: Use correct column name - medical_certificate_expiry
+    if (_certificateData == null ||
+        _certificateData!['medical_certificate_expiry'] == null)
+      return const SizedBox.shrink();
 
-    final daysUntilExpiry = _expiryDate!.difference(DateTime.now()).inDays;
+    final expiryDate = DateTime.tryParse(
+      _certificateData!['medical_certificate_expiry'],
+    );
+    final daysUntilExpiry = expiryDate?.difference(DateTime.now()).inDays ?? 0;
     final isExpiringSoon = daysUntilExpiry < 60;
     final isExpired = daysUntilExpiry < 0;
 
@@ -346,15 +315,16 @@ class _MedicalCertificateStatusWidgetState
 
     if (isExpired) {
       statusColor = AppTheme.darkTheme.colorScheme.error;
-      statusMessage = 'Scaduto';
+      statusMessage = 'profile.status_expired'.tr();
       statusIcon = Icons.error_outline;
     } else if (isExpiringSoon) {
       statusColor = AppTheme.darkTheme.colorScheme.tertiary;
-      statusMessage = 'In scadenza tra $daysUntilExpiry giorni';
+      statusMessage = 'profile.status_expiring_soon'
+          .tr(namedArgs: {'days': '$daysUntilExpiry'});
       statusIcon = Icons.warning_amber;
     } else {
       statusColor = AppTheme.darkTheme.colorScheme.secondary;
-      statusMessage = 'Valido';
+      statusMessage = 'profile.status_valid'.tr();
       statusIcon = Icons.check_circle_outline;
     }
 
@@ -378,7 +348,7 @@ class _MedicalCertificateStatusWidgetState
               ),
               SizedBox(width: 2.w),
               Text(
-                'Data di Scadenza',
+                'profile.expiry_date'.tr(),
                 style: AppTheme.darkTheme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: statusColor,
@@ -388,7 +358,7 @@ class _MedicalCertificateStatusWidgetState
           ),
           SizedBox(height: 1.h),
           Text(
-            _formatDate(_expiryDate!),
+            _formatDate(expiryDate ?? DateTime.now()),
             style: AppTheme.darkTheme.textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.bold,
               color: statusColor,
@@ -429,8 +399,9 @@ class _MedicalCertificateStatusWidgetState
       );
     }
 
-    final hasCertificate =
-        _certificateUrl != null && _certificateUrl!.isNotEmpty;
+    final hasCertificate = _certificateData != null &&
+        _certificateData!['medical_certificate_url'] != null &&
+        _certificateData!['medical_certificate_url']!.isNotEmpty;
 
     return Container(
       padding: EdgeInsets.all(5.w),
@@ -445,7 +416,7 @@ class _MedicalCertificateStatusWidgetState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Certificato Medico',
+            'profile.medical_certificate'.tr(),
             style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
               color: AppTheme.darkTheme.colorScheme.primary,
@@ -471,8 +442,9 @@ class _MedicalCertificateStatusWidgetState
   }
 
   Widget _buildUploadButton() {
-    final hasCertificate =
-        _certificateUrl != null && _certificateUrl!.isNotEmpty;
+    final hasCertificate = _certificateData != null &&
+        _certificateData!['medical_certificate_url'] != null &&
+        _certificateData!['medical_certificate_url']!.isNotEmpty;
 
     return GestureDetector(
       onTap: () {
@@ -505,8 +477,8 @@ class _MedicalCertificateStatusWidgetState
                 children: [
                   Text(
                     hasCertificate
-                        ? 'Aggiorna Certificato'
-                        : 'Carica Certificato',
+                        ? 'profile.update_certificate'.tr()
+                        : 'profile.upload_certificate'.tr(),
                     style: AppTheme.darkTheme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                       color: AppTheme.darkTheme.colorScheme.primary,
@@ -515,8 +487,8 @@ class _MedicalCertificateStatusWidgetState
                   SizedBox(height: 0.5.h),
                   Text(
                     hasCertificate
-                        ? 'Tocca per caricare un nuovo certificato'
-                        : 'Tocca per selezionare e caricare il documento',
+                        ? 'profile.tap_upload_new'.tr()
+                        : 'profile.tap_select_upload'.tr(),
                     style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
                       color: AppTheme.darkTheme.colorScheme.onSurface.withAlpha(
                         153,
@@ -537,7 +509,8 @@ class _MedicalCertificateStatusWidgetState
     );
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(DateTime? date) {
+    if (date == null) return 'N/A';
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 }

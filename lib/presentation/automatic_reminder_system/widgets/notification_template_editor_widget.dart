@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+
 import '../../../core/app_export.dart';
-import '../../../theme/app_theme.dart';
 
 class NotificationTemplateEditorWidget extends StatefulWidget {
   final VoidCallback onTemplateUpdated;
@@ -27,8 +27,8 @@ class _NotificationTemplateEditorWidgetState
 
   final Map<String, Map<String, String>> _templates = {
     'monthly_reminder': {
-      'name': 'Promemoria Mensile',
-      'title': 'Promemoria Pagamento - Team Ragnarok ASD',
+      'name': 'reminders.monthly_template_name'.tr(),
+      'title': 'reminders.monthly_template_title'.tr(),
       'message': '''Ciao {NOME_UTENTE},
 
 Ti ricordiamo che il tuo abbonamento {TIPO_ABBONAMENTO} scadrà il {DATA_SCADENZA}.
@@ -111,7 +111,8 @@ Team Ragnarok ASD''',
     } catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Errore nel salvare il template: $error'),
+          content: Text('reminders.template_save_error'
+              .tr(namedArgs: {'error': '$error'})),
           backgroundColor: Colors.red,
         ),
       );
@@ -124,28 +125,34 @@ Team Ragnarok ASD''',
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Anteprima Template'),
+        title: Text('reminders.template_preview'.tr()),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Titolo:',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                'reminders.title_label'.tr(),
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 1.h),
               Text(_titleController.text.isEmpty
-                  ? 'Nessun titolo'
+                  ? 'common.no_title'.tr()
                   : _titleController.text),
               SizedBox(height: 2.h),
               Text(
-                'Messaggio:',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                'reminders.message_label_colon'.tr(),
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 1.h),
               Text(_messageController.text.isEmpty
-                  ? 'Nessun messaggio'
+                  ? 'common.no_message'.tr()
                   : _messageController.text),
               SizedBox(height: 2.h),
               Container(
@@ -159,7 +166,9 @@ Team Ragnarok ASD''',
                   children: [
                     Text(
                       'Variabili disponibili:',
-                      style: Theme.of(context).textTheme.bodySmall
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
                           ?.copyWith(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
@@ -179,7 +188,7 @@ Team Ragnarok ASD''',
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Chiudi'),
+            child: Text('common.close'.tr()),
           ),
         ],
       ),
@@ -194,11 +203,11 @@ Team Ragnarok ASD''',
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Editor Template Notifiche',
+            'reminders.template_editor_title'.tr(),
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: AppTheme.primaryLight,
-            ),
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryLight,
+                ),
           ),
           SizedBox(height: 3.h),
           _buildTemplateSelector(),
@@ -230,14 +239,14 @@ Team Ragnarok ASD''',
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Seleziona Template',
+            'reminders.select_template'.tr(),
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+                  fontWeight: FontWeight.bold,
+                ),
           ),
           SizedBox(height: 2.h),
           DropdownButtonFormField<String>(
-            value: _selectedTemplate,
+            initialValue: _selectedTemplate,
             decoration: InputDecoration(
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -282,16 +291,16 @@ Team Ragnarok ASD''',
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Modifica Template',
+            'reminders.edit_template'.tr(),
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+                  fontWeight: FontWeight.bold,
+                ),
           ),
           SizedBox(height: 2.h),
           TextFormField(
             controller: _titleController,
             decoration: InputDecoration(
-              labelText: 'Titolo Notifica',
+              labelText: 'reminders.notification_title_field'.tr(),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -305,7 +314,7 @@ Team Ragnarok ASD''',
             controller: _messageController,
             maxLines: 10,
             decoration: InputDecoration(
-              labelText: 'Messaggio',
+              labelText: 'communication.message_label'.tr(),
               alignLabelWithHint: true,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -337,9 +346,9 @@ Team Ragnarok ASD''',
                     Text(
                       'Campi Dinamici Disponibili',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.amber[700],
-                      ),
+                            fontWeight: FontWeight.bold,
+                            color: Colors.amber[700],
+                          ),
                     ),
                   ],
                 ),
@@ -350,8 +359,8 @@ Team Ragnarok ASD''',
                   '{DATA_SCADENZA} - Data di scadenza abbonamento\n'
                   '{DATA_INIZIO} - Data di inizio abbonamento',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.amber[800],
-                  ),
+                        color: Colors.amber[800],
+                      ),
                 ),
               ],
             ),
@@ -368,7 +377,7 @@ Team Ragnarok ASD''',
           child: OutlinedButton.icon(
             onPressed: _previewTemplate,
             icon: const Icon(Icons.preview),
-            label: const Text('Anteprima'),
+            label: Text('receipt.preview'.tr()),
             style: OutlinedButton.styleFrom(
               padding: EdgeInsets.symmetric(vertical: 2.h),
               shape: RoundedRectangleBorder(
@@ -391,7 +400,7 @@ Team Ragnarok ASD''',
                     ),
                   )
                 : const Icon(Icons.save),
-            label: const Text('Salva'),
+            label: Text('common.save'.tr()),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryLight,
               padding: EdgeInsets.symmetric(vertical: 2.h),

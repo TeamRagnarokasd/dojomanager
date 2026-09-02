@@ -5,6 +5,7 @@ import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/app_export.dart';
+import '../../../services/payment_service.dart';
 
 class SumUpPaymentOptionsWidget extends StatefulWidget {
   const SumUpPaymentOptionsWidget({Key? key}) : super(key: key);
@@ -17,13 +18,55 @@ class SumUpPaymentOptionsWidget extends StatefulWidget {
 class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
   bool _isLoading = false;
 
+  // 🆕 ENROLLMENT CHECK: Track if user has annual registration
+  bool _hasAnnualRegistration = false;
+  bool _isLoadingEnrollmentStatus = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkEnrollmentStatus(); // 🆕 CHECK ENROLLMENT ON INIT
+  }
+
+  // 🆕 CHECK ENROLLMENT STATUS
+  Future<void> _checkEnrollmentStatus() async {
+    try {
+      final dashboardData = await PaymentService.getSubscriptionDashboardData();
+      if (!mounted) return;
+      setState(() {
+        _hasAnnualRegistration =
+            dashboardData['hasAnnualRegistration'] ?? false;
+        _isLoadingEnrollmentStatus = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _hasAnnualRegistration = false;
+        _isLoadingEnrollmentStatus = false;
+      });
+    }
+  }
+
+  // 🔥 MODIFIED: Add enrollment warning for Satispay
   Future<void> _launchSatispayUrl() async {
+    // 🎯 RULE: For Satispay, show warning popup if no annual registration
+    if (!_hasAnnualRegistration) {
+      // 🔔 SATISPAY BEHAVIOR: Show warning but allow continuation
+      final shouldContinue = await _showAnnualRegistrationWarningDialog();
+      if (!mounted) return;
+      if (!shouldContinue) {
+        return; // User cancelled
+      }
+    }
+
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
     });
 
     try {
-      const satispayUrl = 'https://pay.satispay.com/ragnarokteam';
+      const satispayUrl =
+          'https://www.satispay.com/app/pay/shops/58875f70-d796-4596-a2f6-12fe91a8c202';
       final Uri uri = Uri.parse(satispayUrl);
 
       // Set payment pending flag before launching
@@ -40,7 +83,7 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
 
         if (mounted) {
           Fluttertoast.showToast(
-            msg: 'Impossibile aprire Satispay',
+            msg: 'payment.satispay_open_error'.tr(),
             toastLength: Toast.LENGTH_SHORT,
             gravity: ToastGravity.BOTTOM,
             backgroundColor: Colors.red,
@@ -50,7 +93,7 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
       } else {
         if (mounted) {
           Fluttertoast.showToast(
-            msg: 'Reindirizzamento a Satispay',
+            msg: 'payment.satispay_redirect'.tr(),
             toastLength: Toast.LENGTH_SHORT,
             gravity: ToastGravity.BOTTOM,
             backgroundColor: AppTheme.lightTheme.colorScheme.primary,
@@ -65,7 +108,7 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
 
       if (mounted) {
         Fluttertoast.showToast(
-          msg: 'Errore durante il reindirizzamento',
+          msg: 'payment.redirect_error'.tr(namedArgs: {'detail': e.toString()}),
           toastLength: Toast.LENGTH_SHORT,
           gravity: ToastGravity.BOTTOM,
           backgroundColor: Colors.red,
@@ -81,8 +124,85 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
     }
   }
 
+  // 🆕 DIALOG: Show warning for Satispay (allows continuation)
+  Future<bool> _showAnnualRegistrationWarningDialog() async {
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            backgroundColor: Theme.of(context).cardColor,
+            title: Row(
+              children: [
+                CustomIconWidget(
+                  iconName: 'info',
+                  color: const Color(0xFFF39C12),
+                  size: 28,
+                ),
+                SizedBox(width: 3.w),
+                Expanded(
+                  child: Text(
+                    'admin_discipline.attention_title'.tr(),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFFF39C12),
+                        ),
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              'payment.annual_registration_reminder'.tr(),
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    height: 1.4,
+                  ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(
+                  'common.cancel'.tr(),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(
+                  'payment.proceed'.tr(),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.secondary,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 4.w,
+                    vertical: 1.5.h,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ) ??
+        false; // Return false if dialog dismissed without choice
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingEnrollmentStatus) {
+      return Container(
+        margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+        child: Center(
+          child: CircularProgressIndicator(
+            color: Theme.of(context).colorScheme.secondary,
+          ),
+        ),
+      );
+    }
+
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
       child: Card(
@@ -103,7 +223,7 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                   SizedBox(width: 3.w),
                   Expanded(
                     child: Text(
-                      'Metodi di Pagamento',
+                      'payment.payment_methods'.tr(),
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w700,
                             color: Theme.of(context).colorScheme.primary,
@@ -114,7 +234,7 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
               ),
               SizedBox(height: 1.h),
               Text(
-                'Accedi ai sistemi di pagamento sicuro e scegli il tuo abbonamento',
+                'payment.payment_methods_intro'.tr(),
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -148,7 +268,7 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                       );
 
                       Fluttertoast.showToast(
-                        msg: "Reindirizzamento a Selezione Piano SumUp",
+                        msg: 'payment.sumup_redirect'.tr(),
                         toastLength: Toast.LENGTH_SHORT,
                         gravity: ToastGravity.BOTTOM,
                       );
@@ -189,10 +309,14 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Row(
+                                    Wrap(
+                                      spacing: 3.w,
+                                      runSpacing: 0.8.h,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
                                       children: [
                                         Text(
-                                          'SumUp',
+                                          'payment.sumup'.tr(),
                                           style: Theme.of(context)
                                               .textTheme
                                               .titleLarge
@@ -201,7 +325,6 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                                                 color: const Color(0xFF2E7D32),
                                               ),
                                         ),
-                                        SizedBox(width: 4.w),
                                         Container(
                                           padding: EdgeInsets.symmetric(
                                             horizontal: 3.w,
@@ -209,14 +332,15 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                                           ),
                                           decoration: BoxDecoration(
                                             color: const Color(0xFF2E7D32),
-                                            borderRadius:
-                                                BorderRadius.circular(10),
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               Text(
-                                                'Scegli Piano',
+                                                'payment.choose_plan'.tr(),
                                                 style: Theme.of(context)
                                                     .textTheme
                                                     .titleSmall
@@ -239,15 +363,15 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                                     ),
                                     SizedBox(height: 1.h),
                                     Text(
-                                      'Pagamenti sicuri online',
+                                      'payment.secure_online'.tr(),
                                       style: Theme.of(context)
                                           .textTheme
                                           .titleSmall
                                           ?.copyWith(
                                             fontWeight: FontWeight.w600,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurfaceVariant,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
                                           ),
                                     ),
                                   ],
@@ -257,14 +381,14 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                           ),
                           SizedBox(height: 2.h),
                           Text(
-                            'Grazie a SumUp l\'utente potrà completare il pagamento con Google Pay, Apple Pay, carta di credito o prepagata e scegliere tra 6 diversi abbonamenti.',
+                            'payment.sumup_description'.tr(),
                             style: Theme.of(context)
                                 .textTheme
                                 .bodyMedium
                                 ?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                                   height: 1.4,
                                 ),
                           ),
@@ -334,10 +458,14 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Row(
+                                    Wrap(
+                                      spacing: 3.w,
+                                      runSpacing: 0.8.h,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
                                       children: [
                                         Text(
-                                          'Satispay',
+                                          'payment.satispay'.tr(),
                                           style: Theme.of(context)
                                               .textTheme
                                               .titleLarge
@@ -346,7 +474,6 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                                                 color: const Color(0xFFD32F2F),
                                               ),
                                         ),
-                                        SizedBox(width: 4.w),
                                         Container(
                                           padding: EdgeInsets.symmetric(
                                             horizontal: 3.w,
@@ -354,14 +481,15 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                                           ),
                                           decoration: BoxDecoration(
                                             color: const Color(0xFFD32F2F),
-                                            borderRadius:
-                                                BorderRadius.circular(10),
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               Text(
-                                                'Paga subito',
+                                                'payment.pay_now'.tr(),
                                                 style: Theme.of(context)
                                                     .textTheme
                                                     .titleSmall
@@ -384,15 +512,15 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                                     ),
                                     SizedBox(height: 1.h),
                                     Text(
-                                      'Pagamento mobile',
+                                      'payment.mobile_payment'.tr(),
                                       style: Theme.of(context)
                                           .textTheme
                                           .titleSmall
                                           ?.copyWith(
                                             fontWeight: FontWeight.w600,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurfaceVariant,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
                                           ),
                                     ),
                                   ],
@@ -402,14 +530,14 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                           ),
                           SizedBox(height: 2.h),
                           Text(
-                            'Paga facilmente e in sicurezza con l\'app Satispay. Sistema di pagamento mobile veloce e conveniente per tutti i tuoi abbonamenti.',
+                            'payment.satispay_description'.tr(),
                             style: Theme.of(context)
                                 .textTheme
                                 .bodyMedium
                                 ?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                                   height: 1.4,
                                 ),
                           ),
@@ -424,16 +552,14 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
               Container(
                 padding: EdgeInsets.all(4.w),
                 decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primaryContainer
-                      .withValues(alpha: 0.3),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.3),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.3),
                     width: 1,
                   ),
                 ),
@@ -447,7 +573,7 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                     SizedBox(width: 3.w),
                     Expanded(
                       child: Text(
-                        'Tutti i pagamenti sono protetti da sistemi di sicurezza avanzati e crittografia SSL',
+                        'payment.security_footer'.tr(),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               color: Theme.of(context).colorScheme.primary,
                               fontWeight: FontWeight.w500,

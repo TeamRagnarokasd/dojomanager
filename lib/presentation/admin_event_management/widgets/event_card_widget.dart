@@ -268,7 +268,7 @@ class EventCardWidget extends StatelessWidget {
                     children: [
                       _buildActionButton(
                         icon: 'edit',
-                        label: 'Modifica',
+                        label: 'profile.modify'.tr(),
                         onTap: onEdit,
                       ),
                       SizedBox(width: 2.w),
@@ -280,7 +280,7 @@ class EventCardWidget extends StatelessWidget {
                       SizedBox(width: 2.w),
                       _buildActionButton(
                         icon: 'group',
-                        label: 'Partecipanti',
+                        label: 'class_schedule.participants'.tr(),
                         onTap: onViewAttendees,
                       ),
                       const Spacer(),
@@ -313,7 +313,9 @@ class EventCardWidget extends StatelessWidget {
                                 ),
                                 SizedBox(width: 2.w),
                                 Text(
-                                  isActive ? 'Disattiva' : 'Attiva',
+                                  isActive
+                                      ? 'admin_discipline.deactivate'.tr()
+                                      : 'common.active'.tr(),
                                   style: TextStyle(color: Colors.grey[300]),
                                 ),
                               ],
@@ -330,7 +332,7 @@ class EventCardWidget extends StatelessWidget {
                                 ),
                                 SizedBox(width: 2.w),
                                 Text(
-                                  'Elimina',
+                                  'common.delete'.tr(),
                                   style: TextStyle(color: AppTheme.errorLight),
                                 ),
                               ],

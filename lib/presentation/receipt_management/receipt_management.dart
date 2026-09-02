@@ -1,17 +1,16 @@
-import 'dart:convert';
 import 'dart:io' if (dart.library.io) 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sizer/sizer.dart';
 import 'package:universal_html/html.dart' as html;
 
 import '../../core/app_export.dart';
 import '../../models/receipt_model.dart';
+import '../../services/italian_receipt_service.dart';
 import '../../services/receipt_service.dart';
 import './widgets/manual_amount_dialog.dart';
 import './widgets/payment_confirmation_dialog.dart';
@@ -27,23 +26,46 @@ class ReceiptManagement extends StatefulWidget {
 
 class _ReceiptManagementState extends State<ReceiptManagement> {
   final ReceiptService _receiptService = ReceiptService();
+  final ItalianReceiptService _italianReceiptService = ItalianReceiptService();
   final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey =
       GlobalKey<RefreshIndicatorState>();
 
   bool _isLoading = false;
-  String _selectedFilter = 'Tutte';
+  String _selectedFilterKey = 'all';
   String _searchQuery = '';
   List<ReceiptModel> _receipts = [];
   List<ReceiptModel> _filteredReceipts = [];
 
-  final List<String> _filterOptions = [
-    'Tutte',
-    'Mensile',
-    'Annuale',
-    'SumUp',
-    'Satispay',
-    'Questo Mese'
+  static const List<String> _filterKeys = [
+    'all',
+    'monthly',
+    'annual',
+    'sumup',
+    'satispay',
+    'this_month',
   ];
+
+  String _filterLabel(String key) {
+    switch (key) {
+      case 'all':
+        return 'receipt.filter_all_receipts'.tr();
+      case 'monthly':
+        return 'receipt.monthly_subscription_label'.tr();
+      case 'annual':
+        return 'receipt.annual_subscription_label'.tr();
+      case 'sumup':
+        return 'payment.sumup'.tr();
+      case 'satispay':
+        return 'payment.satispay'.tr();
+      case 'this_month':
+        return 'receipt.period_this_month'.tr();
+      default:
+        return key;
+    }
+  }
+
+  List<String> get _filterOptions =>
+      _filterKeys.map((key) => _filterLabel(key)).toList();
 
   @override
   void initState() {
@@ -63,7 +85,8 @@ class _ReceiptManagementState extends State<ReceiptManagement> {
       _receipts = await _receiptService.getUserReceipts(currentUserId);
       _applyFilters();
     } catch (error) {
-      _showErrorToast('Errore nel caricamento delle ricevute: $error');
+      _showErrorToast(
+          'receipt.load_receipts_error'.tr(namedArgs: {'detail': '$error'}));
     } finally {
       setState(() {
         _isLoading = false;
@@ -77,20 +100,20 @@ class _ReceiptManagementState extends State<ReceiptManagement> {
       bool matchesSearch = true;
 
       // Apply filter
-      switch (_selectedFilter) {
-        case 'Mensile':
+      switch (_selectedFilterKey) {
+        case 'monthly':
           matchesFilter = receipt.subscription?.type == 'monthly';
           break;
-        case 'Annuale':
+        case 'annual':
           matchesFilter = receipt.subscription?.type == 'annual';
           break;
-        case 'SumUp':
+        case 'sumup':
           matchesFilter = receipt.paymentMethod == 'sumup';
           break;
-        case 'Satispay':
+        case 'satispay':
           matchesFilter = receipt.paymentMethod == 'satispay';
           break;
-        case 'Questo Mese':
+        case 'this_month':
           final now = DateTime.now();
           matchesFilter = receipt.issueDate.year == now.year &&
               receipt.issueDate.month == now.month;
@@ -116,7 +139,6 @@ class _ReceiptManagementState extends State<ReceiptManagement> {
 
   Future<void> _checkPaymentReminder() async {
     try {
-      final currentUserId = 'current-user-id'; // Replace with actual user ID
       final now = DateTime.now();
       if (now.day == 7) {
         // Show reminder on 7th of each month
@@ -384,10 +406,11 @@ class _ReceiptManagementState extends State<ReceiptManagement> {
 
     try {
       final currentUserId = 'current-user-id'; // Replace with actual user ID
-      
+
       // Use the available createReceipt method instead of undefined methods
       final receipt = await _receiptService.createReceipt(
-        description: 'Abbonamento $subscriptionType - ${paymentMethod.toUpperCase()}',
+        description:
+            'Abbonamento $subscriptionType - ${paymentMethod.toUpperCase()}',
         amount: amount,
         createdBy: currentUserId,
         paymentMethod: paymentMethod,
@@ -398,7 +421,8 @@ class _ReceiptManagementState extends State<ReceiptManagement> {
       _loadReceipts(); // Refresh the list
       _showReceiptPreview(receipt);
     } catch (error) {
-      _showErrorToast('Errore nella generazione della ricevuta: $error');
+      _showErrorToast(
+          'receipt.generate_receipt_error'.tr(namedArgs: {'detail': '$error'}));
     }
   }
 
@@ -487,7 +511,7 @@ class _ReceiptManagementState extends State<ReceiptManagement> {
                           size: 20,
                         ),
                         label: Text(
-                          'Scarica Ricevuta PDF',
+                          'payment.download_receipt_pdf'.tr(),
                           style: AppTheme.lightTheme.textTheme.titleMedium
                               ?.copyWith(
                             color: AppTheme.lightTheme.colorScheme.onPrimary,
@@ -511,32 +535,56 @@ class _ReceiptManagementState extends State<ReceiptManagement> {
 
   Future<void> _downloadReceiptPdf(ReceiptModel receipt) async {
     try {
-      final pdfContent = _generateReceiptContent(receipt);
-      final filename =
-          'ricevuta_${receipt.receiptNumber}_${DateFormat('yyyyMMdd').format(receipt.issueDate)}.txt';
+      // Step 1: Fetch full receipt data from database (with organization_info)
+      final receiptData =
+          await _italianReceiptService.getReceiptById(receipt.id);
 
-      if (kIsWeb) {
-        final bytes = utf8.encode(pdfContent);
-        final blob = html.Blob([bytes]);
-        final url = html.Url.createObjectUrlFromBlob(blob);
-        final anchor = html.AnchorElement(href: url)
-          ..setAttribute("download", filename)
-          ..click();
-        html.Url.revokeObjectUrl(url);
-      } else {
-        final directory = await getApplicationDocumentsDirectory();
-        final file = File('${directory.path}/$filename');
-        await file.writeAsString(pdfContent);
+      if (receiptData == null) {
+        throw Exception('Ricevuta non trovata nel database');
       }
 
-      _showSuccessToast('Ricevuta scaricata con successo!');
+      // Step 2: Generate PDF using the beautiful service (same as other screens)
+      final pdf =
+          await _italianReceiptService.generateBeautifulReceiptPDF(receiptData);
+      final pdfBytes = await pdf.save();
+
+      // Step 3: Download the PDF
+      final filename = 'ricevuta_${receiptData['receipt_number']}.pdf';
+
+      if (kIsWeb) {
+        // Web: Enhanced download trigger with better browser support
+        final blob = html.Blob([pdfBytes], 'application/pdf');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final anchor = html.document.createElement('a') as html.AnchorElement
+          ..href = url
+          ..style.display = 'none'
+          ..download = filename;
+
+        // Append to body, click, and remove (ensures click event fires correctly)
+        html.document.body?.append(anchor);
+        anchor.click();
+        anchor.remove();
+
+        // Clean up blob URL after a short delay to ensure download completes
+        Future.delayed(const Duration(milliseconds: 100), () {
+          html.Url.revokeObjectUrl(url);
+        });
+      } else {
+        // Mobile: Save to device documents directory
+        final directory = await getApplicationDocumentsDirectory();
+        final file = File('${directory.path}/$filename');
+        await file.writeAsBytes(pdfBytes);
+      }
+
+      _showSuccessToast('Ricevuta PDF scaricata con successo!');
       Navigator.pop(context);
     } catch (error) {
-      _showErrorToast('Errore durante il download: $error');
+      _showErrorToast('receipt.download_receipt_error'
+          .tr(namedArgs: {'detail': error.toString()}));
     }
   }
 
-  // Add this helper method to generate receipt content
+  // Helper method to generate receipt content for text preview (not for PDF)
   String _generateReceiptContent(ReceiptModel receipt) {
     return '''
 RICEVUTA NON FISCALE
@@ -548,18 +596,18 @@ Descrizione: ${receipt.description}
 Importo: €${receipt.totalAmount.toStringAsFixed(2)}
 Metodo di Pagamento: ${_getPaymentMethodText(receipt.paymentMethod)}
 
-${receipt.validityStart != null && receipt.validityEnd != null 
-  ? 'Validità: dal ${DateFormat('dd/MM/yyyy').format(receipt.validityStart!)} al ${DateFormat('dd/MM/yyyy').format(receipt.validityEnd!)}\n' 
-  : ''}
+${receipt.validityStart != null && receipt.validityEnd != null ? 'Validità: dal ${DateFormat('dd/MM/yyyy').format(receipt.validityStart!)} al ${DateFormat('dd/MM/yyyy').format(receipt.validityEnd!)}\n' : ''}
 Stato: ${receipt.status.toUpperCase()}
 
 Generato il: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}
 ''';
   }
 
-  void _onFilterChanged(String filter) {
+  void _onFilterChanged(String filterLabel) {
+    final index = _filterOptions.indexOf(filterLabel);
+    if (index < 0) return;
     setState(() {
-      _selectedFilter = filter;
+      _selectedFilterKey = _filterKeys[index];
     });
     _applyFilters();
   }
@@ -597,7 +645,7 @@ Generato il: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}
       backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          'Gestione Ricevute',
+          'receipt.management_title'.tr(),
           style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w600,
           ),
@@ -629,7 +677,7 @@ Generato il: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}
           children: [
             ReceiptFilterWidget(
               filterOptions: _filterOptions,
-              selectedFilter: _selectedFilter,
+              selectedFilter: _filterLabel(_selectedFilterKey),
               searchQuery: _searchQuery,
               onFilterChanged: _onFilterChanged,
               onSearchChanged: _onSearchChanged,
@@ -663,7 +711,7 @@ Generato il: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}
           size: 20,
         ),
         label: Text(
-          'Nuovo Pagamento',
+          'receipt.new_payment'.tr(),
           style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
             color: AppTheme.lightTheme.colorScheme.onPrimary,
             fontWeight: FontWeight.w600,
@@ -686,14 +734,14 @@ Generato il: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}
           ),
           SizedBox(height: 2.h),
           Text(
-            'Nessuna ricevuta trovata',
+            'receipt.no_receipts_found'.tr(),
             style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
               color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
             ),
           ),
           SizedBox(height: 1.h),
           Text(
-            'Le tue ricevute appariranno qui dopo i pagamenti',
+            'receipt.empty_hint_after_payment'.tr(),
             style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
               color: AppTheme.lightTheme.colorScheme.onSurfaceVariant
                   .withValues(alpha: 0.7),
@@ -736,7 +784,8 @@ Generato il: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}
                 children: [
                   Expanded(
                     child: Text(
-                      'Dettagli Ricevuta #${receipt.receiptNumber}',
+                      'receipt.receipt_details_title'.tr(
+                          namedArgs: {'number': '${receipt.receiptNumber}'}),
                       style:
                           AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w600,
@@ -759,21 +808,29 @@ Generato il: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildDetailRow('Numero', '#${receipt.receiptNumber}'),
-                      _buildDetailRow('Data',
+                      _buildDetailRow(
+                          'receipt.number'.tr(), '#${receipt.receiptNumber}'),
+                      _buildDetailRow('class_schedule.date'.tr(),
                           DateFormat('dd/MM/yyyy').format(receipt.issueDate)),
-                      _buildDetailRow('Descrizione', receipt.description),
-                      _buildDetailRow('Importo',
+                      _buildDetailRow(
+                          'common.description'.tr(), receipt.description),
+                      _buildDetailRow('payment.amount'.tr(),
                           '€${receipt.totalAmount.toStringAsFixed(2).replaceAll('.', ',')}'),
-                      _buildDetailRow('Metodo Pagamento',
+                      _buildDetailRow('common.payment_method'.tr(),
                           _getPaymentMethodText(receipt.paymentMethod)),
                       if (receipt.validityStart != null &&
                           receipt.validityEnd != null)
                         _buildDetailRow(
-                          'Validità',
-                          'dal ${DateFormat('dd/MM/yyyy').format(receipt.validityStart!)} al ${DateFormat('dd/MM/yyyy').format(receipt.validityEnd!)}',
+                          'receipt.validity_label'.tr(),
+                          'receipt.validity_range'.tr(namedArgs: {
+                            'start': DateFormat('dd/MM/yyyy')
+                                .format(receipt.validityStart!),
+                            'end': DateFormat('dd/MM/yyyy')
+                                .format(receipt.validityEnd!),
+                          }),
                         ),
-                      _buildDetailRow('Stato', receipt.status.toUpperCase()),
+                      _buildDetailRow(
+                          'common.status'.tr(), receipt.status.toUpperCase()),
                       SizedBox(height: 4.h),
                       SizedBox(
                         width: double.infinity,
@@ -785,7 +842,7 @@ Generato il: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}
                             size: 20,
                           ),
                           label: Text(
-                            'Scarica PDF',
+                            'receipt.download_pdf'.tr(),
                             style: AppTheme.lightTheme.textTheme.titleMedium
                                 ?.copyWith(
                               color: AppTheme.lightTheme.colorScheme.onPrimary,
@@ -842,11 +899,11 @@ Generato il: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}
       case 'sumup':
         return 'SumUp';
       case 'satispay':
-        return 'Satispay';
+        return 'payment.satispay'.tr();
       case 'cash':
-        return 'Contanti';
+        return 'payment.cash'.tr();
       case 'bank_transfer':
-        return 'Bonifico Bancario';
+        return 'payment.bank_transfer'.tr();
       default:
         return method;
     }

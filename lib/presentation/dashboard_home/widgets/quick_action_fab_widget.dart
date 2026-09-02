@@ -188,7 +188,7 @@ class _QuickActionFabWidgetState extends State<QuickActionFabWidget>
             'onPressed': _handleViewSchedule,
           },
           {
-            'label': 'Carica Certificato',
+            'label': 'profile.upload_certificate'.tr(),
             'icon': 'medical_services',
             'color': AppTheme.successLight,
             'onPressed': _handleUploadCertificate,

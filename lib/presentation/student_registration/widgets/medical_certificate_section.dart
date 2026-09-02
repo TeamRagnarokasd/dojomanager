@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' if (dart.library.io) 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -46,7 +46,7 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Certificato Medico',
+            'profile.medical_certificate'.tr(),
             style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
               color: AppTheme.lightTheme.colorScheme.primary,
@@ -56,12 +56,14 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
           Container(
             padding: EdgeInsets.all(3.w),
             decoration: BoxDecoration(
-              color: AppTheme.lightTheme.colorScheme.tertiary
-                  .withValues(alpha: 0.1),
+              color: AppTheme.lightTheme.colorScheme.tertiary.withValues(
+                alpha: 0.1,
+              ),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: AppTheme.lightTheme.colorScheme.tertiary
-                    .withValues(alpha: 0.3),
+                color: AppTheme.lightTheme.colorScheme.tertiary.withValues(
+                  alpha: 0.3,
+                ),
               ),
             ),
             child: Row(
@@ -74,7 +76,7 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
                 SizedBox(width: 2.w),
                 Expanded(
                   child: Text(
-                    'Il certificato medico sportivo non è obbligatorio per l\'iscrizione, ma hai 30 giorni di tempo per caricarlo. Dopo questo periodo, l\'iscrizione e l\'abbonamento verranno sospesi.',
+                    'student_registration.medical_optional_info'.tr(),
                     style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
                       color: AppTheme.lightTheme.colorScheme.tertiary,
                       fontWeight: FontWeight.w500,
@@ -86,7 +88,7 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
           ),
           SizedBox(height: 2.h),
           Text(
-            'Carica il certificato medico sportivo (opzionale per ora)',
+            'student_registration.upload_medical_optional'.tr(),
             style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
               color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
             ),
@@ -117,7 +119,7 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
               color: AppTheme.lightTheme.colorScheme.onPrimary,
               size: 20,
             ),
-            label: Text('Fotocamera'),
+            label: Text('common.camera'.tr()),
             style: ElevatedButton.styleFrom(
               padding: EdgeInsets.symmetric(vertical: 2.h),
             ),
@@ -132,7 +134,7 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
               color: AppTheme.lightTheme.colorScheme.primary,
               size: 20,
             ),
-            label: Text('Galleria'),
+            label: Text('common.gallery'.tr()),
             style: OutlinedButton.styleFrom(
               padding: EdgeInsets.symmetric(vertical: 2.h),
             ),
@@ -163,7 +165,7 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
           ),
           SizedBox(height: 1.h),
           Text(
-            'Nessun documento caricato',
+            'student_registration.no_document_uploaded'.tr(),
             style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
               color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
             ),
@@ -171,7 +173,7 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
           ),
           SizedBox(height: 0.5.h),
           Text(
-            'Puoi caricare il certificato medico ora o entro 30 giorni dall\'iscrizione',
+            'student_registration.upload_within_30_days'.tr(),
             style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
               color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
             ),
@@ -209,22 +211,17 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
             width: 15.w,
             height: 15.w,
             decoration: BoxDecoration(
-              color: AppTheme.lightTheme.colorScheme.primary
-                  .withValues(alpha: 0.1),
+              color: AppTheme.lightTheme.colorScheme.primary.withValues(
+                alpha: 0.1,
+              ),
               borderRadius: BorderRadius.circular(8),
             ),
             child: document['type'] == 'image'
                 ? ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: kIsWeb
-                        ? Image.memory(
-                            document['bytes'],
-                            fit: BoxFit.cover,
-                          )
-                        : Image.file(
-                            File(document['path']),
-                            fit: BoxFit.cover,
-                          ),
+                        ? Image.memory(document['bytes'], fit: BoxFit.cover)
+                        : Image.file(File(document['path']), fit: BoxFit.cover),
                   )
                 : Center(
                     child: CustomIconWidget(
@@ -240,7 +237,8 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  document['name'] ?? 'Documento',
+                  document['name'] ??
+                      'student_registration.document_default_name'.tr(),
                   style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w500,
                   ),
@@ -262,8 +260,9 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
             child: Container(
               padding: EdgeInsets.all(2.w),
               decoration: BoxDecoration(
-                color: AppTheme.lightTheme.colorScheme.error
-                    .withValues(alpha: 0.1),
+                color: AppTheme.lightTheme.colorScheme.error.withValues(
+                  alpha: 0.1,
+                ),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: CustomIconWidget(
@@ -299,7 +298,7 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
           ),
           SizedBox(width: 3.w),
           Text(
-            'Caricamento documento in corso...',
+            'student_registration.uploading_document'.tr(),
             style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
               color: AppTheme.lightTheme.colorScheme.primary,
             ),
@@ -332,7 +331,7 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
         await _processSelectedFile(image);
       }
     } catch (e) {
-      _showErrorDialog('Errore durante l\'acquisizione dalla fotocamera');
+      _showErrorDialog('student_registration.camera_capture_error'.tr());
     } finally {
       setState(() => _isUploading = false);
     }
@@ -353,7 +352,7 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
         await _processPickedFile(file);
       }
     } catch (e) {
-      _showErrorDialog('Errore durante la selezione del file');
+      _showErrorDialog('student_registration.file_select_error'.tr());
     } finally {
       setState(() => _isUploading = false);
     }
@@ -364,7 +363,7 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
     final sizeInMB = bytes.length / (1024 * 1024);
 
     if (sizeInMB > 5) {
-      _showErrorDialog('Il file è troppo grande. Dimensione massima: 5MB');
+      _showErrorDialog('student_registration.file_too_large'.tr());
       return;
     }
 
@@ -384,7 +383,7 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
     final sizeInMB = file.size / (1024 * 1024);
 
     if (sizeInMB > 5) {
-      _showErrorDialog('Il file è troppo grande. Dimensione massima: 5MB');
+      _showErrorDialog('student_registration.file_too_large'.tr());
       return;
     }
 
@@ -410,12 +409,12 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Elimina Documento'),
-        content: Text('Sei sicuro di voler eliminare questo documento?'),
+        title: Text('student_registration.delete_doc_title'.tr()),
+        content: Text('student_registration.delete_doc_confirm'.tr()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Annulla'),
+            child: Text('common.cancel'.tr()),
           ),
           TextButton(
             onPressed: () {
@@ -423,7 +422,7 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
               widget.onDocumentRemoved(index);
             },
             child: Text(
-              'Elimina',
+              'common.delete'.tr(),
               style: TextStyle(color: AppTheme.lightTheme.colorScheme.error),
             ),
           ),
@@ -436,20 +435,23 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Permesso Richiesto'),
+        title: Text('student_reg_ui.permission_required'.tr()),
         content: Text(
-            'È necessario il permesso per accedere alla $permission per caricare i documenti.'),
+          'student_registration.permission_for'.tr(
+            namedArgs: {'permission': permission},
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Annulla'),
+            child: Text('common.cancel'.tr()),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               openAppSettings();
             },
-            child: Text('Impostazioni'),
+            child: Text('student_reg_ui.settings'.tr()),
           ),
         ],
       ),
@@ -460,12 +462,12 @@ class _MedicalCertificateSectionState extends State<MedicalCertificateSection> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Errore'),
+        title: Text('common.error'.tr()),
         content: Text(message),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('OK'),
+            child: Text('common.ok'.tr()),
           ),
         ],
       ),

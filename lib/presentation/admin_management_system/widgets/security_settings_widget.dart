@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
-import '../../../theme/app_theme.dart';
 
 class SecuritySettingsWidget extends StatelessWidget {
   final bool isPrincipalAdmin;
@@ -226,7 +225,7 @@ class SecuritySettingsWidget extends StatelessWidget {
                   ElevatedButton.icon(
                     onPressed: () => _showBiometricPrompt(context),
                     icon: Icon(Icons.fingerprint, size: 16.sp),
-                    label: Text('Configura Biometrica'),
+                    label: Text('biometric.configure_biometric'.tr()),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
                       foregroundColor: Colors.white,
@@ -407,7 +406,7 @@ class SecuritySettingsWidget extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Annulla'),
+            child: Text('common.cancel'.tr()),
           ),
           ElevatedButton(
             onPressed: () {
@@ -415,7 +414,7 @@ class SecuritySettingsWidget extends StatelessWidget {
               // Simulate biometric setup
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Autenticazione biometrica configurata'),
+                  content: Text('biometric.configured_success'.tr()),
                   backgroundColor: Colors.green,
                 ),
               );
@@ -424,7 +423,7 @@ class SecuritySettingsWidget extends StatelessWidget {
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            child: Text('Configura'),
+            child: Text('biometric.configure'.tr()),
           ),
         ],
       ),

@@ -6,7 +6,7 @@ class BookingHeaderWidget extends StatelessWidget {
   final Map<String, dynamic> classData;
 
   const BookingHeaderWidget({Key? key, required this.classData})
-    : super(key: key);
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {

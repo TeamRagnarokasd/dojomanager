@@ -1,7 +1,7 @@
 import 'package:sizer/sizer.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-
+import '../../../core/app_export.dart';
 
 class BulkActionsToolbarWidget extends StatelessWidget {
   final int selectedCount;
@@ -76,7 +76,7 @@ class BulkActionsToolbarWidget extends StatelessWidget {
               ),
               SizedBox(width: 6.w),
               _buildActionButton(
-                'Email',
+                'common.email'.tr(),
                 Icons.email,
                 Colors.green,
                 onBulkEmail,
@@ -90,7 +90,7 @@ class BulkActionsToolbarWidget extends StatelessWidget {
               ),
               SizedBox(width: 6.w),
               _buildActionButton(
-                'Annulla',
+                'common.cancel'.tr(),
                 Icons.close,
                 Colors.orange,
                 onClearSelection,

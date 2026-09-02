@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../core/app_export.dart';
 
 class BulkOperationsToolbarWidget extends StatelessWidget {
   final int selectedCount;
@@ -57,7 +58,7 @@ class BulkOperationsToolbarWidget extends StatelessWidget {
                 _buildActionButton(
                   context,
                   Icons.edit,
-                  'Modifica',
+                  'profile.modify'.tr(),
                   onBulkEdit,
                 ),
                 const SizedBox(width: 8),
@@ -71,7 +72,7 @@ class BulkOperationsToolbarWidget extends StatelessWidget {
                 _buildActionButton(
                   context,
                   Icons.delete,
-                  'Elimina',
+                  'common.delete'.tr(),
                   onBulkDelete,
                   isDestructive: true,
                 ),

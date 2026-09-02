@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../services/sponsor_service.dart';
@@ -29,6 +30,7 @@ class _SponsorFormDialogWidgetState extends State<SponsorFormDialogWidget> {
   final _displayOrderController = TextEditingController();
 
   String _status = 'active';
+  String _category = 'sponsor';
   bool _isLoading = false;
   bool get _isEditing => widget.sponsor != null;
   String? _selectedImagePath;
@@ -49,6 +51,7 @@ class _SponsorFormDialogWidgetState extends State<SponsorFormDialogWidget> {
     _externalUrlController.text = sponsor['external_url'] ?? '';
     _displayOrderController.text = sponsor['display_order']?.toString() ?? '0';
     _status = sponsor['status'] ?? 'active';
+    _category = sponsor['category'] ?? 'sponsor';
     _currentImageUrl = sponsor['image_url'];
   }
 
@@ -77,19 +80,18 @@ class _SponsorFormDialogWidgetState extends State<SponsorFormDialogWidget> {
           description: _descriptionController.text.trim().isEmpty
               ? null
               : _descriptionController.text.trim(),
-          imageFilePath:
-              _selectedImagePath, // Changed from imageUrl to imageFilePath
+          imageFilePath: _selectedImagePath,
           externalUrl: _externalUrlController.text.trim(),
           status: _status,
           displayOrder: displayOrder,
-          currentImageUrl:
-              _currentImageUrl, // Pass current image URL for deletion
+          currentImageUrl: _currentImageUrl,
+          category: _category,
         );
 
         if (result != null) {
           widget.onSponsorUpdated?.call();
         } else {
-          _showErrorMessage('Errore nell\'aggiornamento dello sponsor');
+          _showErrorMessage('sponsor_ui.update_error'.tr());
         }
       } else {
         // Create new sponsor
@@ -99,22 +101,24 @@ class _SponsorFormDialogWidgetState extends State<SponsorFormDialogWidget> {
           description: _descriptionController.text.trim().isEmpty
               ? null
               : _descriptionController.text.trim(),
-          imageFilePath:
-              _selectedImagePath, // Changed from imageUrl to imageFilePath
+          imageFilePath: _selectedImagePath,
           displayOrder: displayOrder,
+          category: _category,
         );
 
         if (result != null) {
           widget.onSponsorCreated?.call();
         } else {
-          _showErrorMessage('Errore nella creazione dello sponsor');
+          _showErrorMessage('sponsor_ui.create_error'.tr());
         }
       }
     } catch (error) {
       print('Error submitting sponsor form: $error');
-      _showErrorMessage(_isEditing
-          ? 'Errore nell\'aggiornamento dello sponsor'
-          : 'Errore nella creazione dello sponsor');
+      _showErrorMessage(
+        _isEditing
+            ? 'sponsor_ui.update_error'.tr()
+            : 'sponsor_ui.create_error'.tr(),
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -145,10 +149,12 @@ class _SponsorFormDialogWidgetState extends State<SponsorFormDialogWidget> {
           children: [
             // Header
             Text(
-              _isEditing ? 'Modifica Sponsor' : 'Nuovo Sponsor',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+              _isEditing
+                  ? 'sponsor_ui.edit_sponsor'.tr()
+                  : 'sponsor_ui.new_sponsor'.tr(),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
 
             SizedBox(height: 3.h),
@@ -164,14 +170,14 @@ class _SponsorFormDialogWidgetState extends State<SponsorFormDialogWidget> {
                       // Name Field
                       TextFormField(
                         controller: _nameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Nome Sponsor *',
-                          hintText: 'Inserisci il nome dello sponsor',
+                        decoration: InputDecoration(
+                          labelText: 'admin_sponsor.name_label'.tr(),
+                          hintText: 'sponsor_ui.name_hint'.tr(),
                           border: OutlineInputBorder(),
                         ),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return 'Il nome è obbligatorio';
+                            return 'validation.name_required'.tr();
                           }
                           return null;
                         },
@@ -182,18 +188,18 @@ class _SponsorFormDialogWidgetState extends State<SponsorFormDialogWidget> {
                       // External URL Field
                       TextFormField(
                         controller: _externalUrlController,
-                        decoration: const InputDecoration(
-                          labelText: 'URL Esterno *',
-                          hintText: 'https://esempio.com',
+                        decoration: InputDecoration(
+                          labelText: 'admin_sponsor.url_label'.tr(),
+                          hintText: 'sponsor_ui.url_hint'.tr(),
                           border: OutlineInputBorder(),
                         ),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return 'L\'URL è obbligatorio';
+                            return 'validation.url_required'.tr();
                           }
                           if (!value.startsWith('http://') &&
                               !value.startsWith('https://')) {
-                            return 'L\'URL deve iniziare con http:// o https://';
+                            return 'validation.url_must_start_http'.tr();
                           }
                           return null;
                         },
@@ -205,9 +211,9 @@ class _SponsorFormDialogWidgetState extends State<SponsorFormDialogWidget> {
                       TextFormField(
                         controller: _descriptionController,
                         maxLines: 3,
-                        decoration: const InputDecoration(
-                          labelText: 'Descrizione',
-                          hintText: 'Inserisci una descrizione dello sponsor',
+                        decoration: InputDecoration(
+                          labelText: 'common.description'.tr(),
+                          hintText: 'sponsor_ui.description_hint'.tr(),
                           border: OutlineInputBorder(),
                         ),
                       ),
@@ -227,6 +233,30 @@ class _SponsorFormDialogWidgetState extends State<SponsorFormDialogWidget> {
 
                       SizedBox(height: 2.h),
 
+                      // Category Selector
+                      DropdownButtonFormField<String>(
+                        initialValue: _category,
+                        decoration: const InputDecoration(
+                          labelText: 'Categoria',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'sponsor',
+                            child: Text('Sponsor / Partner'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'affiliazione',
+                            child: Text('Affiliazione / Certificazione'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setState(() => _category = value ?? 'sponsor');
+                        },
+                      ),
+
+                      SizedBox(height: 2.h),
+
                       Row(
                         children: [
                           // Display Order Field
@@ -234,8 +264,8 @@ class _SponsorFormDialogWidgetState extends State<SponsorFormDialogWidget> {
                             child: TextFormField(
                               controller: _displayOrderController,
                               keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'Ordine',
+                              decoration: InputDecoration(
+                                labelText: 'sponsor_ui.display_order'.tr(),
                                 hintText: '0',
                                 border: OutlineInputBorder(),
                               ),
@@ -243,7 +273,7 @@ class _SponsorFormDialogWidgetState extends State<SponsorFormDialogWidget> {
                                 if (value != null && value.isNotEmpty) {
                                   final order = int.tryParse(value);
                                   if (order == null) {
-                                    return 'Inserisci un numero valido';
+                                    return 'validation.enter_valid_number'.tr();
                                   }
                                 }
                                 return null;
@@ -256,19 +286,19 @@ class _SponsorFormDialogWidgetState extends State<SponsorFormDialogWidget> {
                           // Status Field
                           Expanded(
                             child: DropdownButtonFormField<String>(
-                              value: _status,
+                              initialValue: _status,
                               decoration: const InputDecoration(
                                 labelText: 'Stato',
                                 border: OutlineInputBorder(),
                               ),
-                              items: const [
+                              items: [
                                 DropdownMenuItem(
                                   value: 'active',
-                                  child: Text('Attivo'),
+                                  child: Text('sponsor_ui.active'.tr()),
                                 ),
                                 DropdownMenuItem(
                                   value: 'inactive',
-                                  child: Text('Inattivo'),
+                                  child: Text('sponsor_ui.inactive'.tr()),
                                 ),
                               ],
                               onChanged: (value) {
@@ -292,7 +322,7 @@ class _SponsorFormDialogWidgetState extends State<SponsorFormDialogWidget> {
                 Expanded(
                   child: TextButton(
                     onPressed: _isLoading ? null : () => Navigator.pop(context),
-                    child: const Text('Annulla'),
+                    child: Text('common.cancel'.tr()),
                   ),
                 ),
                 SizedBox(width: 4.w),
@@ -305,7 +335,11 @@ class _SponsorFormDialogWidgetState extends State<SponsorFormDialogWidget> {
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : Text(_isEditing ? 'Aggiorna' : 'Crea'),
+                        : Text(
+                            _isEditing
+                                ? 'common.update'.tr()
+                                : 'common.create'.tr(),
+                          ),
                   ),
                 ),
               ],

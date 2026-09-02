@@ -1,8 +1,8 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
-import 'package:fl_chart/fl_chart.dart';
+
 import '../../../core/app_export.dart';
-import '../../../theme/app_theme.dart';
 
 class DeliveryStatusDashboardWidget extends StatelessWidget {
   final Map<String, dynamic> deliveryStats;
@@ -170,7 +170,7 @@ class DeliveryStatusDashboardWidget extends StatelessWidget {
             ),
             SizedBox(height: 2.h),
             Text(
-              'Nessun dato di consegna disponibile',
+              'reminders.no_delivery_data'.tr(),
               style: Theme.of(context).textTheme.titleMedium!.copyWith(
                     color: Colors.grey[600],
                   ),
@@ -318,13 +318,13 @@ class DeliveryStatusDashboardWidget extends StatelessWidget {
       },
       {
         'user': 'Giulia Bianchi',
-        'type': 'Email',
+        'type': 'common.email'.tr(),
         'status': 'success',
         'timestamp': DateTime.now().subtract(const Duration(minutes: 15)),
       },
       {
         'user': 'Luca Verde',
-        'type': 'SMS',
+        'type': 'reminders.sms'.tr(),
         'status': 'failed',
         'timestamp': DateTime.now().subtract(const Duration(minutes: 30)),
       },
@@ -361,7 +361,7 @@ class DeliveryStatusDashboardWidget extends StatelessWidget {
                   // Navigate to full delivery history
                 },
                 icon: const Icon(Icons.history),
-                label: const Text('Vedi tutto'),
+                label: Text('reminders.see_all'.tr()),
               ),
             ],
           ),

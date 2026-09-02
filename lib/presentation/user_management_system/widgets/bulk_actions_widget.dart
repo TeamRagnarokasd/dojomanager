@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
 
-import '../../../theme/app_theme.dart';
+import '../../../core/app_export.dart';
 
 class BulkActionsWidget extends StatelessWidget {
   final int selectedCount;
@@ -83,7 +83,7 @@ class BulkActionsWidget extends StatelessWidget {
                         ),
                         SizedBox(width: 4.w),
                         Text(
-                          'Messaggio',
+                          'communication.message_label'.tr(),
                           style: GoogleFonts.inter(
                             color: Colors.white,
                             fontWeight: FontWeight.w500,

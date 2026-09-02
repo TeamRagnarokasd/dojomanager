@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
@@ -193,9 +192,9 @@ class ReceiptCardWidget extends StatelessWidget {
       case 'satispay':
         return 'Satispay';
       case 'cash':
-        return 'Contanti';
+        return 'payment.cash'.tr();
       case 'bank_transfer':
-        return 'Bonifico';
+        return 'payment.bank_transfer'.tr();
       default:
         return receipt.paymentMethod.toUpperCase();
     }

@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sizer/sizer.dart';
 
+import '../../../core/app_export.dart';
 import '../../../constants/app_constants.dart';
-import '../../../services/user_profile_service.dart';
+import '../../../constants/profile_typography.dart';
+import '../../../services/supabase_service.dart';
 
 class EmergencyContactsWidget extends StatefulWidget {
-  const EmergencyContactsWidget({Key? key}) : super(key: key);
+  final String? userId; // NEW: Optional user ID parameter
+
+  const EmergencyContactsWidget({Key? key, this.userId}) : super(key: key);
 
   @override
   State<EmergencyContactsWidget> createState() =>
@@ -14,40 +18,37 @@ class EmergencyContactsWidget extends StatefulWidget {
 }
 
 class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
+  Map<String, dynamic>? _emergencyContact;
   bool _isLoading = true;
-  Map<String, dynamic>? _userProfile;
-  String _emergencyContact = '';
-  String _emergencyPhone = '';
 
   @override
   void initState() {
     super.initState();
-    _loadUserProfile();
+    _loadEmergencyContact();
   }
 
-  Future<void> _loadUserProfile() async {
+  Future<void> _loadEmergencyContact() async {
     try {
-      setState(() => _isLoading = true);
+      final client = SupabaseService.instance.client;
 
-      final profile = await UserProfileService().getCurrentUserProfile();
+      String? targetUserId = widget.userId;
 
-      if (profile != null) {
+      // 🎯 FIX: Use correct column names - emergency_contact and emergency_phone; maybeSingle() for missing profile
+      final response = await client
+          .from('user_profiles')
+          .select('emergency_contact, emergency_phone')
+          .eq('id', targetUserId ?? '')
+          .maybeSingle();
+
+      if (mounted) {
         setState(() {
-          _userProfile = profile;
-          _emergencyContact = profile['emergency_contact'] ?? '';
-          _emergencyPhone = profile['emergency_phone'] ?? '';
+          _emergencyContact = response;
+          _isLoading = false;
         });
       }
     } catch (e) {
-      print('Error loading user profile: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Errore nel caricamento dei dati profilo'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      setState(() => _isLoading = false);
+      print('Error loading emergency contact: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -67,17 +68,20 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Contatto di Emergenza',
+                'profile.emergency_contact'.tr(),
                 style: GoogleFonts.inter(
                   color: Colors.white,
-                  fontSize: 14.sp,
+                  fontSize: ProfileTypography.sectionTitle,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               IconButton(
                 onPressed: _isLoading ? null : _showEditContactDialog,
                 icon: Icon(
-                  _emergencyContact.isEmpty ? Icons.add : Icons.edit,
+                  // 🎯 FIX: Use correct column name
+                  _emergencyContact?['emergency_contact'] == null
+                      ? Icons.add
+                      : Icons.edit,
                   color: Colors.red,
                 ),
               ),
@@ -91,7 +95,9 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
                 strokeWidth: 2,
               ),
             )
-          else if (_emergencyContact.isEmpty && _emergencyPhone.isEmpty)
+          // 🎯 FIX: Use correct column names
+          else if (_emergencyContact?['emergency_contact'] == null &&
+              _emergencyContact?['emergency_phone'] == null)
             _buildEmptyState()
           else
             _buildContactCard(),
@@ -118,19 +124,19 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
           ),
           SizedBox(height: 2.h),
           Text(
-            'Nessun contatto di emergenza configurato',
+            'profile.no_emergency_contact'.tr(),
             style: GoogleFonts.inter(
               color: Colors.grey[400],
-              fontSize: 12.sp,
+              fontSize: ProfileTypography.subtitle,
             ),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: 1.h),
           Text(
-            'Tocca + per aggiungere un contatto',
+            'profile.tap_to_add_contact'.tr(),
             style: GoogleFonts.inter(
               color: Colors.grey[500],
-              fontSize: 10.sp,
+              fontSize: ProfileTypography.caption,
             ),
             textAlign: TextAlign.center,
           ),
@@ -157,44 +163,41 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
               shape: BoxShape.circle,
               border: Border.all(color: Colors.red),
             ),
-            child: Icon(
-              Icons.contact_emergency,
-              color: Colors.red,
-              size: 5.w,
-            ),
+            child: Icon(Icons.contact_emergency, color: Colors.red, size: 5.w),
           ),
           SizedBox(width: 4.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 🎯 FIX: Use correct column name
                 Text(
-                  _emergencyContact.isNotEmpty
-                      ? _emergencyContact
-                      : 'Nome non specificato',
+                  _emergencyContact?['emergency_contact'] ??
+                      'profile.name_not_specified'.tr(),
                   style: GoogleFonts.inter(
                     color: Colors.white,
-                    fontSize: 12.sp,
+                    fontSize: ProfileTypography.emphasis,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 Text(
-                  'Contatto di Emergenza',
+                  'profile.emergency_contact'.tr(),
                   style: GoogleFonts.inter(
                     color: Colors.grey[400],
-                    fontSize: 10.sp,
+                    fontSize: ProfileTypography.caption,
                   ),
                 ),
-                if (_emergencyPhone.isNotEmpty)
+                // 🎯 FIX: Use correct column name
+                if (_emergencyContact?['emergency_phone'] != null)
                   Row(
                     children: [
-                      Icon(Icons.phone, color: Colors.red, size: 3.w),
+                      Icon(Icons.phone, color: Colors.red, size: 16),
                       SizedBox(width: 1.w),
                       Text(
-                        _emergencyPhone,
+                        _emergencyContact?['emergency_phone'],
                         style: GoogleFonts.inter(
                           color: Colors.grey[300],
-                          fontSize: 10.sp,
+                          fontSize: ProfileTypography.caption,
                         ),
                       ),
                     ],
@@ -208,22 +211,26 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
             onSelected: (value) {
               if (value == 'edit') {
                 _showEditContactDialog();
-              } else if (value == 'call' && _emergencyPhone.isNotEmpty) {
-                _callContact(_emergencyPhone);
+              } else if (value == 'call' &&
+                  _emergencyContact?['emergency_phone'] != null) {
+                _callContact(_emergencyContact?['emergency_phone']);
               } else if (value == 'delete') {
                 _deleteContact();
               }
             },
             itemBuilder: (context) => [
-              if (_emergencyPhone.isNotEmpty)
+              // 🎯 FIX: Use correct column name
+              if (_emergencyContact?['emergency_phone'] != null)
                 PopupMenuItem(
                   value: 'call',
                   child: Row(
                     children: [
                       Icon(Icons.call, color: Colors.green, size: 4.w),
                       SizedBox(width: 2.w),
-                      Text('Chiama',
-                          style: GoogleFonts.inter(color: Colors.white)),
+                      Text(
+                        'profile.call'.tr(),
+                        style: GoogleFonts.inter(color: Colors.white),
+                      ),
                     ],
                   ),
                 ),
@@ -233,8 +240,10 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
                   children: [
                     Icon(Icons.edit, color: Colors.blue, size: 4.w),
                     SizedBox(width: 2.w),
-                    Text('Modifica',
-                        style: GoogleFonts.inter(color: Colors.white)),
+                    Text(
+                      'profile.modify'.tr(),
+                      style: GoogleFonts.inter(color: Colors.white),
+                    ),
                   ],
                 ),
               ),
@@ -244,8 +253,10 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
                   children: [
                     Icon(Icons.delete, color: Colors.red, size: 4.w),
                     SizedBox(width: 2.w),
-                    Text('Rimuovi',
-                        style: GoogleFonts.inter(color: Colors.white)),
+                    Text(
+                      'profile.remove'.tr(),
+                      style: GoogleFonts.inter(color: Colors.white),
+                    ),
                   ],
                 ),
               ),
@@ -257,34 +268,48 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
   }
 
   void _showEditContactDialog() {
-    final nameController = TextEditingController(text: _emergencyContact);
-    final phoneController = TextEditingController(text: _emergencyPhone);
+    // 🎯 FIX: Use correct column names
+    final nameController = TextEditingController(
+      text: _emergencyContact?['emergency_contact'] ?? '',
+    );
+    final phoneController = TextEditingController(
+      text: _emergencyContact?['emergency_phone'] ?? '',
+    );
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Color(0xFF1E1E1E),
         title: Text(
-          _emergencyContact.isEmpty
-              ? 'Aggiungi Contatto di Emergenza'
-              : 'Modifica Contatto di Emergenza',
+          // 🎯 FIX: Use correct column name
+          _emergencyContact?['emergency_contact'] == null
+              ? 'profile.add_emergency_contact'.tr()
+              : 'profile.edit_emergency_contact'.tr(),
           style: GoogleFonts.inter(color: Colors.white),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             _buildDialogTextField(
-                'Nome e Cognome', nameController, Icons.person),
+              'profile.full_name_label'.tr(),
+              nameController,
+              Icons.person,
+            ),
             SizedBox(height: 2.h),
             _buildDialogTextField(
-                'Numero di Telefono', phoneController, Icons.phone),
+              'profile.phone_number_label'.tr(),
+              phoneController,
+              Icons.phone,
+            ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child:
-                Text('Annulla', style: GoogleFonts.inter(color: Colors.grey)),
+            child: Text(
+              'common.cancel'.tr(),
+              style: GoogleFonts.inter(color: Colors.grey),
+            ),
           ),
           TextButton(
             onPressed: () async {
@@ -294,7 +319,10 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
               );
               Navigator.pop(context);
             },
-            child: Text('Salva', style: GoogleFonts.inter(color: Colors.red)),
+            child: Text(
+              'common.save'.tr(),
+              style: GoogleFonts.inter(color: Colors.red),
+            ),
           ),
         ],
       ),
@@ -302,7 +330,10 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
   }
 
   Widget _buildDialogTextField(
-      String label, TextEditingController controller, IconData icon) {
+    String label,
+    TextEditingController controller,
+    IconData icon,
+  ) {
     return TextField(
       controller: controller,
       style: GoogleFonts.inter(color: Colors.white),
@@ -324,35 +355,38 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
 
   Future<void> _updateEmergencyContact(String name, String phone) async {
     try {
-      final success = await UserProfileService().updateProfile(
-        emergencyContact: name.isEmpty ? null : name,
-        emergencyPhone: phone.isEmpty ? null : phone,
-      );
+      final client = SupabaseService.instance.client;
 
-      if (success) {
+      String? targetUserId = widget.userId;
+
+      // 🎯 FIX: Use correct column names - emergency_contact and emergency_phone
+      await client.from('user_profiles').update({
+        'emergency_contact': name.isEmpty ? null : name,
+        'emergency_phone': phone.isEmpty ? null : phone,
+      }).eq('id', targetUserId ?? '');
+
+      if (mounted) {
         setState(() {
-          _emergencyContact = name;
-          _emergencyPhone = phone;
+          _emergencyContact = {
+            'emergency_contact': name,
+            'emergency_phone': phone,
+          };
         });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Contatto di emergenza aggiornato con successo'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Errore nell\'aggiornamento del contatto'),
-            backgroundColor: Colors.red,
-          ),
-        );
       }
-    } catch (e) {
+
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Errore: ${e.toString()}'),
+          content: Text('profile.emergency_contact_updated'.tr()),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'errors.load_data_error'.tr(namedArgs: {'detail': e.toString()})),
           backgroundColor: Colors.red,
         ),
       );
@@ -365,22 +399,27 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
       builder: (context) => AlertDialog(
         backgroundColor: Color(0xFF1E1E1E),
         title: Text(
-          'Rimuovi Contatto',
+          'profile.remove_contact_title'.tr(),
           style: GoogleFonts.inter(color: Colors.white),
         ),
         content: Text(
-          'Sei sicuro di voler rimuovere il contatto di emergenza?',
+          'profile.remove_contact_confirm'.tr(),
           style: GoogleFonts.inter(color: Colors.grey[300]),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child:
-                Text('Annulla', style: GoogleFonts.inter(color: Colors.grey)),
+            child: Text(
+              'common.cancel'.tr(),
+              style: GoogleFonts.inter(color: Colors.grey),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text('Rimuovi', style: GoogleFonts.inter(color: Colors.red)),
+            child: Text(
+              'profile.remove'.tr(),
+              style: GoogleFonts.inter(color: Colors.red),
+            ),
           ),
         ],
       ),
@@ -394,10 +433,10 @@ class _EmergencyContactsWidgetState extends State<EmergencyContactsWidget> {
   void _callContact(String phone) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Chiamando $phone...'),
+        content: Text('profile.calling_phone'.tr(namedArgs: {'phone': phone})),
         backgroundColor: Colors.green,
         action: SnackBarAction(
-          label: 'OK',
+          label: 'common.ok'.tr(),
           textColor: Colors.white,
           onPressed: () {},
         ),

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
 
-import '../../../theme/app_theme.dart';
+import '../../../core/app_export.dart';
 
 class RegistrationCardWidget extends StatelessWidget {
   final Map<String, dynamic> registration;
@@ -85,7 +85,7 @@ class RegistrationCardWidget extends StatelessWidget {
                               Expanded(
                                 child: Text(
                                   registration['full_name']?.toString() ??
-                                      'Nome non disponibile',
+                                      'registration_mgmt.name_unavailable'.tr(),
                                   style: GoogleFonts.inter(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 14.sp,
@@ -102,7 +102,7 @@ class RegistrationCardWidget extends StatelessWidget {
                                     borderRadius: BorderRadius.circular(8.0),
                                   ),
                                   child: Text(
-                                    'URGENTE',
+                                    'registration_card.urgent'.tr(),
                                     style: GoogleFonts.inter(
                                       fontSize: 8.sp,
                                       fontWeight: FontWeight.w700,
@@ -123,7 +123,11 @@ class RegistrationCardWidget extends StatelessWidget {
                           if (registration['phone'] != null) ...[
                             SizedBox(height: 2.h),
                             Text(
-                              'Telefono: ${registration['phone']}',
+                              'registration_card.phone_label'.tr(
+                                namedArgs: {
+                                  'phone': '${registration['phone']}',
+                                },
+                              ),
                               style: GoogleFonts.inter(
                                 fontSize: 11.sp,
                                 color: AppTheme.textSecondaryLight,
@@ -195,7 +199,7 @@ class RegistrationCardWidget extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Messaggio del candidato:',
+                          'registration_card.candidate_message'.tr(),
                           style: GoogleFonts.inter(
                             fontSize: 10.sp,
                             fontWeight: FontWeight.w500,
@@ -233,7 +237,7 @@ class RegistrationCardWidget extends StatelessWidget {
                         SizedBox(width: 6.w),
                         Expanded(
                           child: Text(
-                            'Richiesta amministratore - Richiede approvazione principale',
+                            'registration_card.admin_request_approval'.tr(),
                             style: GoogleFonts.inter(
                               fontSize: 11.sp,
                               color: Colors.orange.shade800,
@@ -255,7 +259,7 @@ class RegistrationCardWidget extends StatelessWidget {
                         onPressed: onApprove,
                         icon: Icon(Icons.check, size: 16.sp),
                         label: Text(
-                          'Approva',
+                          'registration_card.approve'.tr(),
                           style: GoogleFonts.inter(fontSize: 12.sp),
                         ),
                         style: ElevatedButton.styleFrom(
@@ -271,7 +275,7 @@ class RegistrationCardWidget extends StatelessWidget {
                         onPressed: () => _showRejectDialog(context),
                         icon: Icon(Icons.close, size: 16.sp),
                         label: Text(
-                          'Rifiuta',
+                          'registration_mgmt.reject'.tr(),
                           style: GoogleFonts.inter(fontSize: 12.sp),
                         ),
                         style: OutlinedButton.styleFrom(
@@ -292,28 +296,28 @@ class RegistrationCardWidget extends StatelessWidget {
                   child: Row(
                     children: [
                       _buildActionChip(
-                        label: 'Richiedi Documenti',
+                        label: 'registration_card.request_documents'.tr(),
                         icon: Icons.description,
                         color: Colors.blue,
                         onTap: () => _showRequestDocumentsDialog(context),
                       ),
                       SizedBox(width: 8.w),
                       _buildActionChip(
-                        label: 'Contatta Applicant',
+                        label: 'registration_card.contact_applicant'.tr(),
                         icon: Icons.contact_phone,
                         color: Colors.green,
                         onTap: () => _showContactDialog(context),
                       ),
                       SizedBox(width: 8.w),
                       _buildActionChip(
-                        label: 'Programma Colloquio',
+                        label: 'registration_card.schedule_interview'.tr(),
                         icon: Icons.calendar_today,
                         color: Colors.orange,
                         onTap: () => _showScheduleDialog(context),
                       ),
                       SizedBox(width: 8.w),
                       _buildActionChip(
-                        label: 'Archivia',
+                        label: 'registration_card.archive'.tr(),
                         icon: Icons.archive,
                         color: Colors.grey,
                         onTap: onArchive,
@@ -336,7 +340,7 @@ class RegistrationCardWidget extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Documenti Caricati:',
+                          'registration_card.uploaded_documents'.tr(),
                           style: GoogleFonts.inter(
                             fontSize: 11.sp,
                             fontWeight: FontWeight.w500,
@@ -346,14 +350,17 @@ class RegistrationCardWidget extends StatelessWidget {
                         SizedBox(height: 6.h),
                         Row(
                           children: [
-                            _buildDocumentChip('Certificato Medico', true),
+                            _buildDocumentChip(
+                                'profile.medical_certificate'.tr(), true),
                             SizedBox(width: 8.w),
-                            _buildDocumentChip('Documento Identità', true),
+                            _buildDocumentChip(
+                                'registration_card.identity_document'.tr(),
+                                true),
                             SizedBox(width: 8.w),
                             TextButton(
                               onPressed: onViewDocuments,
                               child: Text(
-                                'Visualizza Tutti',
+                                'registration_card.view_all'.tr(),
                                 style: GoogleFonts.inter(fontSize: 10.sp),
                               ),
                             ),
@@ -459,25 +466,27 @@ class RegistrationCardWidget extends StatelessWidget {
     final difference = now.difference(createdAt);
 
     if (difference.inDays > 0) {
-      return '${difference.inDays} giorni fa';
+      return 'registration_card.days_ago'
+          .tr(namedArgs: {'count': '${difference.inDays}'});
     } else if (difference.inHours > 0) {
-      return '${difference.inHours} ore fa';
+      return 'registration_card.hours_ago'
+          .tr(namedArgs: {'count': '${difference.inHours}'});
     } else {
-      return 'Oggi';
+      return 'registration_card.today'.tr();
     }
   }
 
   String _getRoleLabel(String role) {
     switch (role) {
       case 'admin':
-        return 'Amministratore';
+        return 'roles.admin'.tr();
       case 'instructor_admin':
-        return 'Istruttore Admin';
+        return 'dashboard.role_instructor_admin'.tr();
       case 'instructor':
-        return 'Istruttore';
+        return 'dashboard.role_instructor'.tr();
       case 'student':
       default:
-        return 'Studente';
+        return 'dashboard.role_student'.tr();
     }
   }
 
@@ -488,14 +497,14 @@ class RegistrationCardWidget extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          'Rifiuta Registrazione',
+          'registration_mgmt.reject_title'.tr(),
           style: GoogleFonts.inter(fontWeight: FontWeight.w600),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Inserisci il motivo del rifiuto:',
+              'registration_card.reject_reason_prompt'.tr(),
               style: GoogleFonts.inter(fontSize: 14.sp),
             ),
             SizedBox(height: 12.h),
@@ -503,7 +512,7 @@ class RegistrationCardWidget extends StatelessWidget {
               controller: reasonController,
               maxLines: 3,
               decoration: InputDecoration(
-                hintText: 'Documenti incompleti, requisiti non soddisfatti...',
+                hintText: 'registration_card.reject_reason_hint'.tr(),
                 border: OutlineInputBorder(),
               ),
             ),
@@ -512,7 +521,7 @@ class RegistrationCardWidget extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Annulla'),
+            child: Text('common.cancel'.tr()),
           ),
           ElevatedButton(
             onPressed: () {
@@ -522,7 +531,8 @@ class RegistrationCardWidget extends StatelessWidget {
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: Text('Rifiuta', style: TextStyle(color: Colors.white)),
+            child: Text('registration_mgmt.reject'.tr(),
+                style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -533,7 +543,7 @@ class RegistrationCardWidget extends StatelessWidget {
     final documents = <String, bool>{
       'Certificato Medico Aggiornato': false,
       'Documento Identità Fronte/Retro': false,
-      'Codice Fiscale': false,
+      'profile.tax_code'.tr(): false,
       'Referenze Professionali': false,
       'CV Aggiornato': false,
     };
@@ -543,14 +553,14 @@ class RegistrationCardWidget extends StatelessWidget {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: Text(
-            'Richiedi Documenti Aggiuntivi',
+            'registration_card.request_additional_docs'.tr(),
             style: GoogleFonts.inter(fontWeight: FontWeight.w600),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Seleziona i documenti da richiedere:',
+                'registration_mgmt.select_documents_prompt'.tr(),
                 style: GoogleFonts.inter(fontSize: 14.sp),
               ),
               SizedBox(height: 12.h),
@@ -568,7 +578,7 @@ class RegistrationCardWidget extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Annulla'),
+              child: Text('common.cancel'.tr()),
             ),
             ElevatedButton(
               onPressed: () {
@@ -582,7 +592,7 @@ class RegistrationCardWidget extends StatelessWidget {
                   onRequestDocuments(selectedDocs);
                 }
               },
-              child: Text('Richiedi'),
+              child: Text('registration_mgmt.request_button'.tr()),
             ),
           ],
         ),
@@ -595,7 +605,7 @@ class RegistrationCardWidget extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          'Contatta Candidato',
+          'registration_card.contact_candidate'.tr(),
           style: GoogleFonts.inter(fontWeight: FontWeight.w600),
         ),
         content: Column(
@@ -603,7 +613,7 @@ class RegistrationCardWidget extends StatelessWidget {
           children: [
             ListTile(
               leading: Icon(Icons.email),
-              title: Text('Email'),
+              title: Text('common.email'.tr()),
               onTap: () {
                 Navigator.pop(context);
                 onContactApplicant('email');
@@ -611,7 +621,7 @@ class RegistrationCardWidget extends StatelessWidget {
             ),
             ListTile(
               leading: Icon(Icons.phone),
-              title: Text('Telefono'),
+              title: Text('profile.phone'.tr()),
               onTap: () {
                 Navigator.pop(context);
                 onContactApplicant('phone');
@@ -619,7 +629,7 @@ class RegistrationCardWidget extends StatelessWidget {
             ),
             ListTile(
               leading: Icon(Icons.message),
-              title: Text('SMS'),
+              title: Text('reminders.sms'.tr()),
               onTap: () {
                 Navigator.pop(context);
                 onContactApplicant('sms');
@@ -639,7 +649,7 @@ class RegistrationCardWidget extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          'Programma Colloquio',
+          'registration_card.schedule_interview_title'.tr(),
           style: GoogleFonts.inter(fontWeight: FontWeight.w600),
         ),
         content: StatefulBuilder(
@@ -665,7 +675,8 @@ class RegistrationCardWidget extends StatelessWidget {
                 },
               ),
               ListTile(
-                title: Text('Ora: ${selectedTime.format(context)}'),
+                title: Text('registration_card.time_label'
+                    .tr(namedArgs: {'time': selectedTime.format(context)})),
                 trailing: Icon(Icons.access_time),
                 onTap: () async {
                   final time = await showTimePicker(
@@ -685,7 +696,7 @@ class RegistrationCardWidget extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Annulla'),
+            child: Text('common.cancel'.tr()),
           ),
           ElevatedButton(
             onPressed: () {
@@ -699,7 +710,7 @@ class RegistrationCardWidget extends StatelessWidget {
               Navigator.pop(context);
               onScheduleInterview(dateTime);
             },
-            child: Text('Programma'),
+            child: Text('communication.schedule_button'.tr()),
           ),
         ],
       ),

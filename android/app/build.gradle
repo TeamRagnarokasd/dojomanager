@@ -72,6 +72,15 @@ flutter {
     source = "../.."
 }
 
+// Auto-generate launcher icons from Team Ragnarok logo before build
+task generateLauncherIcons(type: Exec) {
+    workingDir '../../'
+    commandLine 'dart', 'run', 'flutter_launcher_icons'
+    ignoreExitValue true
+}
+
+preBuild.dependsOn generateLauncherIcons
+
 dependencies {
     implementation "androidx.multidex:multidex:2.0.1"
     implementation 'androidx.appcompat:appcompat:1.6.1'

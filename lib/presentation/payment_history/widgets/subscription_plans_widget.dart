@@ -1,11 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:fluttertoast/fluttertoast.dart';
 import 'package:sizer/sizer.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/app_export.dart';
-import '../../../widgets/custom_icon_widget.dart';
+import '../../../services/realtime_notification_service.dart';
 
-class SubscriptionPlansWidget extends StatelessWidget {
+class SubscriptionPlansWidget extends StatefulWidget {
   final Function(int)? onTabChanged;
   final Function(Map<String, dynamic>)? onPlanSelected;
 
@@ -15,199 +17,165 @@ class SubscriptionPlansWidget extends StatelessWidget {
     this.onPlanSelected,
   }) : super(key: key);
 
-  final List<Map<String, dynamic>> _subscriptionPlans = const [
-    // NEW ENTRY-BASED PLANS - Featured at top
-    {
-      "id": 10,
-      "title": "Ingresso singolo",
-      "price": 10,
-      "frequency": "Per ingresso",
-      "disciplines": ["Accesso singolo"],
-      "classesPerWeek": 1,
-      "entryBased": true,
-      "entryCount": 1,
-      "benefits": [
-        "Un singolo accesso agli allenamenti",
-        "Nessuna data di scadenza",
-        "Perfetto per provare"
-      ],
-      "sumupUrl": "https://pay.sumup.com/b2c/QQE90R7O",
-      "color": 0xFF4CAF50,
-    },
-    {
-      "id": 11,
-      "title": "Pacchetto 10 ingressi",
-      "price": 80,
-      "frequency": "10 ingressi",
-      "disciplines": ["Accesso multiplo"],
-      "classesPerWeek": 10,
-      "entryBased": true,
-      "entryCount": 10,
-      "benefits": [
-        "10 ingressi agli allenamenti",
-        "Nessuna data di scadenza",
-        "Scade al finire degli ingressi",
-        "Risparmio rispetto all'ingresso singolo"
-      ],
-      "sumupUrl": "https://pay.sumup.com/b2c/QR3160IO",
-      "color": 0xFF2E7D32,
-    },
-    // EXISTING MONTHLY PLANS
-    {
-      "id": 1,
-      "title": "Corso Singolo",
-      "price": 60,
-      "frequency": "Mensile",
-      "disciplines": ["MMA o BJJ", "Grappling", "Sambo"],
-      "classesPerWeek": 4,
-      "entryBased": false,
-      "benefits": [
-        "Scelta tra MMA o BJJ ogni mese",
-        "Grappling e Sambo sempre inclusi",
-      ],
-      "sumupUrl": "https://pay.sumup.com/b2c/QHVYXRZR",
-      "color": 0xFFD32F2F,
-    },
-    {
-      "id": 7,
-      "title": "Corso Singolo (in convenzione)",
-      "price": 50,
-      "frequency": "Mensile",
-      "disciplines": ["MMA o BJJ", "Grappling", "Sambo"],
-      "classesPerWeek": 4,
-      "entryBased": false,
-      "benefits": [
-        "Scelta tra MMA o BJJ ogni mese",
-        "Grappling e Sambo sempre inclusi",
-        "Tariffa agevolata in convenzione",
-      ],
-      "sumupUrl": "https://pay.sumup.com/b2c/QPQ08OQA",
-      "color": 0xFFFF6B35,
-    },
-    {
-      "id": 8,
-      "title": "Doppio corso (in convenzione)",
-      "price": 75,
-      "frequency": "Mensile",
-      "disciplines": ["BJJ", "MMA", "Grappling", "Sambo"],
-      "classesPerWeek": 6,
-      "entryBased": false,
-      "benefits": [
-        "Accesso a tutte le discipline",
-        "Allenamenti intensivi",
-        "Tariffa agevolata in convenzione",
-      ],
-      "sumupUrl": "https://pay.sumup.com/b2c/QR42R0RH",
-      "color": 0xFF4A90E2,
-    },
-    {
-      "id": 2,
-      "title": "Doppio Corso",
-      "price": 95,
-      "frequency": "Mensile",
-      "disciplines": ["BJJ", "MMA", "Grappling", "Sambo"],
-      "classesPerWeek": 6,
-      "entryBased": false,
-      "benefits": ["Accesso a tutte le discipline", "Allenamenti intensivi"],
-      "sumupUrl": "https://pay.sumup.com/b2c/QZLJXISP",
-      "color": 0xFF1976D2,
-    },
-    {
-      "id": 3,
-      "title": "Preparazione Atletica",
-      "price": 30,
-      "frequency": "Mensile",
-      "disciplines": ["Preparazione Atletica"],
-      "classesPerWeek": 2,
-      "entryBased": false,
-      "benefits": [
-        "Focus su condizionamento fisico",
-        "Allenamento personalizzato",
-        "Programmi specifici",
-      ],
-      "sumupUrl": "https://pay.sumup.com/b2c/QU0R8I0A",
-      "color": 0xFF388E3C,
-    },
-    {
-      "id": 4,
-      "title": "Corso Singolo + Preparazione",
-      "price": 90,
-      "frequency": "Mensile",
-      "disciplines": ["MMA o BJJ", "Grappling", "Sambo", "Prep. Atletica"],
-      "classesPerWeek": 6,
-      "entryBased": false,
-      "benefits": [
-        "Scelta tra MMA o BJJ ogni mese",
-        "Grappling e Sambo sempre inclusi",
-        "Preparazione atletica completa",
-      ],
-      "sumupUrl": "https://pay.sumup.com/b2c/QQ9F1KED",
-      "color": 0xFFF57F17,
-    },
-    {
-      "id": 5,
-      "title": "Doppio Corso + Preparazione",
-      "price": 120,
-      "frequency": "Mensile",
-      "disciplines": ["BJJ", "MMA", "Grappling", "Sambo", "Prep. Atletica"],
-      "classesPerWeek": 8,
-      "entryBased": false,
-      "benefits": [
-        "Tutte le discipline incluse",
-        "Piano di allenamento completo",
-        "Massima intensità",
-      ],
-      "sumupUrl": "https://pay.sumup.com/b2c/QR5I6ZO7",
-      "color": 0xFF7B1FA2,
-    },
-    {
-      "id": 9,
-      "title": "Doppio corso + Prep. Atl. (in conv.)",
-      "price": 105,
-      "frequency": "Mensile",
-      "disciplines": ["BJJ", "MMA", "Grappling", "Sambo", "Prep. Atletica"],
-      "classesPerWeek": 8,
-      "entryBased": false,
-      "benefits": [
-        "Tutte le discipline incluse",
-        "Piano di allenamento completo",
-        "Preparazione atletica completa",
-        "Tariffa agevolata in convenzione",
-      ],
-      "sumupUrl": "https://pay.sumup.com/b2c/QT4LT4XQ",
-      "color": 0xFF9C27B0,
-    },
-    {
-      "id": 6,
-      "title": "Iscrizione Annuale",
-      "price": 30,
-      "frequency": "Annuale",
-      "disciplines": ["Iscrizione Base"],
-      "classesPerWeek": 0,
-      "entryBased": false,
-      "benefits": ["Quota associativa annuale", "Accesso agli eventi del team"],
-      "sumupUrl": "https://pay.sumup.com/b2c/Q0ND0EKY",
-      "color": 0xFF5D4037,
-    },
-  ];
+  @override
+  State<SubscriptionPlansWidget> createState() =>
+      _SubscriptionPlansWidgetState();
+}
+
+class _SubscriptionPlansWidgetState extends State<SubscriptionPlansWidget> {
+  List<Map<String, dynamic>> _plans = [];
+  bool _isLoading = true;
+  StreamSubscription<RealtimeDataChangeEvent>? _realtimeSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPlans();
+    _subscribeToRealtimeChanges();
+  }
+
+  @override
+  void dispose() {
+    _realtimeSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _subscribeToRealtimeChanges() {
+    RealtimeNotificationService.instance.subscribeToAdminDataChanges();
+    _realtimeSubscription =
+        RealtimeNotificationService.instance.dataChangeStream
+            .where(
+      (event) =>
+          event.type == RealtimeDataChangeType.subscriptionPlans ||
+          event.type == RealtimeDataChangeType.customSubscriptionPlans,
+    )
+            .listen((_) {
+      if (mounted) _loadPlans();
+    });
+  }
+
+  Future<void> _loadPlans() async {
+    try {
+      // Load only from custom_subscription_plans (admin-managed)
+      final customResponse = await Supabase.instance.client
+          .from('custom_subscription_plans')
+          .select('*')
+          .eq('is_active', true)
+          .order('created_at', ascending: false);
+
+      if (!mounted) return;
+
+      final List<Map<String, dynamic>> loaded = [];
+
+      // Map custom plans
+      for (final row in List<Map<String, dynamic>>.from(customResponse)) {
+        final planType = row['plan_type'] as String? ?? 'monthly';
+        final bool isEntryBased =
+            planType == 'single_entry' || planType == 'multi_entry';
+        final int entryCount = (row['entry_count'] as num?)?.toInt() ?? 1;
+
+        int color;
+        if (planType == 'annual') {
+          color = 0xFF5D4037;
+        } else if (planType == 'single_entry') {
+          color = 0xFF4CAF50;
+        } else if (planType == 'multi_entry') {
+          color = 0xFF2E7D32;
+        } else {
+          final price = (row['amount'] as num?)?.toDouble() ?? 0;
+          if (price <= 50) {
+            color = 0xFFFF6B35;
+          } else if (price <= 65) {
+            color = 0xFFD32F2F;
+          } else if (price <= 80) {
+            color = 0xFF4A90E2;
+          } else if (price <= 100) {
+            color = 0xFF1976D2;
+          } else if (price <= 110) {
+            color = 0xFF9C27B0;
+          } else {
+            color = 0xFF7B1FA2;
+          }
+        }
+
+        loaded.add({
+          'id': row['id'],
+          'dbId': row['id'],
+          'title': row['name'] as String? ?? '',
+          'price': (row['amount'] as num?)?.toDouble() ?? 0,
+          'frequency': planType == 'annual'
+              ? 'Annuale'
+              : isEntryBased
+                  ? (entryCount == 1 ? 'Per ingresso' : '$entryCount ingressi')
+                  : 'Mensile',
+          'disciplines': [''],
+          'classesPerWeek': 0,
+          'entryBased': isEntryBased,
+          'entryCount': entryCount,
+          'benefits': (row['description'] as String? ?? '')
+              .split(',')
+              .map((s) => s.trim())
+              .where((s) => s.isNotEmpty)
+              .toList(),
+          'sumupUrl': row['external_url'] as String? ?? '',
+          'color': color,
+          'isCustom': true,
+        });
+      }
+
+      setState(() {
+        _plans = loaded;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   void _onSubscriptionSelect(BuildContext context, Map<String, dynamic> plan) {
-    // Store selected plan data for payment tab
-    if (onPlanSelected != null) {
-      onPlanSelected!(plan);
-    }
-
-    // Show toast message for plan selection
-    Fluttertoast.showToast(
-      msg: 'Piano selezionato: ${plan['title']}',
-      toastLength: Toast.LENGTH_SHORT,
-      gravity: ToastGravity.BOTTOM,
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(
+              Icons.info_outline,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Come procedere all\'acquisto',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Per procedere con l\'acquisto di questo abbonamento, recati nella sezione "Paga" dove potrai completare la transazione in modo sicuro e veloce.',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(
+              'Ho capito',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
-
-    // Navigate to payment tab
-    if (onTabChanged != null) {
-      onTabChanged!(0); // Switch to "Paga" tab (index 0)
-    }
   }
 
   @override
@@ -250,21 +218,24 @@ class SubscriptionPlansWidget extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Abbonamenti',
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.titleLarge?.copyWith(
+                                'payment.subscriptions_title'.tr(),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleLarge
+                                    ?.copyWith(
                                       fontWeight: FontWeight.w700,
-                                      color:
-                                          Theme.of(context).colorScheme.primary,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
                                     ),
                               ),
                               SizedBox(height: 0.5.h),
                               Text(
-                                'Scegli il piano perfetto per le tue esigenze',
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.bodyMedium?.copyWith(
+                                'payment.subscriptions_subtitle'.tr(),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
                                       color: Theme.of(
                                         context,
                                       ).colorScheme.onSurfaceVariant,
@@ -278,7 +249,7 @@ class SubscriptionPlansWidget extends StatelessWidget {
                   ),
                   SizedBox(height: 3.h),
 
-                  // New entry-based plans highlight
+                  // Entry plans banner
                   Container(
                     padding: EdgeInsets.all(3.w),
                     decoration: BoxDecoration(
@@ -299,7 +270,7 @@ class SubscriptionPlansWidget extends StatelessWidget {
                         SizedBox(width: 3.w),
                         Expanded(
                           child: Text(
-                            'Nuovi piani ad ingresso: nessuna scadenza, paghi solo quello che usi!',
+                            'payment.entry_plans_banner'.tr(),
                             style: Theme.of(context)
                                 .textTheme
                                 .bodyMedium
@@ -318,263 +289,327 @@ class SubscriptionPlansWidget extends StatelessWidget {
             ),
           ),
 
-          // Plans Grid
-          SliverPadding(
-            padding: EdgeInsets.symmetric(horizontal: 4.w),
-            sliver: SliverGrid(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 0.75,
-                crossAxisSpacing: 3.w,
-                mainAxisSpacing: 2.h,
-              ),
-              delegate: SliverChildBuilderDelegate((context, index) {
-                final plan = _subscriptionPlans[index];
-                final color = Color(plan['color'] as int);
-                final isEntryBased = plan['entryBased'] ?? false;
-                final entryCount = plan['entryCount'] ?? 0;
-
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: color.withValues(alpha: 0.3),
-                      width: 2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: color.withValues(alpha: 0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+          // Loading or Plans Grid
+          if (_isLoading)
+            SliverToBoxAdapter(
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 4.h),
+                  child: CircularProgressIndicator(
+                    color: Theme.of(context).colorScheme.primary,
                   ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () => _onSubscriptionSelect(context, plan),
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: EdgeInsets.all(4.w),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Header with price and NEW badge
-                            Row(
-                              children: [
-                                Container(
-                                  padding: EdgeInsets.all(2.w),
-                                  decoration: BoxDecoration(
-                                    color: color.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: CustomIconWidget(
-                                    iconName: isEntryBased
-                                        ? 'confirmation_number'
-                                        : 'fitness_center',
-                                    color: color,
-                                    size: 20,
-                                  ),
-                                ),
-                                const Spacer(),
-                                Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 2.w,
-                                    vertical: 0.5.h,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: color,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    '€${plan['price']}',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleMedium?.copyWith(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                  ),
+                ),
+              ),
+            )
+          else
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4.w),
+                child: Wrap(
+                  spacing: 3.w,
+                  runSpacing: 2.h,
+                  children: List.generate(_plans.length, (index) {
+                    final itemWidth =
+                        (MediaQuery.of(context).size.width - 8.w - 3.w) / 2;
+                    return SizedBox(
+                      width: itemWidth,
+                      child: Builder(
+                        builder: (context) {
+                          final plan = _plans[index];
+                          final color = Color(plan['color'] as int);
+                          final isEntryBased = plan['entryBased'] ?? false;
+                          final entryCount = plan['entryCount'] ?? 0;
+
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).cardColor,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: color.withValues(alpha: 0.3),
+                                width: 2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: color.withValues(alpha: 0.1),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
                                 ),
                               ],
                             ),
-                            SizedBox(height: 2.h),
-
-                            // NEW badge for entry-based plans
-                            if (isEntryBased) ...[
-                              Container(
-                                padding: EdgeInsets.symmetric(
-                                    horizontal: 2.w, vertical: 0.5.h),
-                                decoration: BoxDecoration(
-                                  color: Colors.green,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  'NUOVO',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelSmall
-                                      ?.copyWith(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 10,
-                                      ),
-                                ),
-                              ),
-                              SizedBox(height: 1.h),
-                            ],
-
-                            // Title
-                            Text(
-                              plan['title'] as String,
-                              style: Theme.of(
-                                context,
-                              ).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color:
-                                        Theme.of(context).colorScheme.onSurface,
-                                  ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            SizedBox(height: 1.h),
-
-                            // Frequency or entries
-                            Container(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: 2.w, vertical: 0.5.h),
-                              decoration: BoxDecoration(
-                                color: color.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                isEntryBased
-                                    ? (entryCount > 1
-                                        ? '$entryCount ingressi'
-                                        : '1 ingresso')
-                                    : plan['frequency'] as String,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(
-                                      color: color,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                              ),
-                            ),
-                            SizedBox(height: 1.h),
-
-                            // Entry info or classes per week
-                            if (isEntryBased) ...[
-                              Row(
-                                children: [
-                                  CustomIconWidget(
-                                    iconName: 'schedule',
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                    size: 14,
-                                  ),
-                                  SizedBox(width: 1.w),
-                                  Expanded(
-                                    child: Text(
-                                      'Nessuna scadenza',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurfaceVariant,
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () =>
+                                    _onSubscriptionSelect(context, plan),
+                                borderRadius: BorderRadius.circular(16),
+                                child: Padding(
+                                  padding: EdgeInsets.all(3.w),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      // Header with price
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: EdgeInsets.all(2.w),
+                                            decoration: BoxDecoration(
+                                              color: color.withValues(
+                                                alpha: 0.15,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: CustomIconWidget(
+                                              iconName: isEntryBased
+                                                  ? 'confirmation_number'
+                                                  : 'fitness_center',
+                                              color: color,
+                                              size: 20,
+                                            ),
                                           ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ] else if ((plan['classesPerWeek'] as int) > 0) ...[
-                              Row(
-                                children: [
-                                  CustomIconWidget(
-                                    iconName: 'calendar_today',
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                    size: 14,
-                                  ),
-                                  SizedBox(width: 1.w),
-                                  Text(
-                                    '${plan['classesPerWeek']} lezioni/settimana',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall?.copyWith(
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.onSurfaceVariant,
-                                        ),
-                                  ),
-                                ],
-                              ),
-                            ],
-
-                            const Spacer(),
-
-                            // Action button
-                            Container(
-                              width: double.infinity,
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: () =>
-                                      _onSubscriptionSelect(context, plan),
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Container(
-                                    padding:
-                                        EdgeInsets.symmetric(vertical: 1.5.h),
-                                    decoration: BoxDecoration(
-                                      color: color.withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: color.withValues(alpha: 0.3),
-                                        width: 1,
+                                          const Spacer(),
+                                          Container(
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: 2.w,
+                                              vertical: 0.5.h,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: color,
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              '€${plan['price']}',
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .titleMedium
+                                                  ?.copyWith(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Text(
+                                      SizedBox(height: 1.5.h),
+
+                                      // NEW badge for entry-based plans
+                                      if (isEntryBased) ...[
+                                        Container(
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: 2.w,
+                                            vertical: 0.4.h,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.green,
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'payment.new_badge'.tr(),
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall
+                                                ?.copyWith(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 10,
+                                                ),
+                                          ),
+                                        ),
+                                        SizedBox(height: 0.8.h),
+                                      ],
+
+                                      // Title
+                                      Text(
+                                        plan['title'] as String,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurface,
+                                            ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      SizedBox(height: 0.8.h),
+
+                                      // Frequency or entries
+                                      Container(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 2.w,
+                                          vertical: 0.5.h,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: color.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: Text(
                                           isEntryBased
-                                              ? 'Acquista'
-                                              : 'Sottoscrivi',
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.titleSmall?.copyWith(
+                                              ? (entryCount > 1
+                                                  ? 'payment.entry_count_many'
+                                                      .tr(
+                                                      namedArgs: {
+                                                        'count': '$entryCount',
+                                                      },
+                                                    )
+                                                  : 'payment.entry_count_one'
+                                                      .tr())
+                                              : plan['frequency'] as String,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
                                                 color: color,
-                                                fontWeight: FontWeight.w700,
+                                                fontWeight: FontWeight.w600,
                                               ),
                                         ),
-                                        SizedBox(width: 1.w),
-                                        CustomIconWidget(
-                                          iconName: 'arrow_forward',
-                                          color: color,
-                                          size: 16,
+                                      ),
+                                      SizedBox(height: 0.8.h),
+
+                                      // Entry info
+                                      if (isEntryBased) ...[
+                                        Row(
+                                          children: [
+                                            CustomIconWidget(
+                                              iconName: 'schedule',
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
+                                              size: 14,
+                                            ),
+                                            SizedBox(width: 1.w),
+                                            Expanded(
+                                              child: Text(
+                                                'payment.no_expiry'.tr(),
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodySmall
+                                                    ?.copyWith(
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .onSurfaceVariant,
+                                                    ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ] else if ((plan['classesPerWeek']
+                                              as int) >
+                                          0) ...[
+                                        Row(
+                                          children: [
+                                            CustomIconWidget(
+                                              iconName: 'calendar_today',
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
+                                              size: 14,
+                                            ),
+                                            SizedBox(width: 1.w),
+                                            Text(
+                                              'payment.lessons_per_week'.tr(
+                                                namedArgs: {
+                                                  'count':
+                                                      '${plan['classesPerWeek']}',
+                                                },
+                                              ),
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall
+                                                  ?.copyWith(
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .onSurfaceVariant,
+                                                  ),
+                                            ),
+                                          ],
                                         ),
                                       ],
-                                    ),
+
+                                      SizedBox(height: 1.h),
+
+                                      // Action button
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            onTap: () => _onSubscriptionSelect(
+                                              context,
+                                              plan,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                            child: Container(
+                                              padding: EdgeInsets.symmetric(
+                                                vertical: 1.5.h,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: color.withValues(
+                                                  alpha: 0.1,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                                border: Border.all(
+                                                  color: color.withValues(
+                                                    alpha: 0.3,
+                                                  ),
+                                                  width: 1,
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  Text(
+                                                    isEntryBased
+                                                        ? 'payment.buy'.tr()
+                                                        : 'payment.subscribe'
+                                                            .tr(),
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .titleSmall
+                                                        ?.copyWith(
+                                                          color: color,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                  ),
+                                                  SizedBox(width: 1.w),
+                                                  CustomIconWidget(
+                                                    iconName: 'arrow_forward',
+                                                    color: color,
+                                                    size: 16,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
                             ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
-                    ),
-                  ),
-                );
-              }, childCount: _subscriptionPlans.length),
+                    );
+                  }),
+                ),
+              ),
             ),
-          ),
 
           SliverToBoxAdapter(
             child: Container(
@@ -604,7 +639,7 @@ class SubscriptionPlansWidget extends StatelessWidget {
                     SizedBox(width: 3.w),
                     Expanded(
                       child: Text(
-                        'Tutti i pagamenti sono protetti da sistemi di sicurezza avanzati SumUp con crittografia SSL',
+                        'payment.sumup_security_footer'.tr(),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               color: Theme.of(context).colorScheme.primary,
                               fontWeight: FontWeight.w500,

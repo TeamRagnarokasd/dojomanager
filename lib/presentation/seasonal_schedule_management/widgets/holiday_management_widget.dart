@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:sizer/sizer.dart';
 import 'package:table_calendar/table_calendar.dart';
-import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HolidayManagementWidget extends StatefulWidget {
@@ -62,7 +62,7 @@ class _HolidayManagementWidgetState extends State<HolidayManagementWidget> {
       widget.onHolidaysUpdated();
       _showSuccessSnackBar('Festività aggiunta: $name');
     } catch (error) {
-      _showErrorSnackBar('Errore nell\'aggiunta della festività');
+      _showErrorSnackBar('holidays.add_error'.tr());
     }
   }
 
@@ -73,7 +73,7 @@ class _HolidayManagementWidgetState extends State<HolidayManagementWidget> {
       widget.onHolidaysUpdated();
       _showSuccessSnackBar('Festività rimossa');
     } catch (error) {
-      _showErrorSnackBar('Errore nella rimozione della festività');
+      _showErrorSnackBar('holidays.remove_error'.tr());
     }
   }
 
@@ -123,7 +123,7 @@ class _HolidayManagementWidgetState extends State<HolidayManagementWidget> {
       widget.onHolidaysUpdated();
       _showSuccessSnackBar('Aggiunte $addedCount festività nazionali');
     } catch (error) {
-      _showErrorSnackBar('Errore nell\'aggiunta delle festività nazionali');
+      _showErrorSnackBar('holidays.national_add_error'.tr());
     }
   }
 
@@ -198,7 +198,7 @@ class _HolidayManagementWidgetState extends State<HolidayManagementWidget> {
           ),
           SizedBox(height: 2.h),
           Text(
-            'Nessuna Stagione Configurata',
+            'seasonal_schedule.no_season_title'.tr(),
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: Theme.of(context).colorScheme.onSurface,
                 ),
@@ -273,7 +273,7 @@ class _HolidayManagementWidgetState extends State<HolidayManagementWidget> {
                   child: ElevatedButton.icon(
                     onPressed: () => _showAddHolidayDialog(),
                     icon: Icon(Icons.add, size: 16),
-                    label: Text('Aggiungi Festività'),
+                    label: Text('holidays.add_holiday'.tr()),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Theme.of(context).colorScheme.secondary,
                       foregroundColor:
@@ -286,7 +286,7 @@ class _HolidayManagementWidgetState extends State<HolidayManagementWidget> {
                   child: OutlinedButton.icon(
                     onPressed: _bulkAddNationalHolidays,
                     icon: Icon(Icons.flag, size: 16),
-                    label: Text('Festività Nazionali'),
+                    label: Text('holidays.national_holidays'.tr()),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Theme.of(context).colorScheme.secondary,
                       side: BorderSide(
@@ -402,11 +402,11 @@ class _HolidayManagementWidgetState extends State<HolidayManagementWidget> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        _buildLegendItem('Festività', Colors.orange),
+        _buildLegendItem('class_schedule.status_holiday'.tr(), Colors.orange),
         _buildLegendItem('Oggi',
             Theme.of(context).colorScheme.secondary.withValues(alpha: 0.3)),
         _buildLegendItem(
-            'Selezionato', Theme.of(context).colorScheme.secondary),
+            'holidays.selected'.tr(), Theme.of(context).colorScheme.secondary),
       ],
     );
   }
@@ -478,14 +478,14 @@ class _HolidayManagementWidgetState extends State<HolidayManagementWidget> {
             ),
             SizedBox(height: 2.h),
             Text(
-              'Nessuna Festività Configurata',
+              'holidays.no_holidays_title'.tr(),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
             ),
             SizedBox(height: 1.h),
             Text(
-              'Aggiungi le festività per evitare che vengano programmate lezioni in quei giorni',
+              'holidays.no_holidays_subtitle'.tr(),
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -617,7 +617,7 @@ class _HolidayEditorDialogState extends State<_HolidayEditorDialog> {
     if (_nameController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Inserisci il nome della festività'),
+          content: Text('holidays.enter_holiday_name'.tr()),
           backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
@@ -634,7 +634,7 @@ class _HolidayEditorDialogState extends State<_HolidayEditorDialog> {
       backgroundColor: Theme.of(context).dialogBackgroundColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       title: Text(
-        'Aggiungi Festività',
+        'holidays.add_holiday_dialog'.tr(),
         style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
       ),
       content: Column(
@@ -720,7 +720,7 @@ class _HolidayEditorDialogState extends State<_HolidayEditorDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: Text('Annulla'),
+          child: Text('common.cancel'.tr()),
         ),
         ElevatedButton(
           onPressed: _saveHoliday,
@@ -728,7 +728,7 @@ class _HolidayEditorDialogState extends State<_HolidayEditorDialog> {
             backgroundColor: Theme.of(context).colorScheme.secondary,
             foregroundColor: Theme.of(context).colorScheme.onSecondary,
           ),
-          child: Text('Salva'),
+          child: Text('common.save'.tr()),
         ),
       ],
     );

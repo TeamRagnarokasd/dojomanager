@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Added missing import for rootBundle
+import '../../core/app_export.dart';
+// Added missing import for rootBundle
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:sizer/sizer.dart';
 
@@ -51,12 +51,17 @@ class _ItalianReceiptGenerationScreenState
     try {
       final receipts = await _receiptService.getAllReceipts();
       setState(() {
-        _receipts =
-            receipts.map((data) => ItalianReceiptModel.fromJson(data)).toList();
+        _receipts = receipts
+            .map((data) => ItalianReceiptModel.fromJson(data))
+            .toList();
         _error = null;
       });
     } catch (e) {
-      setState(() => _error = 'Errore nel caricamento delle ricevute: $e');
+      setState(
+        () => _error = 'italian_receipt.load_receipts_error'.tr(
+          namedArgs: {'error': '$e'},
+        ),
+      );
     } finally {
       setState(() => _isLoading = false);
     }
@@ -68,6 +73,7 @@ class _ItalianReceiptGenerationScreenState
       final currentUser = _authService.currentUser;
       if (currentUser == null) throw Exception('Utente non autenticato');
 
+      // Step 1: Create receipt in database
       final receiptId = await _receiptService.createManualReceipt(
         createdBy: currentUser.id,
         customerName: receiptData['customerName'],
@@ -85,9 +91,23 @@ class _ItalianReceiptGenerationScreenState
         fiscalNotes: receiptData['fiscalNotes'],
       );
 
+      // Step 2: Activate subscription with discipline permissions
+      await _receiptService.activateSubscriptionForUser(
+        userId: receiptData['userId'],
+        subscriptionPlanId: receiptData['subscriptionPlanId'],
+        amount: receiptData['unitPrice'],
+        paymentMethod: receiptData['paymentMethod'],
+        targetDiscipline: receiptData['targetDiscipline'],
+        targetDiscipline2: receiptData['targetDiscipline2'],
+        includesPreparazione: receiptData['includesPreparazione'] ?? false,
+        receiptId: receiptId,
+        isCustomPlan: receiptData['isCustomPlan'] == true,
+      );
+
       // Get the created receipt
-      final createdReceiptData =
-          await _receiptService.getReceiptById(receiptId);
+      final createdReceiptData = await _receiptService.getReceiptById(
+        receiptId,
+      );
       if (createdReceiptData != null) {
         final receipt = ItalianReceiptModel.fromJson(createdReceiptData);
         setState(() {
@@ -97,16 +117,29 @@ class _ItalianReceiptGenerationScreenState
       }
       await _loadReceipts();
 
+      final d1 = receiptData['targetDiscipline'];
+      final d2 = receiptData['targetDiscipline2'];
+      final prep = receiptData['includesPreparazione'] == true;
+      String successMsg =
+          'Ricevuta creata e abbonamento attivato con successo!';
+      if (d1 != null && d2 != null) {
+        successMsg += '\nPermessi per $d1 e $d2 abilitati.';
+      } else if (d1 != null) {
+        successMsg += '\nPermessi per $d1 abilitati.';
+      }
+      if (prep) {
+        successMsg += '\nPreparazione Atletica inclusa automaticamente.';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ricevuta creata con successo!'),
-          backgroundColor: Colors.green,
-        ),
+        SnackBar(content: Text(successMsg), backgroundColor: Colors.green),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Errore nella creazione della ricevuta: $e'),
+          content: Text(
+            'italian_receipt.create_error'.tr(namedArgs: {'error': '$e'}),
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -117,570 +150,47 @@ class _ItalianReceiptGenerationScreenState
 
   Future<void> _generatePdf(ItalianReceiptModel receipt) async {
     try {
-      final pdf = await _createPdf(receipt);
+      // 🎯 FIX: Use SAME PDF generator as payment_history page
+      // This ensures consistent template without yellow VAT box
+      final receiptData = await _receiptService.getReceiptById(receipt.id);
+
+      if (receiptData == null) {
+        throw Exception('Receipt not found in database');
+      }
+
+      // 🔥 Generate PDF using ItalianReceiptService (same as payment_history)
+      final pdfDocument = await _receiptService.generateBeautifulReceiptPDF(
+        receiptData,
+      );
 
       // Show print preview
       await Printing.layoutPdf(
-        onLayout: (PdfPageFormat format) async => pdf.save(),
+        onLayout: (PdfPageFormat format) async => pdfDocument.save(),
         name: 'Ricevuta_${receipt.receiptNumber}',
         format: PdfPageFormat.a4,
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Errore nella generazione del PDF: $e'),
+          content: Text(
+            'italian_receipt.pdf_error'.tr(namedArgs: {'error': '$e'}),
+          ),
           backgroundColor: Colors.red,
         ),
       );
     }
   }
 
-  Future<pw.Document> _createPdf(ItalianReceiptModel receipt) async {
-    final pdf = pw.Document();
-
-    // Load logo image if available
-    pw.ImageProvider? logoImage;
-    try {
-      final logoData =
-          await rootBundle.load('assets/images/152933-1756821415426.jpg');
-      logoImage = pw.MemoryImage(logoData.buffer.asUint8List());
-    } catch (e) {
-      // Logo not available, will use text placeholder
-      logoImage = null;
+  Future<void> _deleteReceipts(
+    List<String> receiptIds,
+    bool deleteSubscription,
+  ) async {
+    for (final id in receiptIds) {
+      await _receiptService.deleteReceipt(
+        id,
+        deleteSubscription: deleteSubscription,
+      );
     }
-
-    pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(24),
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              // Professional Header with logo and organization info
-              _buildProfessionalPdfHeader(receipt, logoImage),
-              pw.SizedBox(height: 24),
-
-              // Receipt title and number
-              _buildPdfTitle(receipt),
-              pw.SizedBox(height: 20),
-
-              // Customer information
-              _buildPdfCustomerInfo(receipt),
-              pw.SizedBox(height: 20),
-
-              // Professional Receipt details table
-              _buildProfessionalPdfReceiptTable(receipt),
-              pw.SizedBox(height: 20),
-
-              // Payment method and notes
-              _buildPdfPaymentInfo(receipt),
-              pw.SizedBox(height: 20),
-
-              // Professional VAT summary
-              _buildProfessionalPdfVatSummary(receipt),
-              pw.SizedBox(height: 24),
-
-              // Footer
-              _buildPdfFooter(),
-            ],
-          );
-        },
-      ),
-    );
-
-    return pdf;
-  }
-
-  pw.Widget _buildProfessionalPdfHeader(
-      ItalianReceiptModel receipt, pw.ImageProvider? logoImage) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(16),
-      decoration: pw.BoxDecoration(
-        color: PdfColors.red600,
-        borderRadius: pw.BorderRadius.circular(8),
-      ),
-      child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          // Logo
-          pw.Container(
-            width: 80,
-            height: 80,
-            decoration: pw.BoxDecoration(
-              color: PdfColors.white,
-              borderRadius: pw.BorderRadius.circular(8),
-            ),
-            child: logoImage != null
-                ? pw.Container(
-                    decoration: pw.BoxDecoration(
-                      borderRadius: pw.BorderRadius.circular(8),
-                    ),
-                    child: pw.Image(logoImage, fit: pw.BoxFit.cover),
-                  )
-                : pw.Center(
-                    child: pw.Text(
-                      'TEAM\nRAGNAROK\nASD',
-                      textAlign: pw.TextAlign.center,
-                      style: pw.TextStyle(
-                        fontSize: 10,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.red600,
-                      ),
-                    ),
-                  ),
-          ),
-          pw.SizedBox(width: 20),
-
-          // Organization info
-          pw.Expanded(
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  receipt.organizationInfo?.name ?? 'Team Ragnarok ASD',
-                  style: pw.TextStyle(
-                    fontSize: 18,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.white,
-                  ),
-                ),
-                pw.SizedBox(height: 6),
-                pw.Text(
-                  receipt.organizationInfo?.address ??
-                      'via giulio bezzi 25, 48026 Russi - RA',
-                  style: const pw.TextStyle(
-                    fontSize: 12,
-                    color: PdfColors.white,
-                  ),
-                ),
-                pw.SizedBox(height: 4),
-                pw.Text(
-                  'C.F.: ${receipt.organizationInfo?.taxCode ?? '92100170395'}',
-                  style: pw.TextStyle(
-                    fontSize: 12,
-                    color: PdfColors.white,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  pw.Widget _buildPdfTitle(ItalianReceiptModel receipt) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(12),
-      decoration: pw.BoxDecoration(
-        color: PdfColors.grey100,
-        borderRadius: pw.BorderRadius.circular(6),
-        border: pw.Border.all(color: PdfColors.grey300),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(
-            'Ricevuta Fiscale - ${receipt.receiptNumber.split('-').last} del ${receipt.formattedIssueDate}',
-            style: pw.TextStyle(
-              fontSize: 16,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.red600,
-            ),
-          ),
-          if (receipt.validityEndDate != null) ...[
-            pw.SizedBox(height: 4),
-            pw.Text(
-              'Scadenza iscrizione: ${receipt.validityEndDate!.day.toString().padLeft(2, '0')}-${receipt.validityEndDate!.month.toString().padLeft(2, '0')}-${receipt.validityEndDate!.year}',
-              style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  pw.Widget _buildPdfCustomerInfo(ItalianReceiptModel receipt) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(12),
-      decoration: pw.BoxDecoration(
-        color: PdfColors.blue50,
-        borderRadius: pw.BorderRadius.circular(6),
-        border: pw.Border.all(color: PdfColors.blue200),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(
-            'Dati di fatturazione',
-            style: pw.TextStyle(
-              fontSize: 14,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.blue800,
-            ),
-          ),
-          pw.SizedBox(height: 8),
-          pw.Text(
-            'DEST: ${receipt.customerName}',
-            style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey800),
-          ),
-          if (receipt.customerTaxCode != null) ...[
-            pw.SizedBox(height: 2),
-            pw.Text(
-              'C.F. ${receipt.customerTaxCode}',
-              style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey800),
-            ),
-          ],
-          if (receipt.customerAddress != null) ...[
-            pw.SizedBox(height: 2),
-            pw.Text(
-              'Indirizzo: ${receipt.customerAddress}',
-              style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey800),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  pw.Widget _buildProfessionalPdfReceiptTable(ItalianReceiptModel receipt) {
-    return pw.Container(
-      decoration: pw.BoxDecoration(
-        borderRadius: pw.BorderRadius.circular(6),
-        border: pw.Border.all(color: PdfColors.grey300),
-      ),
-      child: pw.Column(
-        children: [
-          // Header with gradient-like color
-          pw.Container(
-            decoration: pw.BoxDecoration(
-              color: PdfColors.red600,
-              borderRadius: const pw.BorderRadius.only(
-                topLeft: pw.Radius.circular(6),
-                topRight: pw.Radius.circular(6),
-              ),
-            ),
-            child: pw.Table(
-              border: null,
-              children: [
-                pw.TableRow(
-                  children: [
-                    _buildPdfTableCell('Nome', isHeader: true),
-                    _buildPdfTableCell('Quantità', isHeader: true),
-                    _buildPdfTableCell('Prezzo unitario', isHeader: true),
-                    _buildPdfTableCell('Sconto', isHeader: true),
-                    _buildPdfTableCell('Iva', isHeader: true),
-                    _buildPdfTableCell('Importo', isHeader: true),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Data row
-          pw.Container(
-            decoration: pw.BoxDecoration(
-              color: PdfColors.grey50,
-              borderRadius: const pw.BorderRadius.only(
-                bottomLeft: pw.Radius.circular(6),
-                bottomRight: pw.Radius.circular(6),
-              ),
-            ),
-            child: pw.Table(
-              border: null,
-              children: [
-                pw.TableRow(
-                  children: [
-                    _buildPdfTableCell(
-                      '${receipt.description}${receipt.formattedValidityPeriod.isNotEmpty ? '\n${receipt.formattedValidityPeriod}' : ''}',
-                    ),
-                    _buildPdfTableCell(receipt.quantity.toString()),
-                    _buildPdfTableCell(
-                      '€${receipt.unitPrice.toStringAsFixed(2).replaceAll('.', ',')}',
-                    ),
-                    _buildPdfTableCell(
-                      receipt.discountPercentage > 0
-                          ? '${receipt.discountPercentage.toStringAsFixed(0)}%'
-                          : '-',
-                    ),
-                    _buildPdfTableCell(
-                      '${receipt.vatRate}% ${receipt.fiscalNotes?.contains('N2.2') == true ? 'N2.2' : ''}',
-                    ),
-                    _buildPdfTableCell(
-                      '€${receipt.amount.toStringAsFixed(2).replaceAll('.', ',')}',
-                      isTotal: true,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  pw.Widget _buildPdfTableCell(String text,
-      {bool isHeader = false, bool isTotal = false}) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-      child: pw.Text(
-        text,
-        style: pw.TextStyle(
-          fontSize: isHeader ? 11 : 10,
-          fontWeight:
-              isHeader || isTotal ? pw.FontWeight.bold : pw.FontWeight.normal,
-          color: isHeader
-              ? PdfColors.white
-              : isTotal
-                  ? PdfColors.red700
-                  : PdfColors.grey800,
-        ),
-        textAlign: isHeader ? pw.TextAlign.center : pw.TextAlign.left,
-      ),
-    );
-  }
-
-  pw.Widget _buildPdfPaymentInfo(ItalianReceiptModel receipt) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(12),
-      decoration: pw.BoxDecoration(
-        color: PdfColors.green50,
-        borderRadius: pw.BorderRadius.circular(6),
-        border: pw.Border.all(color: PdfColors.green200),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(
-            'METODO PAGAMENTO: ${receipt.paymentMethodText}',
-            style: pw.TextStyle(
-              fontSize: 14,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.green800,
-            ),
-          ),
-          if (receipt.fiscalNotes != null) ...[
-            pw.SizedBox(height: 8),
-            pw.Text(
-              'NOTE FISCALI',
-              style: pw.TextStyle(
-                fontSize: 12,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.green800,
-              ),
-            ),
-            pw.SizedBox(height: 4),
-            pw.Text(
-              receipt.fiscalNotes!,
-              style:
-                  const pw.TextStyle(fontSize: 10, color: PdfColors.green700),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  pw.Widget _buildProfessionalPdfVatSummary(ItalianReceiptModel receipt) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(12),
-      decoration: pw.BoxDecoration(
-        color: PdfColors.orange50,
-        borderRadius: pw.BorderRadius.circular(6),
-        border: pw.Border.all(color: PdfColors.orange200),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(
-            'RIEPILOGO IVA',
-            style: pw.TextStyle(
-              fontSize: 14,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.orange800,
-            ),
-          ),
-          pw.SizedBox(height: 12),
-
-          // IVA Table
-          pw.Container(
-            decoration: pw.BoxDecoration(
-              color: PdfColors.white,
-              borderRadius: pw.BorderRadius.circular(4),
-              border: pw.Border.all(color: PdfColors.orange200),
-            ),
-            child: pw.Table(
-              border:
-                  pw.TableBorder.all(color: PdfColors.orange200, width: 0.5),
-              children: [
-                // Header
-                pw.TableRow(
-                  decoration:
-                      const pw.BoxDecoration(color: PdfColors.orange100),
-                  children: [
-                    pw.Padding(
-                      padding: const pw.EdgeInsets.all(8),
-                      child: pw.Text(
-                        'IMPONIBILE',
-                        style: pw.TextStyle(
-                            fontSize: 10,
-                            fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.orange800),
-                        textAlign: pw.TextAlign.center,
-                      ),
-                    ),
-                    pw.Padding(
-                      padding: const pw.EdgeInsets.all(8),
-                      child: pw.Text(
-                        'IMPOSTE',
-                        style: pw.TextStyle(
-                            fontSize: 10,
-                            fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.orange800),
-                        textAlign: pw.TextAlign.center,
-                      ),
-                    ),
-                    pw.Padding(
-                      padding: const pw.EdgeInsets.all(8),
-                      child: pw.Text(
-                        'IMPORTO',
-                        style: pw.TextStyle(
-                            fontSize: 10,
-                            fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.orange800),
-                        textAlign: pw.TextAlign.center,
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Data
-                pw.TableRow(
-                  children: [
-                    pw.Padding(
-                      padding: const pw.EdgeInsets.all(8),
-                      child: pw.Text(
-                        '${receipt.vatRate}%',
-                        style: const pw.TextStyle(
-                            fontSize: 10, color: PdfColors.grey800),
-                        textAlign: pw.TextAlign.center,
-                      ),
-                    ),
-                    pw.Padding(
-                      padding: const pw.EdgeInsets.all(8),
-                      child: pw.Text(
-                        '€${receipt.taxableAmount.toStringAsFixed(2).replaceAll('.', ',')}',
-                        style: const pw.TextStyle(
-                            fontSize: 10, color: PdfColors.grey800),
-                        textAlign: pw.TextAlign.center,
-                      ),
-                    ),
-                    pw.Padding(
-                      padding: const pw.EdgeInsets.all(8),
-                      child: pw.Text(
-                        '€${receipt.vatAmount.toStringAsFixed(2).replaceAll('.', ',')}',
-                        style: const pw.TextStyle(
-                            fontSize: 10, color: PdfColors.grey800),
-                        textAlign: pw.TextAlign.center,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          pw.SizedBox(height: 16),
-
-          // Total section
-          pw.Container(
-            padding: const pw.EdgeInsets.all(12),
-            decoration: pw.BoxDecoration(
-              color: PdfColors.red600,
-              borderRadius: pw.BorderRadius.circular(6),
-            ),
-            child: pw.Column(
-              children: [
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text(
-                      'Imponibile €${receipt.taxableAmount.toStringAsFixed(2).replaceAll('.', ',')}',
-                      style: pw.TextStyle(
-                          fontSize: 12,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.white),
-                    ),
-                    pw.Text(
-                      'Totale IVA €${receipt.vatAmount.toStringAsFixed(2).replaceAll('.', ',')}',
-                      style: pw.TextStyle(
-                          fontSize: 12,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.white),
-                    ),
-                  ],
-                ),
-                pw.SizedBox(height: 8),
-                pw.Container(
-                  width: double.infinity,
-                  padding: const pw.EdgeInsets.symmetric(vertical: 8),
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.white,
-                    borderRadius: pw.BorderRadius.circular(4),
-                  ),
-                  child: pw.Text(
-                    'TOTALE: €${receipt.amount.toStringAsFixed(2).replaceAll('.', ',')}',
-                    style: pw.TextStyle(
-                      fontSize: 18,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.red700,
-                    ),
-                    textAlign: pw.TextAlign.center,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  pw.Widget _buildPdfFooter() {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(12),
-      decoration: pw.BoxDecoration(
-        color: PdfColors.grey100,
-        borderRadius: pw.BorderRadius.circular(6),
-      ),
-      child: pw.Center(
-        child: pw.Column(
-          children: [
-            pw.Text(
-              'Ricevuta Fiscale generata da APP Palestre',
-              style: pw.TextStyle(
-                fontSize: 10,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.grey700,
-              ),
-              textAlign: pw.TextAlign.center,
-            ),
-            pw.SizedBox(height: 2),
-            pw.Text(
-              'powered by Shaggy Owl S.r.l.s',
-              style: const pw.TextStyle(
-                fontSize: 9,
-                color: PdfColors.grey600,
-              ),
-              textAlign: pw.TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -688,79 +198,78 @@ class _ItalianReceiptGenerationScreenState
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Gestione Ricevute Fiscali',
+          'receipt.title'.tr(),
           style: GoogleFonts.inter(
             fontWeight: FontWeight.w600,
             fontSize: 18.sp,
           ),
         ),
-        backgroundColor: Colors.white,
-        elevation: 1,
+        elevation: 0.5,
         bottom: TabBar(
           controller: _tabController,
-          labelColor: Theme.of(context).primaryColor,
+          labelColor: Theme.of(context).colorScheme.primary,
           unselectedLabelColor: Colors.grey,
-          indicatorColor: Theme.of(context).primaryColor,
-          tabs: const [
-            Tab(text: 'Nuova Ricevuta', icon: Icon(Icons.add_box)),
-            Tab(text: 'Anteprima', icon: Icon(Icons.preview)),
-            Tab(text: 'Archivio', icon: Icon(Icons.archive)),
+          indicatorColor: Theme.of(context).colorScheme.primary,
+          tabs: [
+            Tab(text: 'receipt.new_receipt'.tr(), icon: Icon(Icons.add_box)),
+            Tab(text: 'receipt.preview'.tr(), icon: Icon(Icons.preview)),
+            Tab(text: 'receipt.archive'.tr(), icon: Icon(Icons.archive)),
           ],
         ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.error, size: 48, color: Colors.red),
-                      SizedBox(height: 16),
-                      Text(_error!, textAlign: TextAlign.center),
-                      SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadReceipts,
-                        child: const Text('Riprova'),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error, size: 48, color: Colors.red),
+                  SizedBox(height: 16),
+                  Text(_error!, textAlign: TextAlign.center),
+                  SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _loadReceipts,
+                    child: Text('common.retry'.tr()),
                   ),
-                )
-              : TabBarView(
-                  controller: _tabController,
-                  children: [
-                    // New Receipt Form
-                    ReceiptFormWidget(
-                      onSubmit: _createReceipt,
-                      isLoading: _isLoading,
-                    ),
-
-                    // Receipt Preview
-                    _selectedReceipt != null
-                        ? ReceiptPreviewWidget(
-                            receipt: _selectedReceipt!,
-                            onGeneratePdf: () =>
-                                _generatePdf(_selectedReceipt!),
-                          )
-                        : const Center(
-                            child: Text(
-                              'Seleziona o crea una ricevuta per visualizzare l\'anteprima',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-
-                    // Receipt Archive
-                    ReceiptListWidget(
-                      receipts: _receipts,
-                      onReceiptTap: (receipt) {
-                        setState(() => _selectedReceipt = receipt);
-                        _tabController.animateTo(1);
-                      },
-                      onGeneratePdf: _generatePdf,
-                      onRefresh: _loadReceipts,
-                    ),
-                  ],
+                ],
+              ),
+            )
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                // New Receipt Form
+                ReceiptFormWidget(
+                  onSubmit: _createReceipt,
+                  isLoading: _isLoading,
                 ),
+
+                // Receipt Preview
+                _selectedReceipt != null
+                    ? ReceiptPreviewWidget(
+                        receipt: _selectedReceipt!,
+                        onGeneratePdf: () => _generatePdf(_selectedReceipt!),
+                      )
+                    : Center(
+                        child: Text(
+                          'italian_receipt.preview_empty_hint'.tr(),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+
+                // Receipt Archive
+                ReceiptListWidget(
+                  receipts: _receipts,
+                  onReceiptTap: (receipt) {
+                    setState(() => _selectedReceipt = receipt);
+                    _tabController.animateTo(1);
+                  },
+                  onGeneratePdf: _generatePdf,
+                  onRefresh: _loadReceipts,
+                  onDeleteReceipts: _deleteReceipts,
+                ),
+              ],
+            ),
     );
   }
 }

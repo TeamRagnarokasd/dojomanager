@@ -1,18 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sizer/sizer.dart';
 
+import '../../../core/app_export.dart';
 import '../../../constants/app_constants.dart';
+import '../../../constants/profile_typography.dart';
 import '../../../services/supabase_service.dart';
 
 class SubscriptionDetailsWidget extends StatefulWidget {
+  final String? userId;
   final bool autoRenewal;
-  final ValueChanged<bool> onAutoRenewalChanged;
+  final Function(bool) onAutoRenewalChanged;
+  final bool isAdminView;
 
   const SubscriptionDetailsWidget({
     Key? key,
+    this.userId,
     required this.autoRenewal,
     required this.onAutoRenewalChanged,
+    this.isAdminView = false,
   }) : super(key: key);
 
   @override
@@ -21,75 +27,401 @@ class SubscriptionDetailsWidget extends StatefulWidget {
 }
 
 class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
-  Map<String, dynamic>? _subscriptionData;
+  List<Map<String, dynamic>> _activeSubscriptions = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadSubscriptionData();
+    _loadSubscriptionDetails();
   }
 
-  Future<void> _loadSubscriptionData() async {
+  /// Single source of truth: payment_confirmations joined with custom_subscription_plans
+  /// via custom_plan_id. No fallback to old subscription_plans table.
+  Future<void> _loadSubscriptionDetails() async {
     try {
       final client = SupabaseService.instance.client;
-      final user = client.auth.currentUser;
+      final targetUserId = widget.userId ?? client.auth.currentUser?.id ?? '';
 
-      if (user == null) return;
+      if (targetUserId.isEmpty) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
 
-      // Get active subscription
-      final response = await client
-          .from('user_subscriptions')
+      // PRIMARY SOURCE: payment_confirmations with custom_plan_id join
+      // This is the definitive record of what was purchased and confirmed.
+      final paymentsResponse = await client
+          .from('payment_confirmations')
           .select('''
-            *,
-            subscription_plans(
-              name,
-              description,
-              price,
-              plan_type,
-              entry_count
+            id,
+            user_id,
+            custom_plan_id,
+            amount,
+            payment_method,
+            status,
+            confirmed_at,
+            created_at,
+            custom_subscription_plans!payment_confirmations_custom_plan_id_fkey(
+              id, name, amount, duration_months, entry_count, is_unlimited
             )
           ''')
-          .eq('user_id', user.id)
-          .eq('is_active', true)
-          .order('created_at', ascending: false)
-          .limit(1);
+          .eq('user_id', targetUserId)
+          .eq('status', 'confirmed')
+          .not('custom_plan_id', 'is', null)
+          .order('confirmed_at', ascending: false);
 
-      setState(() {
-        _subscriptionData = response.isNotEmpty ? response.first : null;
-        _isLoading = false;
-      });
+      final payments = List<Map<String, dynamic>>.from(paymentsResponse ?? []);
+
+      if (payments.isEmpty) {
+        if (mounted)
+          setState(() {
+            _activeSubscriptions = [];
+            _isLoading = false;
+          });
+        return;
+      }
+
+      // Also fetch user_subscriptions to get expiry dates and entry counts
+      // (these are populated by createBatchPaymentAndReceipts)
+      final userSubsResponse = await client
+          .from('user_subscriptions')
+          .select(
+            'id, custom_plan_id, entries_remaining, entries_total, expires_at, is_active, purchased_at',
+          )
+          .eq('user_id', targetUserId)
+          .eq('is_active', true)
+          .not('custom_plan_id', 'is', null);
+
+      final userSubs = List<Map<String, dynamic>>.from(userSubsResponse ?? []);
+
+      // Build a map: custom_plan_id → user_subscription data
+      final Map<String, Map<String, dynamic>> subByPlanId = {};
+      for (final sub in userSubs) {
+        final planId = sub['custom_plan_id'] as String?;
+        if (planId != null) {
+          subByPlanId[planId] = sub;
+        }
+      }
+
+      final List<Map<String, dynamic>> subscriptions = [];
+      // Deduplicate by custom_plan_id — show one entry per plan
+      final Set<String> seenPlanIds = {};
+
+      for (final payment in payments) {
+        final customPlanId = payment['custom_plan_id'] as String?;
+        if (customPlanId == null) continue;
+
+        // Skip duplicates (same plan purchased multiple times — show most recent)
+        if (seenPlanIds.contains(customPlanId)) continue;
+        seenPlanIds.add(customPlanId);
+
+        final customPlan =
+            payment['custom_subscription_plans'] as Map<String, dynamic>?;
+        if (customPlan == null) continue;
+
+        final planName = customPlan['name'] as String? ?? 'Abbonamento';
+        final planAmount = customPlan['amount'];
+        final durationMonths =
+            (customPlan['duration_months'] as num?)?.toInt() ?? 1;
+        final entryCount = (customPlan['entry_count'] as num?)?.toInt() ?? 0;
+        final isUnlimited = customPlan['is_unlimited'] as bool? ?? false;
+
+        // Determine plan type from name and properties
+        final planType = _inferPlanType(
+          planName,
+          durationMonths,
+          entryCount,
+          isUnlimited,
+        );
+
+        // Get expiry and entry data from user_subscriptions if available
+        final userSub = subByPlanId[customPlanId];
+        final expiresAt = userSub?['expires_at'] as String?;
+        final entriesTotal =
+            (userSub?['entries_total'] as num?)?.toInt() ?? entryCount;
+        final entriesRemaining =
+            (userSub?['entries_remaining'] as num?)?.toInt() ?? entryCount;
+
+        // For annual plans, compute expiry if not in user_subscriptions
+        String? computedExpiry = expiresAt;
+        if (planType == 'annual') {
+          // Annual always uses 28/08 logic regardless of user_subscriptions
+          final now = DateTime.now();
+          final august28ThisYear = DateTime(now.year, 8, 28);
+          final expiryYear =
+              now.isBefore(august28ThisYear) ||
+                  now.isAtSameMomentAs(august28ThisYear)
+              ? now.year
+              : now.year + 1;
+          computedExpiry = DateTime(expiryYear, 8, 28).toIso8601String();
+        } else if (computedExpiry == null && planType == 'monthly') {
+          // Monthly: compute from confirmed_at + duration_months
+          final confirmedAtStr = payment['confirmed_at'] as String?;
+          if (confirmedAtStr != null) {
+            try {
+              final confirmedDate = DateTime.parse(confirmedAtStr);
+              computedExpiry = confirmedDate
+                  .add(Duration(days: 30 * durationMonths))
+                  .toIso8601String();
+            } catch (_) {}
+          }
+        }
+
+        subscriptions.add({
+          'id': payment['id'],
+          'user_subscription_id': userSub?['id'],
+          'custom_plan_id': customPlanId,
+          'is_active': true,
+          'confirmed_at': payment['confirmed_at'],
+          'created_at': payment['created_at'],
+          'expires_at': computedExpiry,
+          'entries_total': entriesTotal,
+          'entries_remaining': entriesRemaining,
+          'amount': planAmount ?? payment['amount'],
+          'payment_method': payment['payment_method'],
+          'plan_name': planName,
+          'plan_type': planType,
+          'plan_price': planAmount ?? payment['amount'],
+          'source': 'payment_confirmation',
+        });
+      }
+
+      if (mounted) {
+        setState(() {
+          _activeSubscriptions = subscriptions;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      print('Error loading subscription data: $e');
-      setState(() {
-        _subscriptionData = null;
-        _isLoading = false;
-      });
+      print('Error loading subscription details: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  String _inferPlanType(
+    String planName,
+    int durationMonths,
+    int entryCount,
+    bool isUnlimited,
+  ) {
+    final lower = planName.toLowerCase();
+    if (lower.contains('iscrizione') || lower.contains('annuale'))
+      return 'annual';
+    if (lower.contains('singolo') || lower.contains('single'))
+      return 'single_entry';
+    if (lower.contains('pacchetto') ||
+        lower.contains('ingressi') ||
+        entryCount > 1)
+      return 'multi_entry';
+    if (durationMonths >= 12) return 'annual';
+    return 'monthly';
   }
 
   String _formatPlanType(String planType) {
     switch (planType) {
       case 'monthly':
-        return 'Mensile';
+        return 'payment.monthly_plan'.tr();
       case 'single_entry':
-        return 'Ingresso Singolo';
+        return 'admin_discipline.single_entry'.tr();
       case 'multi_entry':
-        return 'Pacchetto Ingressi';
+        return 'admin_discipline.entry_package'.tr();
       case 'annual':
-        return 'Annuale';
+        return 'payment.annual_plan'.tr();
       default:
         return planType;
     }
   }
 
-  String _formatExpiryDate(String? expiresAt) {
-    if (expiresAt == null) return 'Non specificato';
+  String _formatDate(String? dateStr) {
+    if (dateStr == null) return 'Non specificato';
     try {
-      final date = DateTime.parse(expiresAt);
+      final date = DateTime.parse(dateStr);
       return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
     } catch (e) {
       return 'Data non valida';
+    }
+  }
+
+  // ─── Admin: show delete dialog ───────────────────────────────────────────
+  Future<void> _showDeleteDialog(Map<String, dynamic> subscription) async {
+    final planName = subscription['plan_name'] as String? ?? 'Abbonamento';
+    final subscriptionId = subscription['id'] as String?;
+    if (subscriptionId == null) return;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Row(
+          children: [
+            Icon(Icons.delete_outline, color: Colors.red, size: 6.w),
+            SizedBox(width: 2.w),
+            Expanded(
+              child: Text(
+                'Elimina Abbonamento',
+                style: GoogleFonts.inter(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Stai per eliminare l\'abbonamento:',
+              style: GoogleFonts.inter(color: Colors.grey[300], fontSize: 13),
+            ),
+            SizedBox(height: 1.h),
+            Text(
+              planName,
+              style: GoogleFonts.inter(
+                color: Colors.red,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              'Vuoi eliminare anche le ricevute non fiscali già create per questo abbonamento?',
+              style: GoogleFonts.inter(color: Colors.grey[300], fontSize: 13),
+            ),
+          ],
+        ),
+        actionsPadding: EdgeInsets.fromLTRB(3.w, 0, 3.w, 2.h),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(
+              'Annulla',
+              style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 13),
+            ),
+          ),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: Colors.red.withAlpha(180)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _deleteSubscription(
+                paymentConfirmationId: subscriptionId,
+                userSubscriptionId:
+                    subscription['user_subscription_id'] as String?,
+                deleteReceipts: false,
+              );
+            },
+            child: Text(
+              'Solo abbonamento',
+              style: GoogleFonts.inter(color: Colors.red, fontSize: 12),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _deleteSubscription(
+                paymentConfirmationId: subscriptionId,
+                userSubscriptionId:
+                    subscription['user_subscription_id'] as String?,
+                deleteReceipts: true,
+              );
+            },
+            child: Text(
+              'Abbonamento + Ricevute',
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteSubscription({
+    required String paymentConfirmationId,
+    String? userSubscriptionId,
+    required bool deleteReceipts,
+  }) async {
+    try {
+      final client = SupabaseService.instance.client;
+
+      if (deleteReceipts) {
+        // Delete non_fiscal_receipts linked via batch_transaction_id
+        final payment = await client
+            .from('payment_confirmations')
+            .select('batch_transaction_id')
+            .eq('id', paymentConfirmationId)
+            .maybeSingle();
+
+        final batchId = payment?['batch_transaction_id'] as String?;
+        if (batchId != null && batchId.isNotEmpty) {
+          await client
+              .from('non_fiscal_receipts')
+              .delete()
+              .eq('batch_transaction_id', batchId);
+        }
+      }
+
+      // Delete user_subscription if present
+      if (userSubscriptionId != null) {
+        await client
+            .from('user_subscriptions')
+            .delete()
+            .eq('id', userSubscriptionId);
+      }
+
+      // Delete payment_confirmation
+      await client
+          .from('payment_confirmations')
+          .delete()
+          .eq('id', paymentConfirmationId);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              deleteReceipts
+                  ? 'Abbonamento e ricevute eliminati con successo.'
+                  : 'Abbonamento eliminato con successo.',
+              style: GoogleFonts.inter(color: Colors.white),
+            ),
+            backgroundColor: Colors.green[700],
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        setState(() => _isLoading = true);
+        await _loadSubscriptionDetails();
+      }
+    } catch (e) {
+      print('Error deleting subscription: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Errore durante l\'eliminazione: $e',
+              style: GoogleFonts.inter(color: Colors.white),
+            ),
+            backgroundColor: Colors.red[700],
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
@@ -103,9 +435,7 @@ class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
           borderRadius: BorderRadius.circular(AppConstants.defaultBorderRadius),
           border: Border.all(color: Colors.red.withAlpha(77)),
         ),
-        child: Center(
-          child: CircularProgressIndicator(color: Colors.red),
-        ),
+        child: Center(child: CircularProgressIndicator(color: Colors.red)),
       );
     }
 
@@ -120,42 +450,51 @@ class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Dettagli Abbonamento',
+            'profile.subscription_details'.tr(),
             style: GoogleFonts.inter(
               color: Colors.white,
-              fontSize: 14.sp,
+              fontSize: ProfileTypography.sectionTitle,
               fontWeight: FontWeight.w600,
             ),
           ),
           SizedBox(height: 3.h),
-          _subscriptionData != null
-              ? _buildSubscriptionCard()
+          _activeSubscriptions.isNotEmpty
+              ? Column(
+                  children: _activeSubscriptions
+                      .map(
+                        (sub) => Padding(
+                          padding: EdgeInsets.only(bottom: 2.h),
+                          child: _buildSubscriptionCard(sub),
+                        ),
+                      )
+                      .toList(),
+                )
               : _buildNoSubscriptionCard(),
         ],
       ),
     );
   }
 
-  Widget _buildSubscriptionCard() {
-    final subscription = _subscriptionData!;
-    final plan = subscription['subscription_plans'];
-    final isActive = subscription['is_active'] ?? false;
+  Widget _buildSubscriptionCard(Map<String, dynamic> subscription) {
+    final planName =
+        subscription['plan_name'] as String? ?? 'payment.unknown_plan'.tr();
+    final planType = subscription['plan_type'] as String? ?? 'monthly';
+    final planPrice = subscription['plan_price'];
+    final entriesTotal = (subscription['entries_total'] ?? 0) as int;
+    final entriesRemaining = (subscription['entries_remaining'] ?? 0) as int;
+    final expiresAt = subscription['expires_at'] as String?;
+    final confirmedAt = subscription['confirmed_at'] as String?;
 
     return Container(
       padding: EdgeInsets.all(4.w),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: isActive
-              ? [Colors.red.withAlpha(51), Colors.red.withAlpha(13)]
-              : [Colors.grey.withAlpha(51), Colors.grey.withAlpha(13)],
+          colors: [Colors.red.withAlpha(51), Colors.red.withAlpha(13)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-            color: isActive
-                ? Colors.red.withAlpha(77)
-                : Colors.grey.withAlpha(77)),
+        border: Border.all(color: Colors.red.withAlpha(77)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -165,75 +504,142 @@ class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
             children: [
               Expanded(
                 child: Text(
-                  plan['name'] ?? 'Piano Sconosciuto',
+                  planName,
                   style: GoogleFonts.inter(
-                    color: isActive ? Colors.red : Colors.grey[400],
-                    fontSize: 13.sp,
+                    color: Colors.red,
+                    fontSize: ProfileTypography.emphasis,
                     fontWeight: FontWeight.w700,
                   ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
                 ),
               ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
-                decoration: BoxDecoration(
-                  color: isActive
-                      ? Colors.green.withAlpha(51)
-                      : Colors.orange.withAlpha(51),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: isActive
-                          ? Colors.green.withAlpha(128)
-                          : Colors.orange.withAlpha(128)),
-                ),
-                child: Text(
-                  isActive ? 'ATTIVO' : 'SCADUTO',
-                  style: GoogleFonts.inter(
-                    color: isActive ? Colors.green : Colors.orange,
-                    fontSize: 8.sp,
-                    fontWeight: FontWeight.w600,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 2.w,
+                      vertical: 0.5.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withAlpha(51),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.green.withAlpha(128)),
+                    ),
+                    child: Text(
+                      'common.active'.tr(),
+                      style: GoogleFonts.inter(
+                        color: Colors.green,
+                        fontSize: ProfileTypography.caption,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                ),
+                  if (widget.isAdminView) ...[
+                    SizedBox(width: 2.w),
+                    GestureDetector(
+                      onTap: () => _showDeleteDialog(subscription),
+                      child: Container(
+                        padding: EdgeInsets.all(1.w),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withAlpha(30),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.red.withAlpha(120)),
+                        ),
+                        child: Icon(
+                          Icons.delete_outline,
+                          color: Colors.red,
+                          size: 5.w,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ],
           ),
           SizedBox(height: 2.h),
           Row(
             children: [
-              Expanded(
-                child: _buildPlanDetail('Prezzo',
-                    '€${plan['price']}/${_formatPlanType(plan['plan_type'])}'),
-              ),
-              Expanded(
-                child: _buildPlanDetail(
-                    'Scadenza', _formatExpiryDate(subscription['expires_at'])),
-              ),
+              if (planPrice != null)
+                Expanded(
+                  child: _buildPlanDetail(
+                    'payment.price'.tr(),
+                    '€$planPrice/${_formatPlanType(planType)}',
+                  ),
+                ),
+              // For annual plans: show expiry date (purchase date shown below)
+              // For other plans: show purchase date if no expiry, else expiry
+              if (planType == 'annual')
+                Expanded(
+                  child: _buildPlanDetail(
+                    'profile.expiry_date'.tr(),
+                    _formatDate(expiresAt),
+                  ),
+                )
+              else
+                Expanded(
+                  child: _buildPlanDetail(
+                    confirmedAt != null
+                        ? 'payment.purchased_on'.tr()
+                        : 'profile.expiry_date'.tr(),
+                    confirmedAt != null
+                        ? _formatDate(confirmedAt)
+                        : _formatDate(expiresAt),
+                  ),
+                ),
             ],
           ),
-          if (subscription['entries_total'] != null) ...[
-            SizedBox(height: 2.h),
+          // For non-annual plans with expiry: show expiry date in second row
+          if (planType != 'annual' && expiresAt != null) ...[
+            SizedBox(height: 1.h),
             Row(
               children: [
+                if (planPrice != null) Expanded(child: SizedBox()),
                 Expanded(
-                  child: _buildPlanDetail('Ingressi Totali',
-                      subscription['entries_total'].toString()),
-                ),
-                Expanded(
-                  child: _buildPlanDetail('Ingressi Rimanenti',
-                      subscription['entries_remaining'].toString()),
+                  child: _buildPlanDetail(
+                    'profile.expiry_date'.tr(),
+                    _formatDate(expiresAt),
+                  ),
                 ),
               ],
             ),
           ],
-          SizedBox(height: 2.h),
-          Text(
-            plan['description'] ??
-                'Include accesso alle discipline previste dal piano',
-            style: GoogleFonts.inter(
-              color: Colors.grey[300],
-              fontSize: 9.sp,
-              fontStyle: FontStyle.italic,
+          // For annual plans: show purchase date in second row
+          if (planType == 'annual' && confirmedAt != null) ...[
+            SizedBox(height: 1.h),
+            Row(
+              children: [
+                if (planPrice != null) Expanded(child: SizedBox()),
+                Expanded(
+                  child: _buildPlanDetail(
+                    'payment.purchased_on'.tr(),
+                    _formatDate(confirmedAt),
+                  ),
+                ),
+              ],
             ),
-          ),
+          ],
+          if (entriesTotal > 0) ...[
+            SizedBox(height: 2.h),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildPlanDetail(
+                    'payment.entries_total'.tr(),
+                    entriesTotal.toString(),
+                  ),
+                ),
+                Expanded(
+                  child: _buildPlanDetail(
+                    'payment.entries_remaining'.tr(),
+                    entriesRemaining.toString(),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -256,10 +662,10 @@ class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
               SizedBox(width: 3.w),
               Expanded(
                 child: Text(
-                  'Nessun Abbonamento Attivo',
+                  'payment.no_active_subscription'.tr(),
                   style: GoogleFonts.inter(
                     color: Colors.white,
-                    fontSize: 12.sp,
+                    fontSize: ProfileTypography.rowLabel,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -268,10 +674,10 @@ class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
           ),
           SizedBox(height: 2.h),
           Text(
-            'Non hai abbonamenti attivi al momento. Contatta la palestra per attivare un piano.',
+            'payment.no_subscription_contact'.tr(),
             style: GoogleFonts.inter(
               color: Colors.grey[300],
-              fontSize: 10.sp,
+              fontSize: ProfileTypography.subtitle,
             ),
           ),
         ],
@@ -287,16 +693,18 @@ class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
           label,
           style: GoogleFonts.inter(
             color: Colors.grey[400],
-            fontSize: 9.sp,
+            fontSize: ProfileTypography.caption,
           ),
         ),
         Text(
           value,
           style: GoogleFonts.inter(
             color: Colors.white,
-            fontSize: 11.sp,
+            fontSize: ProfileTypography.rowLabel,
             fontWeight: FontWeight.w600,
           ),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
         ),
       ],
     );

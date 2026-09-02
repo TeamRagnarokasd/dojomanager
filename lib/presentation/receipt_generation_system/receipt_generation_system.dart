@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' if (dart.library.io) 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -10,6 +10,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:sizer/sizer.dart';
+import 'package:universal_html/html.dart' as html;
 
 import '../../models/receipt_model.dart';
 import '../../services/receipt_service.dart';
@@ -19,6 +20,7 @@ import './widgets/manual_amount_dialog_widget.dart';
 import './widgets/payment_method_selection_widget.dart';
 import './widgets/receipt_preview_widget.dart';
 import './widgets/receipt_template_preview_widget.dart';
+import '../../core/app_export.dart';
 
 class ReceiptGenerationSystem extends StatefulWidget {
   const ReceiptGenerationSystem({Key? key}) : super(key: key);
@@ -80,7 +82,7 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
             ),
             SizedBox(width: 12.w),
             Text(
-              'Pagamento SumUp',
+              'payment_confirm.title'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 18.sp,
                 fontWeight: FontWeight.w600,
@@ -93,12 +95,14 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Cliente: ${user['full_name']}',
+              '${'receipt.client_label'.tr(namedArgs: {
+                    'name': user['full_name']
+                  })}',
               style: GoogleFonts.inter(fontSize: 14.sp),
             ),
             SizedBox(height: 16.h),
             Text(
-              'Il pagamento SumUp è stato completato con successo?\nConfermare per generare la ricevuta automaticamente.',
+              'payment_confirm.payment_completed_question'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 14.sp,
                 color: Colors.grey.shade700,
@@ -109,7 +113,7 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
               children: [
                 Expanded(
                   child: _buildSubscriptionButton(
-                    'Mensile',
+                    'payment.monthly_plan'.tr(),
                     '€30,00',
                     () => Navigator.pop(context, {
                       'type': 'monthly',
@@ -120,7 +124,7 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
                 SizedBox(width: 12.w),
                 Expanded(
                   child: _buildSubscriptionButton(
-                    'Annuale',
+                    'payment.annual_plan'.tr(),
                     '€300,00',
                     () => Navigator.pop(context, {
                       'type': 'annual',
@@ -136,7 +140,7 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
-              'Annulla',
+              'common.cancel'.tr(),
               style: GoogleFonts.inter(color: Colors.grey.shade600),
             ),
           ),
@@ -152,10 +156,8 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
   Future<void> _handleSatispayPayment(Map<String, dynamic> user) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => ManualAmountDialogWidget(
-        user: user,
-        paymentMethod: 'Satispay',
-      ),
+      builder: (context) =>
+          ManualAmountDialogWidget(user: user, paymentMethod: 'Satispay'),
     );
 
     if (result != null) {
@@ -164,7 +166,10 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
   }
 
   Widget _buildSubscriptionButton(
-      String title, String price, void Function() onTap) {
+    String title,
+    String price,
+    void Function() onTap,
+  ) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -198,12 +203,16 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
   }
 
   Future<void> _generateSumUpReceipt(
-      Map<String, dynamic> user, Map<String, dynamic> data) async {
+    Map<String, dynamic> user,
+    Map<String, dynamic> data,
+  ) async {
     setState(() => _isLoading = true);
 
     try {
       final receipt = await _receiptService.createReceipt(
-        description: data['type'] == 'monthly' ? 'Abbonamento Mensile' : 'Abbonamento Annuale',
+        description: data['type'] == 'monthly'
+            ? 'Abbonamento Mensile'
+            : 'Abbonamento Annuale',
         amount: data['amount'],
         createdBy: user['id'],
         customerName: user['full_name'],
@@ -236,12 +245,16 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
   }
 
   Future<void> _generateSatispayReceipt(
-      Map<String, dynamic> user, Map<String, dynamic> data) async {
+    Map<String, dynamic> user,
+    Map<String, dynamic> data,
+  ) async {
     setState(() => _isLoading = true);
 
     try {
       final receipt = await _receiptService.createReceipt(
-        description: data['type'] == 'monthly' ? 'Abbonamento Mensile' : 'Abbonamento Annuale',
+        description: data['type'] == 'monthly'
+            ? 'Abbonamento Mensile'
+            : 'Abbonamento Annuale',
         amount: data['amount'],
         createdBy: user['id'],
         customerName: user['full_name'],
@@ -292,9 +305,7 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
       final pdfBytes = await _generatePdfReceipt(receipt);
 
       if (kIsWeb) {
-        await Printing.layoutPdf(
-          onLayout: (format) async => pdfBytes,
-        );
+        await Printing.layoutPdf(onLayout: (format) async => pdfBytes);
       } else {
         await Printing.sharePdf(
           bytes: pdfBytes,
@@ -315,14 +326,25 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
       final pdfBytes = await _generatePdfReceipt(receipt);
 
       if (kIsWeb) {
-        // Web - trigger download
-        final blob = Uint8List.fromList(pdfBytes);
-        final url = Uri.dataFromBytes(blob, mimeType: 'application/pdf');
-        // Use browser download functionality
+        // Web — trigger real browser download via anchor element
+        final filename = 'ricevuta_${receipt.receiptNumber}.pdf';
+        final blob = html.Blob([pdfBytes], 'application/pdf');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final anchor = html.document.createElement('a') as html.AnchorElement
+          ..href = url
+          ..style.display = 'none'
+          ..download = filename;
+        html.document.body?.append(anchor);
+        anchor.click();
+        anchor.remove();
+        Future.delayed(const Duration(milliseconds: 100), () {
+          html.Url.revokeObjectUrl(url);
+        });
       } else {
         final tempDir = await getTemporaryDirectory();
-        final file =
-            File('${tempDir.path}/ricevuta_${receipt.receiptNumber}.pdf');
+        final file = File(
+          '${tempDir.path}/ricevuta_${receipt.receiptNumber}.pdf',
+        );
         await file.writeAsBytes(pdfBytes);
 
         await Share.shareXFiles([XFile(file.path)]);
@@ -371,7 +393,8 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
                       pw.Text('RICEVUTA NON FISCALE'),
                       pw.Text('N. ${receipt.receiptNumber}'),
                       pw.Text(
-                          'Del ${receipt.issueDate.day.toString().padLeft(2, '0')}-${receipt.issueDate.month.toString().padLeft(2, '0')}-${receipt.issueDate.year}'),
+                        'Del ${receipt.issueDate.day.toString().padLeft(2, '0')}-${receipt.issueDate.month.toString().padLeft(2, '0')}-${receipt.issueDate.year}',
+                      ),
                     ],
                   ),
                 ],
@@ -381,14 +404,14 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
               // Client details
               pw.Container(
                 padding: const pw.EdgeInsets.all(10),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(),
-                ),
+                decoration: pw.BoxDecoration(border: pw.Border.all()),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('DESTINATARIO:',
-                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                    pw.Text(
+                      'DESTINATARIO:',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    ),
                     pw.Text(receipt.user?.fullName ?? ''),
                   ],
                 ),
@@ -403,27 +426,31 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
                     children: [
                       pw.Padding(
                         padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text('DESCRIZIONE',
-                            style:
-                                pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                        child: pw.Text(
+                          'DESCRIZIONE',
+                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                        ),
                       ),
                       pw.Padding(
                         padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text('QTÀ',
-                            style:
-                                pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                        child: pw.Text(
+                          'QTÀ',
+                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                        ),
                       ),
                       pw.Padding(
                         padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text('PREZZO',
-                            style:
-                                pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                        child: pw.Text(
+                          'PREZZO',
+                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                        ),
                       ),
                       pw.Padding(
                         padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text('IMPORTO',
-                            style:
-                                pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                        child: pw.Text(
+                          'IMPORTO',
+                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                        ),
                       ),
                     ],
                   ),
@@ -440,12 +467,14 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
                       pw.Padding(
                         padding: const pw.EdgeInsets.all(8),
                         child: pw.Text(
-                            '€${receipt.unitPrice.toStringAsFixed(2).replaceAll('.', ',')}'),
+                          '€${receipt.unitPrice.toStringAsFixed(2).replaceAll('.', ',')}',
+                        ),
                       ),
                       pw.Padding(
                         padding: const pw.EdgeInsets.all(8),
                         child: pw.Text(
-                            '€${receipt.totalAmount.toStringAsFixed(2).replaceAll('.', ',')}'),
+                          '€${receipt.totalAmount.toStringAsFixed(2).replaceAll('.', ',')}',
+                        ),
                       ),
                     ],
                   ),
@@ -458,10 +487,12 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text(
-                      'METODO PAGAMENTO: ${_getPaymentMethodText(receipt.paymentMethod)}'),
+                    'METODO PAGAMENTO: ${_getPaymentMethodText(receipt.paymentMethod)}',
+                  ),
                   pw.Text(
-                      'TOTALE: €${receipt.totalAmount.toStringAsFixed(2).replaceAll('.', ',')}',
-                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                    'TOTALE: €${receipt.totalAmount.toStringAsFixed(2).replaceAll('.', ',')}',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                  ),
                 ],
               ),
               pw.SizedBox(height: 20),
@@ -469,20 +500,22 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
               // VAT summary
               pw.Container(
                 padding: const pw.EdgeInsets.all(10),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(),
-                ),
+                decoration: pw.BoxDecoration(border: pw.Border.all()),
                 child: pw.Column(
                   children: [
-                    pw.Text('RIEPILOGO IVA',
-                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                    pw.Text(
+                      'RIEPILOGO IVA',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    ),
                     pw.Row(
                       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                       children: [
                         pw.Text(
-                            'Imponibile: €${receipt.totalAmount.toStringAsFixed(2).replaceAll('.', ',')}'),
+                          'Imponibile: €${receipt.totalAmount.toStringAsFixed(2).replaceAll('.', ',')}',
+                        ),
                         pw.Text(
-                            'IVA ${receipt.vatRate.toStringAsFixed(2)}%: €0,00'),
+                          'IVA ${receipt.vatRate.toStringAsFixed(2)}%: €0,00',
+                        ),
                       ],
                     ),
                   ],
@@ -502,11 +535,11 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
       case 'sumup':
         return 'SumUp';
       case 'satispay':
-        return 'Satispay';
+        return 'payment.satispay'.tr();
       case 'cash':
-        return 'Contanti';
+        return 'payment.cash'.tr();
       case 'bank_transfer':
-        return 'Bonifico Bancario';
+        return 'payment.bank_transfer'.tr();
       default:
         return method;
     }
@@ -529,7 +562,7 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
         elevation: 0,
         backgroundColor: Colors.white,
         title: Text(
-          'Sistema Generazione Ricevute',
+          'receipt.management_title'.tr(),
           style: GoogleFonts.inter(
             color: Colors.black,
             fontWeight: FontWeight.w600,
@@ -673,7 +706,8 @@ class _ReceiptGenerationSystemState extends State<ReceiptGenerationSystem> {
   }
 
   Future<void> _handleBatchGeneration(
-      List<Map<String, dynamic>> selectedUsers) async {
+    List<Map<String, dynamic>> selectedUsers,
+  ) async {
     // Implement batch receipt generation
     setState(() => _isLoading = true);
 

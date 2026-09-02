@@ -44,7 +44,7 @@ class _EmergencyContactSectionState extends State<EmergencyContactSection> {
             children: [
               Expanded(
                 child: Text(
-                  'Contatti di Emergenza',
+                  'student_registration.emergency_contacts_title'.tr(),
                   style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: AppTheme.lightTheme.colorScheme.primary,
@@ -105,7 +105,7 @@ class _EmergencyContactSectionState extends State<EmergencyContactSection> {
           ),
           SizedBox(height: 1.h),
           Text(
-            'Nessun contatto di emergenza aggiunto',
+            'student_registration.no_emergency_contact'.tr(),
             style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
               color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
             ),
@@ -113,7 +113,7 @@ class _EmergencyContactSectionState extends State<EmergencyContactSection> {
           ),
           SizedBox(height: 0.5.h),
           Text(
-            'Tocca il pulsante + per aggiungere un contatto',
+            'student_registration.tap_add_contact'.tr(),
             style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
               color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
             ),
@@ -142,7 +142,8 @@ class _EmergencyContactSectionState extends State<EmergencyContactSection> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Contatto ${index + 1}',
+                'student_registration.contact_n'
+                    .tr(namedArgs: {'n': '${index + 1}'}),
                 style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: AppTheme.lightTheme.colorScheme.primary,
@@ -170,8 +171,8 @@ class _EmergencyContactSectionState extends State<EmergencyContactSection> {
           ),
           SizedBox(height: 2.h),
           _buildContactField(
-            label: 'Nome Contatto *',
-            hint: 'Nome del contatto di emergenza',
+            label: 'student_registration.contact_name_label'.tr(),
+            hint: 'student_registration.contact_name_hint'.tr(),
             value: contact['nome'] ?? '',
             onChanged: (value) => widget.onContactChanged(index, 'nome', value),
           ),

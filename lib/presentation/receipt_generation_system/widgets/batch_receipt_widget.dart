@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:google_fonts/google_fonts.dart';
-
+import '../../../core/app_export.dart';
 
 class BatchReceiptWidget extends StatefulWidget {
   final List<Map<String, dynamic>> userProfiles;
@@ -159,7 +159,7 @@ class _BatchReceiptWidgetState extends State<BatchReceiptWidget> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
-              'Annulla',
+              'common.cancel'.tr(),
               style: GoogleFonts.inter(color: Colors.grey.shade600),
             ),
           ),

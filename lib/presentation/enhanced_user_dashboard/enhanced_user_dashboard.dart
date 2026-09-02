@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/app_export.dart';
-import '../../routes/app_routes.dart';
 import './widgets/quick_access_cards_widget.dart';
 import './widgets/recent_activity_feed_widget.dart';
 import './widgets/subscription_status_widget.dart';
@@ -159,26 +158,26 @@ class _EnhancedUserDashboardState extends State<EnhancedUserDashboard> {
             fontSize: 12,
             fontWeight: FontWeight.w400,
           ),
-          items: const [
+          items: [
             BottomNavigationBarItem(
               icon: Icon(Icons.dashboard_outlined),
               activeIcon: Icon(Icons.dashboard),
-              label: 'Dashboard',
+              label: 'nav.dashboard'.tr(),
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.calendar_today_outlined),
               activeIcon: Icon(Icons.calendar_today),
-              label: 'Classi',
+              label: 'nav.classes'.tr(),
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline),
               activeIcon: Icon(Icons.person),
-              label: 'Profilo',
+              label: 'nav.profile'.tr(),
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.receipt_long_outlined),
               activeIcon: Icon(Icons.receipt_long),
-              label: 'Ricevute',
+              label: 'nav.receipts'.tr(),
             ),
           ],
         ),

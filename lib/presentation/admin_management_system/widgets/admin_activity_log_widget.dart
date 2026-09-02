@@ -4,7 +4,6 @@ import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
 import '../../../services/supabase_service.dart';
-import '../../../theme/app_theme.dart';
 
 class AdminActivityLogWidget extends StatefulWidget {
   const AdminActivityLogWidget({super.key});
@@ -32,9 +31,7 @@ class _AdminActivityLogWidgetState extends State<AdminActivityLogWidget> {
 
       final client = SupabaseService.instance.client;
 
-      var query = client
-          .from('admin_activity_log')
-          .select(
+      var query = client.from('admin_activity_log').select(
             '*, admin:user_profiles!admin_activity_log_admin_id_fkey(full_name)',
           );
 
@@ -52,9 +49,8 @@ class _AdminActivityLogWidgetState extends State<AdminActivityLogWidget> {
         query = query.lt('created_at', endDate.toIso8601String());
       }
 
-      final response = await query
-          .order('created_at', ascending: false)
-          .limit(100);
+      final response =
+          await query.order('created_at', ascending: false).limit(100);
 
       setState(() {
         _activityLogs = List<Map<String, dynamic>>.from(response);
@@ -65,7 +61,7 @@ class _AdminActivityLogWidgetState extends State<AdminActivityLogWidget> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore caricamento log attività: $error'),
+            content: Text('admin_management.activity_log_error'.tr()),
             backgroundColor: Colors.red,
           ),
         );
@@ -78,10 +74,9 @@ class _AdminActivityLogWidgetState extends State<AdminActivityLogWidget> {
       context: context,
       firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now(),
-      initialDateRange:
-          _filterDateFrom != null && _filterDateTo != null
-              ? DateTimeRange(start: _filterDateFrom!, end: _filterDateTo!)
-              : null,
+      initialDateRange: _filterDateFrom != null && _filterDateTo != null
+          ? DateTimeRange(start: _filterDateFrom!, end: _filterDateTo!)
+          : null,
     );
 
     if (picked != null) {
@@ -166,14 +161,12 @@ class _AdminActivityLogWidgetState extends State<AdminActivityLogWidget> {
                         style: GoogleFonts.inter(fontSize: 12.sp),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            _filterDateFrom != null
-                                ? AppTheme.lightTheme.primaryColor.withAlpha(26)
-                                : Colors.grey[200],
-                        foregroundColor:
-                            _filterDateFrom != null
-                                ? AppTheme.lightTheme.primaryColor
-                                : Colors.grey[600],
+                        backgroundColor: _filterDateFrom != null
+                            ? AppTheme.lightTheme.primaryColor.withAlpha(26)
+                            : Colors.grey[200],
+                        foregroundColor: _filterDateFrom != null
+                            ? AppTheme.lightTheme.primaryColor
+                            : Colors.grey[600],
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
@@ -200,29 +193,28 @@ class _AdminActivityLogWidgetState extends State<AdminActivityLogWidget> {
 
         // Activity logs list
         Expanded(
-          child:
-              _isLoading
-                  ? Center(
-                    child: CircularProgressIndicator(
-                      color: AppTheme.lightTheme.primaryColor,
-                    ),
-                  )
-                  : _activityLogs.isEmpty
+          child: _isLoading
+              ? Center(
+                  child: CircularProgressIndicator(
+                    color: AppTheme.lightTheme.primaryColor,
+                  ),
+                )
+              : _activityLogs.isEmpty
                   ? _buildEmptyState()
                   : RefreshIndicator(
-                    color: AppTheme.lightTheme.primaryColor,
-                    onRefresh: _loadActivityLogs,
-                    child: ListView.separated(
-                      padding: EdgeInsets.all(16.sp),
-                      itemCount: _activityLogs.length,
-                      separatorBuilder:
-                          (context, index) => SizedBox(height: 12.h),
-                      itemBuilder: (context, index) {
-                        final log = _activityLogs[index];
-                        return _buildActivityLogCard(log);
-                      },
+                      color: AppTheme.lightTheme.primaryColor,
+                      onRefresh: _loadActivityLogs,
+                      child: ListView.separated(
+                        padding: EdgeInsets.all(16.sp),
+                        itemCount: _activityLogs.length,
+                        separatorBuilder: (context, index) =>
+                            SizedBox(height: 12.h),
+                        itemBuilder: (context, index) {
+                          final log = _activityLogs[index];
+                          return _buildActivityLogCard(log);
+                        },
+                      ),
                     ),
-                  ),
         ),
       ],
     );
@@ -261,7 +253,7 @@ class _AdminActivityLogWidgetState extends State<AdminActivityLogWidget> {
           Icon(Icons.history, size: 64, color: Colors.grey[400]),
           SizedBox(height: 16.h),
           Text(
-            'Nessuna attività trovata',
+            'common.no_activity'.tr(),
             style: GoogleFonts.inter(
               fontSize: 16.sp,
               fontWeight: FontWeight.w500,
@@ -270,7 +262,7 @@ class _AdminActivityLogWidgetState extends State<AdminActivityLogWidget> {
           ),
           SizedBox(height: 8.h),
           Text(
-            'Le attività degli amministratori appariranno qui',
+            'admin_dashboard.activity_empty_subtitle'.tr(),
             style: GoogleFonts.inter(fontSize: 14.sp, color: Colors.grey[500]),
             textAlign: TextAlign.center,
           ),
@@ -512,15 +504,15 @@ class _AdminActivityLogWidgetState extends State<AdminActivityLogWidget> {
     if (role == null) return 'N/A';
     switch (role) {
       case 'student':
-        return 'Studente';
+        return 'dashboard.role_student'.tr();
       case 'instructor':
-        return 'Istruttore';
+        return 'dashboard.role_instructor'.tr();
       case 'admin':
-        return 'Amministratore';
+        return 'roles.admin'.tr();
       case 'instructor_admin':
         return 'Istruttore/Amministratore';
       case 'principal_admin':
-        return 'Admin Principale';
+        return 'dashboard.role_principal_admin'.tr();
       default:
         return role;
     }

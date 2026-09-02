@@ -1,10 +1,15 @@
+import 'dart:io' if (dart.library.io) 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:sizer/sizer.dart';
+import 'package:universal_html/html.dart' as html;
 
 import '../../core/app_export.dart';
 import '../../models/receipt_model.dart';
+import '../../services/italian_receipt_service.dart';
 import '../../services/receipt_service.dart';
 import './widgets/admin_receipt_list_widget.dart';
 import './widgets/admin_receipt_stats_widget.dart';
@@ -21,22 +26,41 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
     with TickerProviderStateMixin {
   late TabController _tabController;
   final ReceiptService _receiptService = ReceiptService();
+  final ItalianReceiptService _italianReceiptService = ItalianReceiptService();
   final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey =
       GlobalKey<RefreshIndicatorState>();
 
   bool _isLoading = false;
+  bool _isDownloadingPDF = false;
   List<ReceiptModel> _receipts = [];
   List<ReceiptModel> _filteredReceipts = [];
   String _customerFilter = '';
-  String _selectedPeriod = 'Questo Mese';
+  String _selectedPeriodKey = 'this_month';
 
-  final List<String> _periodOptions = [
-    'Questo Mese',
-    'Ultimi 3 Mesi',
-    'Ultimi 6 Mesi',
-    'Quest\'Anno',
-    'Tutto'
+  static const List<String> _periodKeys = [
+    'this_month',
+    'last_3_months',
+    'last_6_months',
+    'this_year',
+    'all',
   ];
+
+  String _periodLabel(String key) {
+    switch (key) {
+      case 'this_month':
+        return 'receipt.period_this_month'.tr();
+      case 'last_3_months':
+        return 'receipt.period_last_3_months'.tr();
+      case 'last_6_months':
+        return 'receipt.period_last_6_months'.tr();
+      case 'this_year':
+        return 'receipt.period_this_year'.tr();
+      case 'all':
+        return 'receipt.period_all'.tr();
+      default:
+        return key;
+    }
+  }
 
   Map<String, dynamic> _stats = {
     'total_receipts': 0,
@@ -70,7 +94,9 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
       _applyFilters();
       _calculateStats();
     } catch (error) {
-      _showErrorToast('Errore nel caricamento delle ricevute: $error');
+      _showErrorToast(
+        'receipt.load_receipts_error'.tr(namedArgs: {'detail': '$error'}),
+      );
     } finally {
       setState(() {
         _isLoading = false;
@@ -83,20 +109,20 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
       bool matchesPeriod = true;
 
       final now = DateTime.now();
-      switch (_selectedPeriod) {
-        case 'Questo Mese':
+      switch (_selectedPeriodKey) {
+        case 'this_month':
           matchesPeriod = receipt.issueDate.year == now.year &&
               receipt.issueDate.month == now.month;
           break;
-        case 'Ultimi 3 Mesi':
+        case 'last_3_months':
           final threeMonthsAgo = DateTime(now.year, now.month - 3, now.day);
           matchesPeriod = receipt.issueDate.isAfter(threeMonthsAgo);
           break;
-        case 'Ultimi 6 Mesi':
+        case 'last_6_months':
           final sixMonthsAgo = DateTime(now.year, now.month - 6, now.day);
           matchesPeriod = receipt.issueDate.isAfter(sixMonthsAgo);
           break;
-        case 'Quest\'Anno':
+        case 'this_year':
           matchesPeriod = receipt.issueDate.year == now.year;
           break;
         default:
@@ -112,15 +138,19 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
   void _calculateStats() {
     final now = DateTime.now();
     final currentMonth = _filteredReceipts
-        .where((receipt) =>
-            receipt.issueDate.year == now.year &&
-            receipt.issueDate.month == now.month)
+        .where(
+          (receipt) =>
+              receipt.issueDate.year == now.year &&
+              receipt.issueDate.month == now.month,
+        )
         .toList();
 
     _stats = {
       'total_receipts': _filteredReceipts.length,
       'total_amount': _filteredReceipts.fold(
-          0.0, (sum, receipt) => sum + receipt.totalAmount),
+        0.0,
+        (sum, receipt) => sum + receipt.totalAmount,
+      ),
       'monthly_receipts': _filteredReceipts
           .where((r) => r.subscription?.type == 'monthly')
           .length,
@@ -132,14 +162,16 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
       'satispay_payments':
           _filteredReceipts.where((r) => r.paymentMethod == 'satispay').length,
       'this_month_count': currentMonth.length,
-      'this_month_amount':
-          currentMonth.fold(0.0, (sum, receipt) => sum + receipt.totalAmount),
+      'this_month_amount': currentMonth.fold(
+        0.0,
+        (sum, receipt) => sum + receipt.totalAmount,
+      ),
     };
   }
 
-  void _onPeriodChanged(String period) {
+  void _onPeriodChanged(String periodKey) {
     setState(() {
-      _selectedPeriod = period;
+      _selectedPeriodKey = periodKey;
     });
     _applyFilters();
     _calculateStats();
@@ -183,23 +215,27 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
                 children: [
                   Expanded(
                     child: Text(
-                      'Ricevuta #${receipt.receiptNumber}',
-                      style:
-                          AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
+                      'receipt.receipt_number_title'.tr(
+                        namedArgs: {'number': '${receipt.receiptNumber}'},
                       ),
+                      style: AppTheme.lightTheme.textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                   ),
                   Container(
-                    padding:
-                        EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 3.w,
+                      vertical: 1.h,
+                    ),
                     decoration: BoxDecoration(
-                      color: _getStatusColor(receipt.status)
-                          .withValues(alpha: 0.1),
+                      color: _getStatusColor(
+                        receipt.status,
+                      ).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: _getStatusColor(receipt.status)
-                            .withValues(alpha: 0.3),
+                        color: _getStatusColor(
+                          receipt.status,
+                        ).withValues(alpha: 0.3),
                       ),
                     ),
                     child: Text(
@@ -219,38 +255,75 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Customer Info
-                      _buildSectionTitle('Informazioni Cliente'),
+                      _buildSectionTitle('receipt.customer_info'.tr()),
                       if (receipt.user != null) ...[
-                        _buildDetailRow('Nome', receipt.user!.fullName),
-                        _buildDetailRow('Email', receipt.user!.email),
+                        _buildDetailRow(
+                          'profile.first_name'.tr(),
+                          receipt.user!.fullName,
+                        ),
+                        _buildDetailRow(
+                          'common.email'.tr(),
+                          receipt.user!.email,
+                        ),
                         if (receipt.user!.phone != null)
-                          _buildDetailRow('Telefono', receipt.user!.phone!),
+                          _buildDetailRow(
+                            'profile.phone'.tr(),
+                            receipt.user!.phone!,
+                          ),
                       ],
 
                       SizedBox(height: 3.h),
 
                       // Receipt Details
-                      _buildSectionTitle('Dettagli Ricevuta'),
-                      _buildDetailRow('Numero', '#${receipt.receiptNumber}'),
-                      _buildDetailRow('Data Emissione',
-                          DateFormat('dd/MM/yyyy').format(receipt.issueDate)),
-                      _buildDetailRow('Descrizione', receipt.description),
-                      _buildDetailRow('Quantità', receipt.quantity.toString()),
-                      _buildDetailRow('Prezzo Unitario',
-                          '€${receipt.unitPrice.toStringAsFixed(2).replaceAll('.', ',')}'),
-                      _buildDetailRow('Importo Totale',
-                          '€${receipt.totalAmount.toStringAsFixed(2).replaceAll('.', ',')}'),
-                      _buildDetailRow('IVA',
-                          '${receipt.vatRate.toStringAsFixed(2)}% (N2.2)'),
-                      _buildDetailRow('Metodo Pagamento',
-                          _getPaymentMethodText(receipt.paymentMethod)),
+                      _buildSectionTitle('receipt.receipt_details'.tr()),
+                      _buildDetailRow(
+                        'receipt.number'.tr(),
+                        '#${receipt.receiptNumber}',
+                      ),
+                      _buildDetailRow(
+                        'receipt.issue_date'.tr(),
+                        DateFormat('dd/MM/yyyy').format(receipt.issueDate),
+                      ),
+                      _buildDetailRow(
+                        'common.description'.tr(),
+                        receipt.description,
+                      ),
+                      _buildDetailRow(
+                        'receipt.quantity'.tr(),
+                        receipt.quantity.toString(),
+                      ),
+                      _buildDetailRow(
+                        'receipt.unit_price'.tr(),
+                        '€${receipt.unitPrice.toStringAsFixed(2).replaceAll('.', ',')}',
+                      ),
+                      _buildDetailRow(
+                        'receipt.total_amount_label'.tr(),
+                        '€${receipt.totalAmount.toStringAsFixed(2).replaceAll('.', ',')}',
+                      ),
+                      _buildDetailRow(
+                        'receipt.vat_label'.tr(),
+                        '${receipt.vatRate.toStringAsFixed(2)}% (N2.2)',
+                      ),
+                      _buildDetailRow(
+                        'common.payment_method'.tr(),
+                        _getPaymentMethodText(receipt.paymentMethod),
+                      ),
 
                       if (receipt.validityStart != null &&
                           receipt.validityEnd != null) ...[
                         SizedBox(height: 1.h),
                         _buildDetailRow(
-                          'Periodo di Validità',
-                          'dal ${DateFormat('dd/MM/yyyy').format(receipt.validityStart!)} al ${DateFormat('dd/MM/yyyy').format(receipt.validityEnd!)}',
+                          'receipt.validity_period'.tr(),
+                          'receipt.validity_range'.tr(
+                            namedArgs: {
+                              'start': DateFormat(
+                                'dd/MM/yyyy',
+                              ).format(receipt.validityStart!),
+                              'end': DateFormat(
+                                'dd/MM/yyyy',
+                              ).format(receipt.validityEnd!),
+                            },
+                          ),
                         ),
                       ],
 
@@ -258,19 +331,23 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
 
                       // Subscription Details
                       if (receipt.subscription != null) ...[
-                        _buildSectionTitle('Dettagli Abbonamento'),
+                        _buildSectionTitle('profile.subscription_details'.tr()),
                         _buildDetailRow(
-                            'Tipo',
-                            receipt.subscription!.type == 'monthly'
-                                ? 'Mensile'
-                                : 'Annuale'),
-                        _buildDetailRow('Importo Abbonamento',
-                            '€${receipt.subscription!.amount.toStringAsFixed(2).replaceAll('.', ',')}'),
+                          'receipt.type_label'.tr(),
+                          receipt.subscription!.type == 'monthly'
+                              ? 'payment.monthly_plan'.tr()
+                              : 'payment.annual_plan'.tr(),
+                        ),
                         _buildDetailRow(
-                            'Stato',
-                            receipt.subscription!.isActive
-                                ? 'Attivo'
-                                : 'Inattivo'),
+                          'receipt.subscription_amount'.tr(),
+                          '€${receipt.subscription!.amount.toStringAsFixed(2).replaceAll('.', ',')}',
+                        ),
+                        _buildDetailRow(
+                          'common.status'.tr(),
+                          receipt.subscription!.isActive
+                              ? 'common.active_status'.tr()
+                              : 'common.inactive'.tr(),
+                        ),
                       ],
 
                       SizedBox(height: 4.h),
@@ -284,17 +361,30 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        // Implement receipt download
-                      },
-                      icon: CustomIconWidget(
-                        iconName: 'download',
-                        color: AppTheme.lightTheme.colorScheme.primary,
-                        size: 20,
-                      ),
+                      onPressed: _isDownloadingPDF
+                          ? null
+                          : () async {
+                              Navigator.pop(context);
+                              await _downloadReceiptPdf(receipt);
+                            },
+                      icon: _isDownloadingPDF
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppTheme.lightTheme.colorScheme.primary,
+                              ),
+                            )
+                          : CustomIconWidget(
+                              iconName: 'download',
+                              color: AppTheme.lightTheme.colorScheme.primary,
+                              size: 20,
+                            ),
                       label: Text(
-                        'Scarica',
+                        _isDownloadingPDF
+                            ? 'receipt.downloading_pdf'.tr()
+                            : 'receipt.download_pdf'.tr(),
                         style:
                             AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
                           color: AppTheme.lightTheme.colorScheme.primary,
@@ -313,7 +403,7 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
                         size: 20,
                       ),
                       label: Text(
-                        'Chiudi',
+                        'class_schedule.close_modal'.tr(),
                         style:
                             AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
                           color: AppTheme.lightTheme.colorScheme.onPrimary,
@@ -393,11 +483,84 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
       case 'satispay':
         return 'Satispay';
       case 'cash':
-        return 'Contanti';
+        return 'payment.cash'.tr();
       case 'bank_transfer':
-        return 'Bonifico Bancario';
+        return 'payment.bank_transfer_full'.tr();
       default:
         return method;
+    }
+  }
+
+  Future<void> _downloadReceiptPdf(ReceiptModel receipt) async {
+    setState(() {
+      _isDownloadingPDF = true;
+    });
+
+    try {
+      // Step 1: Fetch full receipt data from database (with organization_info)
+      final receiptData = await _italianReceiptService.getReceiptById(
+        receipt.id,
+      );
+
+      if (receiptData == null) {
+        throw Exception('payment.receipt_not_found_db'.tr());
+      }
+
+      // Step 2: Generate PDF using the SAME beautiful service as User App
+      final pdf = await _italianReceiptService.generateBeautifulReceiptPDF(
+        receiptData,
+      );
+      final pdfBytes = await pdf.save();
+
+      // Step 3: Download the PDF
+      final filename = 'ricevuta_${receiptData['receipt_number']}.pdf';
+
+      if (kIsWeb) {
+        // Web: Enhanced download trigger with better browser support
+        final blob = html.Blob([pdfBytes], 'application/pdf');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final anchor = html.document.createElement('a') as html.AnchorElement
+          ..href = url
+          ..style.display = 'none'
+          ..download = filename;
+
+        // Append to body, click, and remove (ensures click event fires correctly)
+        html.document.body?.append(anchor);
+        anchor.click();
+        anchor.remove();
+
+        // Clean up blob URL after a short delay to ensure download completes
+        Future.delayed(const Duration(milliseconds: 100), () {
+          html.Url.revokeObjectUrl(url);
+        });
+      } else {
+        // Mobile: Save to device documents directory
+        final directory = await getApplicationDocumentsDirectory();
+        final file = File('${directory.path}/$filename');
+        await file.writeAsBytes(pdfBytes);
+      }
+
+      Fluttertoast.showToast(
+        msg: 'payment.pdf_downloaded'.tr(),
+        backgroundColor: Colors.green,
+        textColor: Colors.white,
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+      );
+    } catch (e) {
+      Fluttertoast.showToast(
+        msg: 'receipt.download_receipt_error'.tr(
+          namedArgs: {'detail': e.toString()},
+        ),
+        backgroundColor: Colors.red,
+        textColor: Colors.white,
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.BOTTOM,
+      );
+    } finally {
+      setState(() {
+        _isDownloadingPDF = false;
+      });
     }
   }
 
@@ -417,7 +580,7 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
       backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          'Gestione Ricevute Admin',
+          'receipt.admin_title'.tr(),
           style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w600,
           ),
@@ -442,9 +605,9 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
         ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(text: 'Statistiche'),
-            Tab(text: 'Elenco Ricevute'),
+          tabs: [
+            Tab(text: 'reminders.tab_statistics'.tr()),
+            Tab(text: 'receipt.receipt_list_tab'.tr()),
           ],
         ),
       ),
@@ -460,8 +623,8 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
               children: [
                 CustomerFilterWidget(
                   customerFilter: _customerFilter,
-                  selectedPeriod: _selectedPeriod,
-                  periodOptions: _periodOptions,
+                  selectedPeriodKey: _selectedPeriodKey,
+                  periodKeys: _periodKeys,
                   onCustomerFilterChanged: _onCustomerFilterChanged,
                   onPeriodChanged: _onPeriodChanged,
                 ),
@@ -470,7 +633,7 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
                       ? const Center(child: CircularProgressIndicator())
                       : AdminReceiptStatsWidget(
                           stats: _stats,
-                          selectedPeriod: _selectedPeriod,
+                          selectedPeriod: _periodLabel(_selectedPeriodKey),
                         ),
                 ),
               ],
@@ -481,8 +644,8 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
               children: [
                 CustomerFilterWidget(
                   customerFilter: _customerFilter,
-                  selectedPeriod: _selectedPeriod,
-                  periodOptions: _periodOptions,
+                  selectedPeriodKey: _selectedPeriodKey,
+                  periodKeys: _periodKeys,
                   onCustomerFilterChanged: _onCustomerFilterChanged,
                   onPeriodChanged: _onPeriodChanged,
                 ),

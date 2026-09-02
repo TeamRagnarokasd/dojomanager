@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart'; // Add this import
 import '../../../constants/app_constants.dart';
@@ -146,7 +147,7 @@ class _AttendanceTrackingWidgetState extends State<AttendanceTrackingWidget> {
           Switch(
             value: _isQuickCheckIn,
             onChanged: (value) => setState(() => _isQuickCheckIn = value),
-            activeColor: Colors.red,
+            activeThumbColor: Colors.red,
             activeTrackColor: Colors.red.withAlpha(77),
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
@@ -251,7 +252,7 @@ class _AttendanceTrackingWidgetState extends State<AttendanceTrackingWidget> {
             SizedBox(height: 2.h),
             ElevatedButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Chiudi'),
+              child: Text('common.close'.tr()),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
                 foregroundColor: Colors.white,
@@ -266,7 +267,7 @@ class _AttendanceTrackingWidgetState extends State<AttendanceTrackingWidget> {
   void _openManualEntry() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Apertura inserimento manuale presenze'),
+        content: Text('instructor_dashboard_ui.manual_attendance'.tr()),
         backgroundColor: Colors.green,
       ),
     );

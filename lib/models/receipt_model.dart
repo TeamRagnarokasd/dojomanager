@@ -61,34 +61,27 @@ class ReceiptModel {
       totalAmount: double.parse(json['total_amount'].toString()),
       vatRate: double.parse(json['vat_rate']?.toString() ?? '0'),
       paymentMethod: json['payment_method'] as String,
-      validityStart:
-          json['validity_start'] != null
-              ? DateTime.parse(json['validity_start'] as String)
-              : null,
-      validityEnd:
-          json['validity_end'] != null
-              ? DateTime.parse(json['validity_end'] as String)
-              : null,
+      validityStart: json['validity_start'] != null
+          ? DateTime.parse(json['validity_start'] as String)
+          : null,
+      validityEnd: json['validity_end'] != null
+          ? DateTime.parse(json['validity_end'] as String)
+          : null,
       status: json['status'] as String? ?? 'issued',
       notes: json['notes'] as String? ?? '',
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
-      user:
-          json['user_profiles'] != null
-              ? UserProfile.fromJson(
-                json['user_profiles'] as Map<String, dynamic>,
-              )
-              : null,
-      gym:
-          json['gym_info'] != null
-              ? GymInfo.fromJson(json['gym_info'] as Map<String, dynamic>)
-              : null,
-      subscription:
-          json['subscriptions'] != null
-              ? SubscriptionModel.fromJson(
-                json['subscriptions'] as Map<String, dynamic>,
-              )
-              : null,
+      user: json['user_profiles'] != null
+          ? UserProfile.fromJson(json['user_profiles'] as Map<String, dynamic>)
+          : null,
+      gym: json['gym_info'] != null
+          ? GymInfo.fromJson(json['gym_info'] as Map<String, dynamic>)
+          : null,
+      subscription: json['subscriptions'] != null
+          ? SubscriptionModel.fromJson(
+              json['subscriptions'] as Map<String, dynamic>,
+            )
+          : null,
     );
   }
 
@@ -184,14 +177,12 @@ class ItalianReceiptModel {
       id: json['id'] as String,
       receiptNumber: json['receipt_number'] as String,
       createdBy: json['created_by'] as String?,
-      createdAt:
-          json['created_at'] != null
-              ? DateTime.parse(json['created_at'])
-              : null,
-      updatedAt:
-          json['updated_at'] != null
-              ? DateTime.parse(json['updated_at'])
-              : null,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : null,
       customerName: json['customer_name'] as String,
       customerTaxCode: json['customer_tax_code'] as String?,
       customerAddress: json['customer_address'] as String?,
@@ -205,29 +196,24 @@ class ItalianReceiptModel {
       vatAmount: double.parse(json['vat_amount']?.toString() ?? '0'),
       amount: double.parse(json['amount']?.toString() ?? '0'),
       paymentMethod: json['payment_method'] as String? ?? 'cash',
-      validityStartDate:
-          json['validity_start_date'] != null
-              ? DateTime.parse(json['validity_start_date'])
-              : null,
-      validityEndDate:
-          json['validity_end_date'] != null
-              ? DateTime.parse(json['validity_end_date'])
-              : null,
-      issueDate:
-          json['issue_date'] != null
-              ? DateTime.parse(json['issue_date'])
-              : null,
+      validityStartDate: json['validity_start_date'] != null
+          ? DateTime.parse(json['validity_start_date'])
+          : null,
+      validityEndDate: json['validity_end_date'] != null
+          ? DateTime.parse(json['validity_end_date'])
+          : null,
+      issueDate: json['issue_date'] != null
+          ? DateTime.parse(json['issue_date'])
+          : null,
       notes: json['notes'] as String?,
       fiscalNotes: json['fiscal_notes'] as String?,
       status: json['status'] as String? ?? 'issued',
-      organizationInfo:
-          json['organization_info'] != null
-              ? OrganizationInfo.fromJson(json['organization_info'])
-              : null,
-      creator:
-          json['user_profiles'] != null
-              ? UserProfile.fromJson(json['user_profiles'])
-              : null,
+      organizationInfo: json['organization_info'] != null
+          ? OrganizationInfo.fromJson(json['organization_info'])
+          : null,
+      creator: json['user_profiles'] != null
+          ? UserProfile.fromJson(json['user_profiles'])
+          : null,
     );
   }
 
@@ -263,10 +249,9 @@ class ItalianReceiptModel {
   double get taxableAmount => subtotal - discountAmount;
   double get totalAmount => taxableAmount + vatAmount;
 
-  String get formattedIssueDate =>
-      issueDate != null
-          ? '${issueDate!.day.toString().padLeft(2, '0')}-${issueDate!.month.toString().padLeft(2, '0')}-${issueDate!.year}'
-          : '';
+  String get formattedIssueDate => issueDate != null
+      ? '${issueDate!.day.toString().padLeft(2, '0')}-${issueDate!.month.toString().padLeft(2, '0')}-${issueDate!.year}'
+      : '';
 
   String get formattedValidityPeriod {
     if (validityStartDate != null && validityEndDate != null) {
@@ -300,6 +285,7 @@ class OrganizationInfo {
   final String taxCode;
   final String? phone;
   final String? email;
+  final String? pec;
 
   OrganizationInfo({
     required this.id,
@@ -308,6 +294,7 @@ class OrganizationInfo {
     required this.taxCode,
     this.phone,
     this.email,
+    this.pec,
   });
 
   factory OrganizationInfo.fromJson(Map<String, dynamic> json) {
@@ -318,6 +305,7 @@ class OrganizationInfo {
       taxCode: json['tax_code'] as String,
       phone: json['phone'] as String?,
       email: json['email'] as String?,
+      pec: json['pec'] as String?,
     );
   }
 }

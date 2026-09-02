@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/app_export.dart';
 import 'package:sizer/sizer.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -73,7 +74,8 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
     } catch (error) {
       if (mounted) {
         setState(() => _isLoading = false);
-        _showErrorSnackBar('Errore nel caricamento degli istruttori: $error');
+        _showErrorSnackBar('instructor_directory.load_error'
+            .tr(namedArgs: {'detail': '$error'}));
       }
     }
   }
@@ -84,21 +86,20 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
       if (_searchQuery.isEmpty) {
         _filteredInstructors = _instructors;
       } else {
-        _filteredInstructors =
-            _instructors
-                .where(
-                  (instructor) =>
-                      instructor['full_name']
-                              ?.toString()
-                              .toLowerCase()
-                              .contains(_searchQuery) ==
-                          true ||
-                      instructor['email']?.toString().toLowerCase().contains(
+        _filteredInstructors = _instructors
+            .where(
+              (instructor) =>
+                  instructor['full_name']
+                          ?.toString()
+                          .toLowerCase()
+                          .contains(_searchQuery) ==
+                      true ||
+                  instructor['email']?.toString().toLowerCase().contains(
                             _searchQuery,
                           ) ==
-                          true,
-                )
-                .toList();
+                      true,
+            )
+            .toList();
       }
     });
   }
@@ -120,7 +121,8 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
         });
       }
     } catch (error) {
-      _showErrorSnackBar('Errore nel caricamento dettagli: $error');
+      _showErrorSnackBar('instructor_mgmt.load_details_error'
+          .tr(namedArgs: {'error': '$error'}));
     }
   }
 
@@ -130,24 +132,20 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
     try {
       final updatedInstructor =
           await InstructorManagementService.updateInstructor(
-            instructorId: _selectedInstructor!['id'],
-            fullName:
-                _nameController.text.trim().isNotEmpty
-                    ? _nameController.text.trim()
-                    : null,
-            phone:
-                _phoneController.text.trim().isNotEmpty
-                    ? _phoneController.text.trim()
-                    : null,
-            emergencyContact:
-                _emergencyContactController.text.trim().isNotEmpty
-                    ? _emergencyContactController.text.trim()
-                    : null,
-            emergencyPhone:
-                _emergencyPhoneController.text.trim().isNotEmpty
-                    ? _emergencyPhoneController.text.trim()
-                    : null,
-          );
+        instructorId: _selectedInstructor!['id'],
+        fullName: _nameController.text.trim().isNotEmpty
+            ? _nameController.text.trim()
+            : null,
+        phone: _phoneController.text.trim().isNotEmpty
+            ? _phoneController.text.trim()
+            : null,
+        emergencyContact: _emergencyContactController.text.trim().isNotEmpty
+            ? _emergencyContactController.text.trim()
+            : null,
+        emergencyPhone: _emergencyPhoneController.text.trim().isNotEmpty
+            ? _emergencyPhoneController.text.trim()
+            : null,
+      );
 
       if (updatedInstructor != null && mounted) {
         setState(() {
@@ -155,10 +153,11 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
         });
 
         await _loadInstructors();
-        _showSuccessSnackBar('Istruttore aggiornato con successo');
+        _showSuccessSnackBar('admin_dashboard.instructor_updated'.tr());
       }
     } catch (error) {
-      _showErrorSnackBar('Errore nell\'aggiornamento: $error');
+      _showErrorSnackBar(
+          'instructor_mgmt.update_error'.tr(namedArgs: {'error': '$error'}));
     }
   }
 
@@ -180,10 +179,10 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
 
         final imageUrl =
             await InstructorManagementService.uploadInstructorImage(
-              instructorId: _selectedInstructor!['id'],
-              imageBytes: bytes,
-              fileName: fileName,
-            );
+          instructorId: _selectedInstructor!['id'],
+          imageBytes: bytes,
+          fileName: fileName,
+        );
 
         if (imageUrl != null && mounted) {
           setState(() {
@@ -191,11 +190,12 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
           });
 
           await _loadInstructors();
-          _showSuccessSnackBar('Immagine caricata con successo');
+          _showSuccessSnackBar('instructor_management.profile_updated'.tr());
         }
       }
     } catch (error) {
-      _showErrorSnackBar('Errore nel caricamento immagine: $error');
+      _showErrorSnackBar('instructor_mgmt.load_image_error'
+          .tr(namedArgs: {'error': '$error'}));
     }
   }
 
@@ -216,11 +216,14 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
 
         await _loadInstructors();
         _showSuccessSnackBar(
-          newStatus ? 'Istruttore attivato' : 'Istruttore disattivato',
+          newStatus
+              ? 'admin_instructor.instructor_activated'.tr()
+              : 'admin_instructor.instructor_deactivated'.tr(),
         );
       }
     } catch (error) {
-      _showErrorSnackBar('Errore nel cambio stato: $error');
+      _showErrorSnackBar('instructor_mgmt.status_change_error'
+          .tr(namedArgs: {'error': '$error'}));
     }
   }
 
@@ -255,16 +258,15 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
         backgroundColor: Colors.deepOrange,
         foregroundColor: Colors.white,
         title: Text(
-          'Gestione Istruttori',
+          'instructor_management.title'.tr(),
           style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20.sp),
         ),
         leading: IconButton(
           icon: Icon(Icons.home, color: Colors.white),
-          onPressed:
-              () => Navigator.pushReplacementNamed(
-                context,
-                '/enhanced-admin-dashboard',
-              ),
+          onPressed: () => Navigator.pushReplacementNamed(
+            context,
+            '/enhanced-admin-dashboard',
+          ),
         ),
         bottom: TabBar(
           controller: _tabController,
@@ -272,8 +274,10 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
           tabs: [
-            Tab(icon: Icon(Icons.list), text: 'Lista Istruttori'),
-            Tab(icon: Icon(Icons.edit), text: 'Modifica Profilo'),
+            Tab(
+                icon: Icon(Icons.list),
+                text: 'admin_instructor.instructors_list_tab'.tr()),
+            Tab(icon: Icon(Icons.edit), text: 'profile.modify'.tr()),
           ],
         ),
       ),
@@ -307,7 +311,7 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
             controller: _searchController,
             onChanged: _filterInstructors,
             decoration: InputDecoration(
-              hintText: 'Cerca istruttore per nome o email...',
+              hintText: 'admin_instructor.search_hint'.tr(),
               prefixIcon: Icon(Icons.search, color: Colors.deepOrange),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(25),
@@ -325,204 +329,205 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
 
         // Instructors List
         Expanded(
-          child:
-              _isLoading
+          child: _isLoading
+              ? Center(
+                  child: CircularProgressIndicator(color: Colors.deepOrange),
+                )
+              : _filteredInstructors.isEmpty
                   ? Center(
-                    child: CircularProgressIndicator(color: Colors.deepOrange),
-                  )
-                  : _filteredInstructors.isEmpty
-                  ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.person_off,
-                          size: 64,
-                          color: Theme.of(context).colorScheme.outline,
-                        ),
-                        SizedBox(height: 2.h),
-                        Text(
-                          _searchQuery.isEmpty
-                              ? 'Nessun istruttore trovato'
-                              : 'Nessun risultato per "$_searchQuery"',
-                          style: Theme.of(
-                            context,
-                          ).textTheme.titleMedium?.copyWith(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.person_off,
+                            size: 64,
                             color: Theme.of(context).colorScheme.outline,
                           ),
-                        ),
-                      ],
-                    ),
-                  )
+                          SizedBox(height: 2.h),
+                          Text(
+                            _searchQuery.isEmpty
+                                ? 'admin_instructor.no_instructors_found'.tr()
+                                : 'admin_instructor.no_search_results'
+                                    .tr(namedArgs: {'query': _searchQuery}),
+                            style: Theme.of(
+                              context,
+                            ).textTheme.titleMedium?.copyWith(
+                                  color: Theme.of(context).colorScheme.outline,
+                                ),
+                          ),
+                        ],
+                      ),
+                    )
                   : ListView.separated(
-                    padding: EdgeInsets.all(4.w),
-                    itemCount: _filteredInstructors.length,
-                    separatorBuilder: (context, index) => SizedBox(height: 2.h),
-                    itemBuilder: (context, index) {
-                      final instructor = _filteredInstructors[index];
-                      final isSelected =
-                          _selectedInstructor?['id'] == instructor['id'];
+                      padding: EdgeInsets.all(4.w),
+                      itemCount: _filteredInstructors.length,
+                      separatorBuilder: (context, index) =>
+                          SizedBox(height: 2.h),
+                      itemBuilder: (context, index) {
+                        final instructor = _filteredInstructors[index];
+                        final isSelected =
+                            _selectedInstructor?['id'] == instructor['id'];
 
-                      return InkWell(
-                        onTap: () {
-                          _selectInstructor(instructor);
-                          _tabController.animateTo(1);
-                        },
-                        borderRadius: BorderRadius.circular(16),
-                        child: Container(
-                          padding: EdgeInsets.all(4.w),
-                          decoration: BoxDecoration(
-                            color:
-                                isSelected
-                                    ? Colors.deepOrange.withAlpha(26)
-                                    : Theme.of(context).cardColor,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color:
-                                  isSelected
-                                      ? Colors.deepOrange
-                                      : Theme.of(
+                        return InkWell(
+                          onTap: () {
+                            _selectInstructor(instructor);
+                            _tabController.animateTo(1);
+                          },
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            padding: EdgeInsets.all(4.w),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? Colors.deepOrange.withAlpha(26)
+                                  : Theme.of(context).cardColor,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isSelected
+                                    ? Colors.deepOrange
+                                    : Theme.of(
                                         context,
                                       ).colorScheme.outline.withAlpha(51),
-                              width: isSelected ? 2 : 1,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Theme.of(
-                                  context,
-                                ).shadowColor.withAlpha(13),
-                                blurRadius: 10,
-                                offset: Offset(0, 4),
+                                width: isSelected ? 2 : 1,
                               ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 6.w,
-                                backgroundImage:
-                                    instructor['profile_image_url'] != null
-                                        ? NetworkImage(
-                                          instructor['profile_image_url'],
-                                        )
-                                        : null,
-                                child:
-                                    instructor['profile_image_url'] == null
-                                        ? Icon(
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Theme.of(
+                                    context,
+                                  ).shadowColor.withAlpha(13),
+                                  blurRadius: 10,
+                                  offset: Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 6.w,
+                                  backgroundImage:
+                                      instructor['profile_image_url'] != null
+                                          ? NetworkImage(
+                                              instructor['profile_image_url'],
+                                            )
+                                          : null,
+                                  child: instructor['profile_image_url'] == null
+                                      ? Icon(
                                           Icons.person,
                                           color: Colors.deepOrange,
                                           size: 6.w,
                                         )
-                                        : null,
-                              ),
-                              SizedBox(width: 4.w),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      instructor['full_name'] ?? 'N/A',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.w700,
-                                        color:
-                                            isSelected
-                                                ? Colors.deepOrange
-                                                : Theme.of(
-                                                  context,
-                                                ).colorScheme.onSurface,
-                                      ),
-                                    ),
-                                    SizedBox(height: 0.5.h),
-                                    Text(
-                                      instructor['email'] ?? 'N/A',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall?.copyWith(
-                                        color:
-                                            Theme.of(
-                                              context,
-                                            ).colorScheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                    SizedBox(height: 0.5.h),
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: EdgeInsets.symmetric(
-                                            horizontal: 2.w,
-                                            vertical: 0.5.h,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color:
-                                                instructor['is_active'] == true
-                                                    ? Colors.green.withAlpha(26)
-                                                    : Colors.red.withAlpha(26),
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            instructor['is_active'] == true
-                                                ? 'ATTIVO'
-                                                : 'INATTIVO',
-                                            style: TextStyle(
-                                              color:
-                                                  instructor['is_active'] ==
-                                                          true
-                                                      ? Colors.green
-                                                      : Colors.red,
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 9.sp,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(width: 2.w),
-                                        Container(
-                                          padding: EdgeInsets.symmetric(
-                                            horizontal: 2.w,
-                                            vertical: 0.5.h,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.deepOrange.withAlpha(
-                                              26,
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            instructor['role']
-                                                    ?.toString()
-                                                    .toUpperCase() ??
-                                                'N/A',
-                                            style: TextStyle(
-                                              color: Colors.deepOrange,
-                                              fontWeight: FontWeight.w600,
-                                              fontSize: 9.sp,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                                      : null,
                                 ),
-                              ),
-                              Icon(
-                                Icons.arrow_forward_ios,
-                                color:
-                                    isSelected
-                                        ? Colors.deepOrange
-                                        : Theme.of(context).colorScheme.outline,
-                                size: 18,
-                              ),
-                            ],
+                                SizedBox(width: 4.w),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        instructor['full_name'] ?? 'N/A',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.titleMedium?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                              color: isSelected
+                                                  ? Colors.deepOrange
+                                                  : Theme.of(
+                                                      context,
+                                                    ).colorScheme.onSurface,
+                                            ),
+                                      ),
+                                      SizedBox(height: 0.5.h),
+                                      Text(
+                                        instructor['email'] ?? 'N/A',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall?.copyWith(
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
+                                            ),
+                                      ),
+                                      SizedBox(height: 0.5.h),
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: 2.w,
+                                              vertical: 0.5.h,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: instructor['is_active'] ==
+                                                      true
+                                                  ? Colors.green.withAlpha(26)
+                                                  : Colors.red.withAlpha(26),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                8,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              instructor['is_active'] == true
+                                                  ? 'admin_instructor.status_active'
+                                                      .tr()
+                                                  : 'admin_instructor.status_inactive'
+                                                      .tr(),
+                                              style: TextStyle(
+                                                color:
+                                                    instructor['is_active'] ==
+                                                            true
+                                                        ? Colors.green
+                                                        : Colors.red,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 9.sp,
+                                              ),
+                                            ),
+                                          ),
+                                          SizedBox(width: 2.w),
+                                          Container(
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: 2.w,
+                                              vertical: 0.5.h,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color:
+                                                  Colors.deepOrange.withAlpha(
+                                                26,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                8,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              instructor['role']
+                                                      ?.toString()
+                                                      .toUpperCase() ??
+                                                  'N/A',
+                                              style: TextStyle(
+                                                color: Colors.deepOrange,
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 9.sp,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.arrow_forward_ios,
+                                  color: isSelected
+                                      ? Colors.deepOrange
+                                      : Theme.of(context).colorScheme.outline,
+                                  size: 18,
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
+                        );
+                      },
+                    ),
         ),
       ],
     );
@@ -541,10 +546,10 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
             ),
             SizedBox(height: 2.h),
             Text(
-              'Seleziona un istruttore dalla lista',
+              'instructor_management.select_instructor_from_list'.tr(),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Theme.of(context).colorScheme.outline,
-              ),
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
             ),
             SizedBox(height: 1.h),
             ElevatedButton(
@@ -553,7 +558,7 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
                 backgroundColor: Colors.deepOrange,
                 foregroundColor: Colors.white,
               ),
-              child: Text('Vai alla Lista'),
+              child: Text('instructor_mgmt.go_to_list'.tr()),
             ),
           ],
         ),
@@ -582,35 +587,34 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
                         width: 2,
                       ),
                     ),
-                    child:
-                        _selectedInstructor!['profile_image_url'] != null
-                            ? ClipRRect(
-                              borderRadius: BorderRadius.circular(18),
-                              child: Image.network(
-                                _selectedInstructor!['profile_image_url'],
-                                fit: BoxFit.cover,
-                                errorBuilder:
-                                    (context, error, stackTrace) => Icon(
-                                      Icons.person,
-                                      color: Colors.deepOrange,
-                                      size: 15.w,
-                                    ),
+                    child: _selectedInstructor!['profile_image_url'] != null
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(18),
+                            child: Image.network(
+                              _selectedInstructor!['profile_image_url'],
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Icon(
+                                Icons.person,
+                                color: Colors.deepOrange,
+                                size: 15.w,
                               ),
-                            )
-                            : Icon(
-                              Icons.add_a_photo,
-                              color: Colors.deepOrange,
-                              size: 15.w,
                             ),
+                          )
+                        : Icon(
+                            Icons.add_a_photo,
+                            color: Colors.deepOrange,
+                            size: 15.w,
+                          ),
                   ),
                 ),
                 SizedBox(height: 2.h),
                 Text(
-                  'Tocca per cambiare foto profilo',
+                  'admin_instructor.tap_change_photo'.tr(),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.deepOrange,
-                    fontWeight: FontWeight.w500,
-                  ),
+                        color: Colors.deepOrange,
+                        fontWeight: FontWeight.w500,
+                      ),
                 ),
               ],
             ),
@@ -630,18 +634,17 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Informazioni Personali',
+                    'profile.personal_info'.tr(),
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: Colors.deepOrange,
-                      fontWeight: FontWeight.w700,
-                    ),
+                          color: Colors.deepOrange,
+                          fontWeight: FontWeight.w700,
+                        ),
                   ),
                   SizedBox(height: 3.h),
-
                   TextField(
                     controller: _nameController,
                     decoration: InputDecoration(
-                      labelText: 'Nome Completo',
+                      labelText: 'admin_dashboard.full_name_label'.tr(),
                       prefixIcon: Icon(Icons.person, color: Colors.deepOrange),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -652,14 +655,12 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
                       ),
                     ),
                   ),
-
                   SizedBox(height: 2.h),
-
                   TextField(
                     controller: _phoneController,
                     keyboardType: TextInputType.phone,
                     decoration: InputDecoration(
-                      labelText: 'Telefono',
+                      labelText: 'profile.phone'.tr(),
                       prefixIcon: Icon(Icons.phone, color: Colors.deepOrange),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -670,13 +671,11 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
                       ),
                     ),
                   ),
-
                   SizedBox(height: 2.h),
-
                   TextField(
                     controller: _emergencyContactController,
                     decoration: InputDecoration(
-                      labelText: 'Contatto di Emergenza',
+                      labelText: 'profile.emergency_contact'.tr(),
                       prefixIcon: Icon(
                         Icons.contact_phone,
                         color: Colors.deepOrange,
@@ -690,14 +689,12 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
                       ),
                     ),
                   ),
-
                   SizedBox(height: 2.h),
-
                   TextField(
                     controller: _emergencyPhoneController,
                     keyboardType: TextInputType.phone,
                     decoration: InputDecoration(
-                      labelText: 'Telefono di Emergenza',
+                      labelText: 'admin_instructor.emergency_phone'.tr(),
                       prefixIcon: Icon(
                         Icons.emergency,
                         color: Colors.deepOrange,
@@ -725,7 +722,7 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
                 child: ElevatedButton.icon(
                   onPressed: _updateInstructor,
                   icon: Icon(Icons.save),
-                  label: Text('Salva Modifiche'),
+                  label: Text('profile.save_changes'.tr()),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.deepOrange,
                     foregroundColor: Colors.white,
@@ -747,14 +744,13 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
                   ),
                   label: Text(
                     _selectedInstructor!['is_active'] == true
-                        ? 'Disattiva'
-                        : 'Attiva',
+                        ? 'admin_instructor.deactivate'.tr()
+                        : 'common.active'.tr(),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        _selectedInstructor!['is_active'] == true
-                            ? Colors.red
-                            : Colors.green,
+                    backgroundColor: _selectedInstructor!['is_active'] == true
+                        ? Colors.red
+                        : Colors.green,
                     foregroundColor: Colors.white,
                     padding: EdgeInsets.symmetric(vertical: 2.h),
                     shape: RoundedRectangleBorder(
@@ -792,41 +788,40 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Informazioni di Sistema',
+                    'admin_instructor.system_info'.tr(),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Colors.deepOrange,
-                      fontWeight: FontWeight.w700,
-                    ),
+                          color: Colors.deepOrange,
+                          fontWeight: FontWeight.w700,
+                        ),
                   ),
                   SizedBox(height: 2.h),
-
                   _buildInfoRow(
                     Icons.email,
-                    'Email',
+                    'common.email'.tr(),
                     _selectedInstructor!['email'] ?? 'N/A',
                   ),
                   _buildInfoRow(
                     Icons.admin_panel_settings,
-                    'Ruolo',
+                    'profile.role'.tr(),
                     _selectedInstructor!['role']?.toString().toUpperCase() ??
                         'N/A',
                   ),
                   _buildInfoRow(
                     Icons.calendar_today,
-                    'Creato',
+                    'admin_instructor.created_label'.tr(),
                     _selectedInstructor!['created_at'] != null
                         ? DateTime.parse(
-                          _selectedInstructor!['created_at'],
-                        ).toLocal().toString().split(' ')[0]
+                            _selectedInstructor!['created_at'],
+                          ).toLocal().toString().split(' ')[0]
                         : 'N/A',
                   ),
                   _buildInfoRow(
                     Icons.update,
-                    'Aggiornato',
+                    'admin_instructor.updated_label'.tr(),
                     _selectedInstructor!['updated_at'] != null
                         ? DateTime.parse(
-                          _selectedInstructor!['updated_at'],
-                        ).toLocal().toString().split(' ')[0]
+                            _selectedInstructor!['updated_at'],
+                          ).toLocal().toString().split(' ')[0]
                         : 'N/A',
                   ),
                 ],
@@ -858,8 +853,8 @@ class _AdminInstructorManagementState extends State<AdminInstructorManagement>
             child: Text(
               value,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
               overflow: TextOverflow.ellipsis,
             ),
           ),

@@ -197,7 +197,7 @@ class _SecurityStatusWidgetState extends State<SecurityStatusWidget>
               crossAxisCount: 2,
               crossAxisSpacing: 3.w,
               mainAxisSpacing: 2.h,
-              childAspectRatio: 1.1,
+              childAspectRatio: 0.98,
             ),
             itemCount: securityMetrics.length,
             itemBuilder: (context, index) {
@@ -225,6 +225,7 @@ class _SecurityStatusWidgetState extends State<SecurityStatusWidget>
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     // Header with Status
                     Row(
@@ -253,7 +254,7 @@ class _SecurityStatusWidgetState extends State<SecurityStatusWidget>
                         ),
                       ],
                     ),
-                    SizedBox(height: 2.h),
+                    SizedBox(height: 1.5.h),
 
                     // Value
                     Text(
@@ -263,8 +264,10 @@ class _SecurityStatusWidgetState extends State<SecurityStatusWidget>
                                 color: Theme.of(context).colorScheme.onSurface,
                                 fontWeight: FontWeight.w700,
                               ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    SizedBox(height: 0.5.h),
+                    SizedBox(height: 0.3.h),
 
                     // Title
                     Text(
@@ -273,19 +276,24 @@ class _SecurityStatusWidgetState extends State<SecurityStatusWidget>
                             color: Theme.of(context).colorScheme.onSurface,
                             fontWeight: FontWeight.w600,
                           ),
-                    ),
-                    SizedBox(height: 1.h),
-
-                    // Description
-                    Text(
-                      metric['description'],
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontSize: 11,
-                          ),
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: 0.5.h),
+
+                    // Description - flexible to avoid overflow
+                    Expanded(
+                      child: Text(
+                        metric['description'],
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontSize: 10,
+                            ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),

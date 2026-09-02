@@ -124,7 +124,7 @@ class InstructorClassWidget extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Studenti',
+                            'admin_management.students_filter'.tr(),
                             style: AppTheme.lightTheme.textTheme.bodySmall
                                 ?.copyWith(
                               color: AppTheme.textSecondaryLight,

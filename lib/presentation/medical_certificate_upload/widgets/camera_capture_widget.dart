@@ -21,12 +21,16 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
   List<CameraDescription> _cameras = [];
   bool _isCameraInitialized = false;
   bool _isInitializing = false;
+  bool _isPicking = false;
+  String? _errorMessage;
   final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
-    _initializeCamera();
+    if (!kIsWeb) {
+      _initializeCamera();
+    }
   }
 
   @override
@@ -42,10 +46,11 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
   }
 
   Future<void> _initializeCamera() async {
-    if (_isInitializing) return;
+    if (_isInitializing || kIsWeb) return;
 
     setState(() {
       _isInitializing = true;
+      _errorMessage = null;
     });
 
     try {
@@ -53,6 +58,7 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
       if (!hasPermission) {
         setState(() {
           _isInitializing = false;
+          _errorMessage = 'medical_upload_ui.camera_permission_denied'.tr();
         });
         return;
       }
@@ -61,11 +67,11 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
       if (_cameras.isEmpty) {
         setState(() {
           _isInitializing = false;
+          _errorMessage = 'medical_upload_ui.no_camera_found'.tr();
         });
         return;
       }
 
-      // FIXED: Always prefer rear camera for certificate capture
       final camera = _cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => _cameras.first,
@@ -86,9 +92,11 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
         });
       }
     } catch (e) {
+      debugPrint('Camera init error: $e');
       if (mounted) {
         setState(() {
           _isInitializing = false;
+          _errorMessage = 'medical_certificate.camera_init_error'.tr();
         });
       }
     }
@@ -99,16 +107,12 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
 
     try {
       await _cameraController!.setFocusMode(FocusMode.auto);
-    } catch (e) {
-      // Ignore focus mode errors
-    }
+    } catch (_) {}
 
     if (!kIsWeb) {
       try {
         await _cameraController!.setFlashMode(FlashMode.auto);
-      } catch (e) {
-        // Ignore flash mode errors on unsupported devices
-      }
+      } catch (_) {}
     }
   }
 
@@ -121,11 +125,22 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
       final XFile photo = await _cameraController!.takePicture();
       widget.onImageCaptured(photo);
     } catch (e) {
-      // Handle capture error silently
+      debugPrint('Capture error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('medical_certificate.camera_error'.tr()),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
   Future<void> _pickFromGallery() async {
+    if (_isPicking) return;
+    setState(() => _isPicking = true);
+
     try {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.gallery,
@@ -135,10 +150,29 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
       );
 
       if (image != null) {
+        final bytes = await image.readAsBytes();
+        if (bytes.isEmpty) {
+          throw Exception('Il file selezionato è vuoto');
+        }
+        debugPrint(
+            'Gallery image picked: ${image.name}, ${bytes.length} bytes');
         widget.onImageCaptured(image);
       }
     } catch (e) {
-      // Handle gallery error silently
+      debugPrint('Gallery picker error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('student_reg_ui.selection_error'
+                .tr(namedArgs: {'error': '$e'})),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isPicking = false);
+      }
     }
   }
 
@@ -146,7 +180,7 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      height: 50.h,
+      height: kIsWeb ? 40.h : 50.h,
       margin: EdgeInsets.symmetric(horizontal: 4.w),
       decoration: BoxDecoration(
         color: AppTheme.lightTheme.colorScheme.surface,
@@ -158,7 +192,88 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: _buildCameraContent(),
+        child: kIsWeb ? _buildWebPickerUI() : _buildCameraContent(),
+      ),
+    );
+  }
+
+  Widget _buildWebPickerUI() {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 6.w),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 20.w,
+              height: 20.w,
+              constraints: const BoxConstraints(maxWidth: 80, maxHeight: 80),
+              decoration: BoxDecoration(
+                color: AppTheme.lightTheme.colorScheme.primary.withAlpha(26),
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: CustomIconWidget(
+                  iconName: 'upload_file',
+                  color: AppTheme.lightTheme.colorScheme.primary,
+                  size: 36,
+                ),
+              ),
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              'user_mgmt.upload_medical_title'.tr(),
+              style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 1.h),
+            Text(
+              'medical_certificate.select_file_hint'.tr(),
+              textAlign: TextAlign.center,
+              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            SizedBox(height: 3.h),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isPicking ? null : _pickFromGallery,
+                icon: _isPicking
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppTheme.lightTheme.colorScheme.onPrimary,
+                        ),
+                      )
+                    : CustomIconWidget(
+                        iconName: 'photo_library',
+                        color: AppTheme.lightTheme.colorScheme.onPrimary,
+                        size: 20,
+                      ),
+                label: Text(
+                  _isPicking
+                      ? 'medical_certificate.selecting'.tr()
+                      : 'medical_certificate.select_file'.tr(),
+                ),
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                ),
+              ),
+            ),
+            SizedBox(height: 1.5.h),
+            Text(
+              'Formati supportati: JPG, PNG (max 5MB)',
+              style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onSurface.withAlpha(128),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -207,43 +322,63 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
 
   Widget _buildFallbackState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CustomIconWidget(
-            iconName: 'camera_alt',
-            color: AppTheme.lightTheme.colorScheme.outline,
-            size: 48,
-          ),
-          SizedBox(height: 2.h),
-          Text(
-            'Fotocamera non disponibile',
-            style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-              color: AppTheme.lightTheme.colorScheme.onSurface,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 6.w),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CustomIconWidget(
+              iconName: 'camera_alt',
+              color: AppTheme.lightTheme.colorScheme.outline,
+              size: 48,
             ),
-          ),
-          SizedBox(height: 1.h),
-          Text(
-            'Usa il pulsante galleria per selezionare un\'immagine',
-            textAlign: TextAlign.center,
-            style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-              color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+            SizedBox(height: 2.h),
+            Text(
+              _errorMessage ?? 'Fotocamera non disponibile',
+              textAlign: TextAlign.center,
+              style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onSurface,
+              ),
             ),
-          ),
-          SizedBox(height: 3.h),
-          ElevatedButton.icon(
-            onPressed: _pickFromGallery,
-            icon: CustomIconWidget(
-              iconName: 'photo_library',
-              color: AppTheme.lightTheme.colorScheme.onPrimary,
-              size: 20,
+            SizedBox(height: 1.h),
+            Text(
+              'medical_certificate.select_gallery_hint'.tr(),
+              textAlign: TextAlign.center,
+              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              ),
             ),
-            label: Text('Seleziona dalla Galleria'),
-            style: ElevatedButton.styleFrom(
-              padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+            SizedBox(height: 3.h),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isPicking ? null : _pickFromGallery,
+                icon: _isPicking
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppTheme.lightTheme.colorScheme.onPrimary,
+                        ),
+                      )
+                    : CustomIconWidget(
+                        iconName: 'photo_library',
+                        color: AppTheme.lightTheme.colorScheme.onPrimary,
+                        size: 20,
+                      ),
+                label: Text(
+                  _isPicking
+                      ? 'medical_certificate.selecting'.tr()
+                      : 'medical_certificate.select_from_gallery'.tr(),
+                ),
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -255,13 +390,13 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
         _buildControlButton(
           onPressed: _pickFromGallery,
           icon: 'photo_library',
-          label: 'Galleria',
+          label: 'common.gallery'.tr(),
         ),
         _buildCaptureButton(),
         _buildControlButton(
           onPressed: _initializeCamera,
           icon: 'refresh',
-          label: 'Riprova',
+          label: 'common.retry'.tr(),
         ),
       ],
     );
@@ -331,7 +466,7 @@ class _CameraCaptureWidgetState extends State<CameraCaptureWidget> {
         ),
         SizedBox(height: 0.5.h),
         Text(
-          'Scatta',
+          'medical_certificate.tab_capture'.tr(),
           style: AppTheme.lightTheme.textTheme.labelSmall?.copyWith(
             color: AppTheme.lightTheme.colorScheme.surface,
             fontWeight: FontWeight.w600,

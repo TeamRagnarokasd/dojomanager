@@ -34,7 +34,7 @@ class CustomErrorWidget extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                "Something went wrong",
+                'common.something_wrong'.tr(),
                 style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w500,
@@ -43,10 +43,10 @@ class CustomErrorWidget extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               SizedBox(
-                child: const Text(
-                  'We encountered an unexpected error while processing your request.',
+                child: Text(
+                  'common.unexpected_error'.tr(),
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 16,
                     color: Color(0xFF525252), // neutral-600
                   ),
@@ -64,7 +64,7 @@ class CustomErrorWidget extends StatelessWidget {
                 },
                 icon:
                     const Icon(Icons.arrow_back, size: 18, color: Colors.white),
-                label: const Text('Back'),
+                label: Text('common.back'.tr()),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.lightTheme.primaryColor,
                   foregroundColor: Colors.white,

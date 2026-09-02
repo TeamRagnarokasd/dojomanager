@@ -130,6 +130,20 @@ class _CertificateDetailsFormWidgetState
   }
 
   void _notifyFormChange() {
+    final missingFields = <String>[];
+    if (_startDate == null) missingFields.add('Data Inizio');
+    if (_endDate == null) missingFields.add('Data Fine');
+    if (_doctorNameController.text.trim().isEmpty) missingFields.add('Medico');
+    if (_medicalCenterController.text.trim().isEmpty) {
+      missingFields.add('Centro Medico');
+    }
+    if (_certificateType == null) missingFields.add('Tipologia Certificato');
+    if (_startDate != null &&
+        _endDate != null &&
+        !_endDate!.isAfter(_startDate!)) {
+      missingFields.add('Data Fine deve essere dopo Data Inizio');
+    }
+
     final formData = {
       'startDate': _startDate,
       'endDate': _endDate,
@@ -137,6 +151,7 @@ class _CertificateDetailsFormWidgetState
       'medicalCenter': _medicalCenterController.text.trim(),
       'certificateType': _certificateType,
       'isValid': _isFormValid(),
+      'missingFields': missingFields,
     };
     widget.onFormChanged(formData);
   }
@@ -497,14 +512,22 @@ class _CertificateDetailsFormWidgetState
   }
 
   Widget _buildCertificateTypeField() {
+    final bool showWarning = _certificateType == null &&
+        _startDate != null &&
+        _endDate != null &&
+        _doctorNameController.text.trim().isNotEmpty &&
+        _medicalCenterController.text.trim().isNotEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Tipologia di Certificato Medico *',
           style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-            color: AppTheme.lightTheme.colorScheme.onSurface,
-            fontWeight: FontWeight.w500,
+            color: showWarning
+                ? AppTheme.lightTheme.colorScheme.error
+                : AppTheme.lightTheme.colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
           ),
         ),
         SizedBox(height: 1.h),
@@ -512,9 +535,14 @@ class _CertificateDetailsFormWidgetState
           width: double.infinity,
           padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
           decoration: BoxDecoration(
+            color: showWarning
+                ? AppTheme.lightTheme.colorScheme.error.withAlpha(13)
+                : null,
             border: Border.all(
-              color: AppTheme.lightTheme.colorScheme.outline.withAlpha(128),
-              width: 1,
+              color: showWarning
+                  ? AppTheme.lightTheme.colorScheme.error
+                  : AppTheme.lightTheme.colorScheme.outline.withAlpha(128),
+              width: showWarning ? 2 : 1,
             ),
             borderRadius: BorderRadius.circular(8),
           ),

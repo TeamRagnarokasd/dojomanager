@@ -39,7 +39,7 @@ class ProgressIndicatorWidget extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Progresso Registrazione',
+                'student_registration.registration_progress'.tr(),
                 style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: AppTheme.lightTheme.colorScheme.primary,

@@ -33,9 +33,8 @@ class CancellationPolicyWidget extends StatelessWidget {
           ),
           SizedBox(height: 8.h),
           Text(
-            '• Cancellazione gratuita fino a 24 ore prima della lezione\n'
-            '• Cancellazione tardiva: rimborso del 50%\n'
-            '• Nessun rimborso per cancellazioni il giorno stesso',
+            '• Cancellazione gratuita fino a 1 ora prima dell\'inizio della lezione\n'
+            '• Non è possibile disdire la prenotazione nell\'ora precedente alla classe',
             style: GoogleFonts.inter(
               fontSize: 12.sp,
               color: Colors.orange[800],

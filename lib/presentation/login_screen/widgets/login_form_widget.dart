@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
@@ -55,8 +56,8 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
           keyboardType: TextInputType.emailAddress,
           textInputAction: TextInputAction.next,
           decoration: InputDecoration(
-            labelText: 'Email',
-            hintText: 'Inserisci la tua email',
+            labelText: 'common.email'.tr(),
+            hintText: 'auth.email_hint'.tr(),
             prefixIcon: Padding(
               padding: EdgeInsets.all(3.w),
               child: CustomIconWidget(
@@ -72,10 +73,10 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
           },
           validator: (value) {
             if (value == null || value.isEmpty) {
-              return 'Email richiesta';
+              return 'auth.email_required'.tr();
             }
             if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-              return 'Formato email non valido';
+              return 'auth.invalid_email'.tr();
             }
             return null;
           },
@@ -89,8 +90,8 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
           obscureText: !widget.isPasswordVisible,
           textInputAction: TextInputAction.done,
           decoration: InputDecoration(
-            labelText: 'Password',
-            hintText: 'Inserisci la tua password',
+            labelText: 'common.password'.tr(),
+            hintText: 'auth.password_hint'.tr(),
             prefixIcon: Padding(
               padding: EdgeInsets.all(3.w),
               child: CustomIconWidget(
@@ -101,16 +102,15 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
             ),
             suffixIcon: GestureDetector(
               onTap: () {
-                HapticFeedback.lightImpact();
+                if (!kIsWeb) HapticFeedback.lightImpact();
                 widget.onPasswordVisibilityToggle();
               },
               child: Padding(
                 padding: EdgeInsets.all(3.w),
                 child: CustomIconWidget(
-                  iconName:
-                      widget.isPasswordVisible
-                          ? 'visibility'
-                          : 'visibility_off',
+                  iconName: widget.isPasswordVisible
+                      ? 'visibility'
+                      : 'visibility_off',
                   color: AppTheme.textSecondaryLight,
                   size: 20,
                 ),
@@ -120,10 +120,10 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
           ),
           validator: (value) {
             if (value == null || value.isEmpty) {
-              return 'Password richiesta';
+              return 'auth.password_required'.tr();
             }
             if (value.length < 6) {
-              return 'Password deve essere almeno 6 caratteri';
+              return 'auth.password_min_length'.tr();
             }
             return null;
           },
@@ -139,7 +139,7 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
               child: Checkbox(
                 value: widget.rememberMe,
                 onChanged: (value) {
-                  HapticFeedback.lightImpact();
+                  if (!kIsWeb) HapticFeedback.lightImpact();
                   widget.onRememberMeChanged(value ?? false);
                 },
                 activeColor: AppTheme.primaryLight,
@@ -150,7 +150,7 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
             ),
             SizedBox(width: 2.w),
             Text(
-              'Ricordami',
+              'auth.remember_me'.tr(),
               style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                 color: AppTheme.textPrimaryLight,
                 fontWeight: FontWeight.w500,
@@ -165,11 +165,11 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
           alignment: Alignment.centerRight,
           child: GestureDetector(
             onTap: () {
-              HapticFeedback.lightImpact();
+              if (!kIsWeb) HapticFeedback.lightImpact();
               widget.onForgotPassword();
             },
             child: Text(
-              'Password Dimenticata?',
+              'auth.forgot_password'.tr(),
               style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                 color: AppTheme.primaryLight,
                 fontWeight: FontWeight.w500,

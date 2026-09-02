@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import '../../../core/app_export.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
-
 
 class ReceiptFilterWidget extends StatefulWidget {
   final Function(Map<String, dynamic>) onFiltersApplied;
@@ -153,7 +152,7 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
                     Icon(Icons.filter_alt, color: Colors.blue.shade700),
                     SizedBox(width: 8.w),
                     Text(
-                      'Filtri Avanzati',
+                      'receipt_archive_ui.advanced_filters'.tr(),
                       style: GoogleFonts.inter(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w600,
@@ -164,7 +163,7 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
                     TextButton(
                       onPressed: _clearAllFilters,
                       child: Text(
-                        'Cancella Tutto',
+                        'receipt_archive_ui.clear_all'.tr(),
                         style: GoogleFonts.inter(
                           color: Colors.red.shade600,
                           fontWeight: FontWeight.w500,
@@ -178,7 +177,7 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
 
                 // Client search
                 Text(
-                  'Cerca Cliente',
+                  'receipt_archive_ui.search_client'.tr(),
                   style: GoogleFonts.inter(
                     fontSize: 14.sp,
                     fontWeight: FontWeight.w600,
@@ -189,7 +188,7 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
                 TextField(
                   controller: _clientSearchController,
                   decoration: InputDecoration(
-                    hintText: 'Nome del cliente...',
+                    hintText: 'receipt_archive_ui.client_name_hint'.tr(),
                     prefixIcon: Icon(Icons.search, color: Colors.grey.shade500),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -212,7 +211,7 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
 
                 // Date range
                 Text(
-                  'Periodo',
+                  'receipt_archive_ui.period'.tr(),
                   style: GoogleFonts.inter(
                     fontSize: 14.sp,
                     fontWeight: FontWeight.w600,
@@ -247,7 +246,7 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
                                 _dateFrom != null
                                     ? DateFormat('dd/MM/yyyy')
                                         .format(_dateFrom!)
-                                    : 'Da...',
+                                    : 'receipt_archive_ui.date_from_hint'.tr(),
                                 style: GoogleFonts.inter(
                                   color: _dateFrom != null
                                       ? Colors.black
@@ -284,7 +283,7 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
                               Text(
                                 _dateTo != null
                                     ? DateFormat('dd/MM/yyyy').format(_dateTo!)
-                                    : 'A...',
+                                    : 'receipt_archive_ui.date_to_hint'.tr(),
                                 style: GoogleFonts.inter(
                                   color: _dateTo != null
                                       ? Colors.black
@@ -309,7 +308,7 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Metodo Pagamento',
+                            'receipt_archive_ui.payment_method'.tr(),
                             style: GoogleFonts.inter(
                               fontSize: 14.sp,
                               fontWeight: FontWeight.w600,
@@ -318,15 +317,17 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
                           ),
                           SizedBox(height: 8.h),
                           DropdownButtonFormField<String>(
-                            value: _paymentMethod,
+                            initialValue: _paymentMethod,
                             decoration: InputDecoration(
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: Colors.grey.shade300),
+                                borderSide:
+                                    BorderSide(color: Colors.grey.shade300),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: Colors.blue.shade500),
+                                borderSide:
+                                    BorderSide(color: Colors.blue.shade500),
                               ),
                               filled: true,
                               fillColor: Colors.grey.shade50,
@@ -337,16 +338,22 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
                             ),
                             items: [
                               DropdownMenuItem(
-                                  value: 'all', child: Text('Tutti')),
+                                  value: 'all',
+                                  child: Text('disciplines.all'.tr())),
                               DropdownMenuItem(
-                                  value: 'sumup', child: Text('SumUp')),
+                                  value: 'sumup',
+                                  child: Text('receipt_archive_ui.sumup'.tr())),
                               DropdownMenuItem(
-                                  value: 'satispay', child: Text('Satispay')),
+                                  value: 'satispay',
+                                  child:
+                                      Text('receipt_archive_ui.satispay'.tr())),
                               DropdownMenuItem(
-                                  value: 'cash', child: Text('Contanti')),
+                                  value: 'cash',
+                                  child: Text('receipt_archive_ui.cash'.tr())),
                               DropdownMenuItem(
                                   value: 'bank_transfer',
-                                  child: Text('Bonifico')),
+                                  child: Text(
+                                      'receipt_archive_ui.bank_transfer'.tr())),
                             ],
                             onChanged: (value) {
                               setState(() {
@@ -363,7 +370,7 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Tipo Abbonamento',
+                            'receipt_archive_ui.subscription_type'.tr(),
                             style: GoogleFonts.inter(
                               fontSize: 14.sp,
                               fontWeight: FontWeight.w600,
@@ -372,15 +379,17 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
                           ),
                           SizedBox(height: 8.h),
                           DropdownButtonFormField<String>(
-                            value: _subscriptionType,
+                            initialValue: _subscriptionType,
                             decoration: InputDecoration(
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: Colors.grey.shade300),
+                                borderSide:
+                                    BorderSide(color: Colors.grey.shade300),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: Colors.blue.shade500),
+                                borderSide:
+                                    BorderSide(color: Colors.blue.shade500),
                               ),
                               filled: true,
                               fillColor: Colors.grey.shade50,
@@ -391,11 +400,14 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
                             ),
                             items: [
                               DropdownMenuItem(
-                                  value: 'all', child: Text('Tutti')),
+                                  value: 'all',
+                                  child: Text('disciplines.all'.tr())),
                               DropdownMenuItem(
-                                  value: 'monthly', child: Text('Mensile')),
+                                  value: 'monthly',
+                                  child: Text('payment.monthly_plan'.tr())),
                               DropdownMenuItem(
-                                  value: 'annual', child: Text('Annuale')),
+                                  value: 'annual',
+                                  child: Text('payment.annual_plan'.tr())),
                             ],
                             onChanged: (value) {
                               setState(() {
@@ -413,7 +425,7 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
 
                 // Amount range
                 Text(
-                  'Fascia Importo (€)',
+                  'receipt_archive_ui.amount_range'.tr(),
                   style: GoogleFonts.inter(
                     fontSize: 14.sp,
                     fontWeight: FontWeight.w600,
@@ -426,9 +438,10 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
                     Expanded(
                       child: TextField(
                         controller: _amountMinController,
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        keyboardType:
+                            TextInputType.numberWithOptions(decimal: true),
                         decoration: InputDecoration(
-                          hintText: 'Min...',
+                          hintText: 'receipt_archive_ui.amount_min_hint'.tr(),
                           prefixText: '€ ',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -454,9 +467,10 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
                     Expanded(
                       child: TextField(
                         controller: _amountMaxController,
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        keyboardType:
+                            TextInputType.numberWithOptions(decimal: true),
                         decoration: InputDecoration(
-                          hintText: 'Max...',
+                          hintText: 'receipt_archive_ui.amount_max_hint'.tr(),
                           prefixText: '€ ',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -497,7 +511,7 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
                       ),
                     ),
                     child: Text(
-                      'Applica Filtri',
+                      'receipt_archive_ui.apply_filters'.tr(),
                       style: GoogleFonts.inter(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w600,

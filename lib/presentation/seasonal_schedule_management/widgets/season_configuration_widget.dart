@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:table_calendar/table_calendar.dart';
-import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../services/discipline_service.dart';
+import '../../../core/app_export.dart';
 
 class SeasonConfigurationWidget extends StatefulWidget {
   final Map<String, dynamic>? currentSeason;
@@ -34,6 +35,10 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
   List<Map<String, dynamic>> _availableInstructors = [];
   bool _isLoadingInstructors = false;
 
+  // Dynamic disciplines from Supabase
+  List<Map<String, dynamic>> _availableDisciplines = [];
+  bool _isLoadingDisciplines = false;
+
   final SupabaseClient _supabase = Supabase.instance.client;
 
   @override
@@ -41,6 +46,7 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
     super.initState();
     _loadExistingData();
     _loadAvailableInstructors();
+    _loadDisciplinesFromSupabase();
   }
 
   @override
@@ -98,10 +104,43 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
       if (mounted) {
         setState(() {
           _scheduleTemplates = List<Map<String, dynamic>>.from(response);
+          for (final t in _scheduleTemplates) {
+            final d = t['discipline']?.toString();
+            if (d == 'prep_atletica' || d == 'preparazione_atletica') {
+              t['discipline'] = 'fitness';
+            }
+          }
         });
       }
     } catch (error) {
       print('Error loading existing templates: $error');
+    }
+  }
+
+  Future<void> _loadDisciplinesFromSupabase() async {
+    setState(() => _isLoadingDisciplines = true);
+    try {
+      final disciplines =
+          await DisciplineService.instance.getActiveDisciplines();
+
+      if (mounted) {
+        setState(() {
+          _availableDisciplines = disciplines
+              .map((d) => {
+                    'id': d['id'] as String,
+                    'label': (d['name'] ?? d['id']) as String,
+                  })
+              .toList();
+          // Sort alphabetically by label
+          _availableDisciplines.sort(
+              (a, b) => (a['label'] as String).compareTo(b['label'] as String));
+          _isLoadingDisciplines = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingDisciplines = false);
+      }
     }
   }
 
@@ -144,22 +183,21 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
 
       // Insert new templates
       if (_scheduleTemplates.isNotEmpty) {
-        final templatesToInsert =
-            _scheduleTemplates
-                .map(
-                  (template) => {
-                    'seasonal_schedule_id': widget.currentSeason!['id'],
-                    'day_of_week': template['day_of_week'],
-                    'start_time': template['start_time'],
-                    'end_time': template['end_time'],
-                    'discipline': template['discipline'],
-                    'instructor_id': template['instructor_id'],
-                    'location': template['location'] ?? 'Sala 1° piano',
-                    'max_capacity': template['max_capacity'] ?? 20,
-                    'notes': template['notes'] ?? '',
-                  },
-                )
-                .toList();
+        final templatesToInsert = _scheduleTemplates
+            .map(
+              (template) => {
+                'seasonal_schedule_id': widget.currentSeason!['id'],
+                'day_of_week': template['day_of_week'],
+                'start_time': template['start_time'],
+                'end_time': template['end_time'],
+                'discipline': template['discipline'],
+                'instructor_id': template['instructor_id'],
+                'location': template['location'] ?? 'Sala 1° piano',
+                'max_capacity': template['max_capacity'] ?? 20,
+                'notes': template['notes'] ?? '',
+              },
+            )
+            .toList();
 
         await _supabase
             .from('weekly_schedule_templates')
@@ -172,8 +210,8 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
       try {
         await _supabase
             .from('seasonal_schedules')
-            .update({'updated_at': DateTime.now().toIso8601String()})
-            .eq('id', widget.currentSeason!['id']);
+            .update({'updated_at': DateTime.now().toIso8601String()}).eq(
+                'id', widget.currentSeason!['id']);
       } catch (_) {}
 
       // Reload templates to get the saved data with proper IDs
@@ -184,7 +222,8 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
 
       _showSuccessMessage('Schema orari salvato con successo!');
     } catch (error) {
-      _showErrorMessage('Errore nel salvataggio schema orari: $error');
+      _showErrorMessage('seasonal_schedule.schema_save_error'
+          .tr(namedArgs: {'error': '$error'}));
     }
   }
 
@@ -196,10 +235,9 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
         'start_time': '19:00:00',
         'end_time': '20:30:00',
         'discipline': 'bjj',
-        'instructor_id':
-            _availableInstructors.isNotEmpty
-                ? _availableInstructors.first['id']
-                : null,
+        'instructor_id': _availableInstructors.isNotEmpty
+            ? _availableInstructors.first['id']
+            : null,
         'location': 'Sala 1° piano',
         'max_capacity': 20,
         'notes': '',
@@ -288,9 +326,9 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
             Text(
               'Crea Nuovo Palinsesto Stagionale',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
             SizedBox(height: 1.h),
             Text(
@@ -341,9 +379,9 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
                         style: Theme.of(
                           context,
                         ).textTheme.titleMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontWeight: FontWeight.w600,
-                        ),
+                              color: Theme.of(context).colorScheme.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
                       ),
                       Text(
                         widget.currentSeason!['title'] ?? 'Senza titolo',
@@ -392,9 +430,9 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
             Text(
               'Configurazione Stagione',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
             SizedBox(height: 3.h),
 
@@ -437,9 +475,9 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
             Text(
               'Periodo Stagionale',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
             SizedBox(height: 2.h),
 
@@ -531,9 +569,9 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
                         style: Theme.of(
                           context,
                         ).textTheme.titleMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontWeight: FontWeight.w600,
-                        ),
+                              color: Theme.of(context).colorScheme.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
                       ),
                       Text(
                         'Configura gli orari per tutti i giorni della settimana. Vedrai gli orari aggiunti per ciascun giorno.',
@@ -548,7 +586,7 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
                 ElevatedButton.icon(
                   onPressed: _addScheduleTemplate,
                   icon: Icon(Icons.add, size: 18),
-                  label: Text('Aggiungi Orario'),
+                  label: Text('seasonal_schedule.add_schedule_time'.tr()),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Theme.of(context).colorScheme.secondary,
                     foregroundColor: Theme.of(context).colorScheme.onSecondary,
@@ -595,7 +633,7 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
                     SizedBox(width: 3.w),
                     Expanded(
                       child: Text(
-                        'Una volta completata la configurazione, vai alla sezione "Operazioni" per generare automaticamente tutte le lezioni dell\'anno considerando le festività.',
+                        'seasonal_schedule.config_ops_hint'.tr(),
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.primary,
                           fontSize: 12,
@@ -613,7 +651,7 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
                 child: ElevatedButton.icon(
                   onPressed: _saveScheduleTemplates,
                   icon: Icon(Icons.save, size: 18),
-                  label: Text('Salva Schema Orari'),
+                  label: Text('seasonal_schedule.save_schedule_schema'.tr()),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
@@ -644,14 +682,12 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
     // Group schedules by day
     Map<String, List<Map<String, dynamic>>> schedulesByDay = {};
     for (String day in daysOfWeek.keys) {
-      schedulesByDay[day] =
-          _scheduleTemplates
-              .where((template) => template['day_of_week'] == day)
-              .toList()
-            ..sort(
-              (a, b) =>
-                  (a['start_time'] ?? '').compareTo(b['start_time'] ?? ''),
-            );
+      schedulesByDay[day] = _scheduleTemplates
+          .where((template) => template['day_of_week'] == day)
+          .toList()
+        ..sort(
+          (a, b) => (a['start_time'] ?? '').compareTo(b['start_time'] ?? ''),
+        );
     }
 
     return Container(
@@ -676,11 +712,11 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
               ),
               SizedBox(width: 2.w),
               Text(
-                'Panoramica Settimanale',
+                'seasonal_schedule.weekly_overview'.tr(),
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
               ),
             ],
           ),
@@ -711,12 +747,11 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
                         width: 4,
                         height: 16,
                         decoration: BoxDecoration(
-                          color:
-                              daySchedules.isEmpty
-                                  ? Theme.of(
-                                    context,
-                                  ).colorScheme.outline.withValues(alpha: 0.3)
-                                  : Theme.of(context).colorScheme.secondary,
+                          color: daySchedules.isEmpty
+                              ? Theme.of(
+                                  context,
+                                ).colorScheme.outline.withValues(alpha: 0.3)
+                              : Theme.of(context).colorScheme.secondary,
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -736,24 +771,24 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
                           vertical: 0.5.h,
                         ),
                         decoration: BoxDecoration(
-                          color:
-                              daySchedules.isEmpty
-                                  ? Theme.of(
-                                    context,
-                                  ).colorScheme.outline.withValues(alpha: 0.1)
-                                  : Theme.of(context).colorScheme.secondary
-                                      .withValues(alpha: 0.1),
+                          color: daySchedules.isEmpty
+                              ? Theme.of(
+                                  context,
+                                ).colorScheme.outline.withValues(alpha: 0.1)
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .secondary
+                                  .withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
                           '${daySchedules.length} orari',
                           style: TextStyle(
-                            color:
-                                daySchedules.isEmpty
-                                    ? Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant
-                                    : Theme.of(context).colorScheme.secondary,
+                            color: daySchedules.isEmpty
+                                ? Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant
+                                : Theme.of(context).colorScheme.secondary,
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
                           ),
@@ -816,10 +851,9 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
                                   Text(
                                     discipline,
                                     style: TextStyle(
-                                      color:
-                                          Theme.of(
-                                            context,
-                                          ).colorScheme.onSurface,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface,
                                       fontSize: 11,
                                       fontWeight: FontWeight.w500,
                                     ),
@@ -828,10 +862,9 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
                                     Text(
                                       location,
                                       style: TextStyle(
-                                        color:
-                                            Theme.of(
-                                              context,
-                                            ).colorScheme.onSurfaceVariant,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
                                         fontSize: 10,
                                       ),
                                     ),
@@ -846,7 +879,7 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
                     Padding(
                       padding: EdgeInsets.only(top: 1.h),
                       child: Text(
-                        'Nessun orario configurato',
+                        'seasonal_schedule.no_schedule_in_card'.tr(),
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 12,
@@ -863,21 +896,35 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
     );
   }
 
+  /// Maps discipline to a value that exists in the dropdown.
+  String _normalizeDisciplineForDropdown(dynamic discipline) {
+    final s = (discipline?.toString() ?? '').trim();
+    if (s.isEmpty)
+      return _availableDisciplines.isNotEmpty
+          ? _availableDisciplines.first['id'] as String
+          : '';
+    // Check if it's already a valid custom discipline id
+    if (_availableDisciplines.any((d) => d['id'] == s)) return s;
+    // Legacy ENUM mapping: try to find by case-insensitive match on label
+    final match = _availableDisciplines.firstWhere(
+      (d) =>
+          (d['label'] as String).toLowerCase() == s.toLowerCase() ||
+          (d['id'] as String).toLowerCase() == s.toLowerCase(),
+      orElse: () => _availableDisciplines.isNotEmpty
+          ? _availableDisciplines.first
+          : {'id': s, 'label': s},
+    );
+    return match['id'] as String;
+  }
+
   String _getDisciplineName(String? discipline) {
-    switch (discipline) {
-      case 'bjj':
-        return 'Brazilian Jiu-Jitsu (BJJ)';
-      case 'mma':
-        return 'Mixed Martial Arts (MMA)';
-      case 'sambo':
-        return 'Sambo';
-      case 'grappling':
-        return 'Grappling';
-      case 'fitness':
-        return 'Prep. Atletica';
-      default:
-        return 'Disciplina sconosciuta';
-    }
+    if (discipline == null || discipline.isEmpty)
+      return 'Disciplina sconosciuta';
+    final match = _availableDisciplines.firstWhere(
+      (d) => d['id'] == discipline,
+      orElse: () => {'id': discipline, 'label': discipline},
+    );
+    return match['label'] as String;
   }
 
   Widget _buildEmptyScheduleState() {
@@ -902,15 +949,15 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
           ),
           SizedBox(height: 2.h),
           Text(
-            'Nessun Orario Configurato',
+            'seasonal_schedule.no_schedule_title'.tr(),
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
           ),
           SizedBox(height: 1.h),
           Text(
-            'Aggiungi il primo orario settimanale per iniziare la configurazione del palinsesto',
+            'seasonal_schedule.add_first_weekly_hint'.tr(),
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Theme.of(
@@ -982,7 +1029,7 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
           ),
           SizedBox(height: 1.h),
           DropdownButtonFormField<String>(
-            value: template['day_of_week'],
+            initialValue: template['day_of_week'],
             decoration: InputDecoration(
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -993,13 +1040,27 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
               ),
             ),
             items: [
-              DropdownMenuItem(value: 'monday', child: Text('Lunedì')),
-              DropdownMenuItem(value: 'tuesday', child: Text('Martedì')),
-              DropdownMenuItem(value: 'wednesday', child: Text('Mercoledì')),
-              DropdownMenuItem(value: 'thursday', child: Text('Giovedì')),
-              DropdownMenuItem(value: 'friday', child: Text('Venerdì')),
-              DropdownMenuItem(value: 'saturday', child: Text('Sabato')),
-              DropdownMenuItem(value: 'sunday', child: Text('Domenica')),
+              DropdownMenuItem(
+                  value: 'monday',
+                  child: Text('seasonal_schedule.monday'.tr())),
+              DropdownMenuItem(
+                  value: 'tuesday',
+                  child: Text('seasonal_schedule.tuesday'.tr())),
+              DropdownMenuItem(
+                  value: 'wednesday',
+                  child: Text('seasonal_schedule.wednesday'.tr())),
+              DropdownMenuItem(
+                  value: 'thursday',
+                  child: Text('seasonal_schedule.thursday'.tr())),
+              DropdownMenuItem(
+                  value: 'friday',
+                  child: Text('seasonal_schedule.friday'.tr())),
+              DropdownMenuItem(
+                  value: 'saturday',
+                  child: Text('seasonal_schedule.saturday'.tr())),
+              DropdownMenuItem(
+                  value: 'sunday',
+                  child: Text('seasonal_schedule.sunday'.tr())),
             ],
             onChanged: (value) {
               setState(() {
@@ -1093,36 +1154,36 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
             ),
           ),
           SizedBox(height: 1.h),
-          DropdownButtonFormField<String>(
-            value: template['discipline'],
-            decoration: InputDecoration(
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 3.w,
-                vertical: 1.h,
-              ),
-            ),
-            items: [
-              DropdownMenuItem(
-                value: 'bjj',
-                child: Text('Brazilian Jiu-Jitsu (BJJ)'),
-              ),
-              DropdownMenuItem(
-                value: 'mma',
-                child: Text('Mixed Martial Arts (MMA)'),
-              ),
-              DropdownMenuItem(value: 'sambo', child: Text('Sambo')),
-              DropdownMenuItem(value: 'grappling', child: Text('Grappling')),
-              DropdownMenuItem(value: 'fitness', child: Text('Prep. Atletica')),
-            ],
-            onChanged: (value) {
-              setState(() {
-                _scheduleTemplates[index]['discipline'] = value!;
-              });
-            },
-          ),
+          _isLoadingDisciplines
+              ? Container(
+                  height: 6.h,
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : DropdownButtonFormField<String>(
+                  initialValue: _availableDisciplines.isNotEmpty
+                      ? _normalizeDisciplineForDropdown(template['discipline'])
+                      : null,
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 3.w,
+                      vertical: 1.h,
+                    ),
+                  ),
+                  items: _availableDisciplines.map((discipline) {
+                    return DropdownMenuItem<String>(
+                      value: discipline['id'] as String,
+                      child: Text(discipline['label'] as String),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _scheduleTemplates[index]['discipline'] = value!;
+                    });
+                  },
+                ),
           SizedBox(height: 2.h),
 
           // Instructor Selection
@@ -1142,7 +1203,7 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
             )
           else
             DropdownButtonFormField<String>(
-              value: template['instructor_id'],
+              initialValue: template['instructor_id'],
               decoration: InputDecoration(
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -1152,13 +1213,12 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
                   vertical: 1.h,
                 ),
               ),
-              items:
-                  _availableInstructors.map((instructor) {
-                    return DropdownMenuItem<String>(
-                      value: instructor['id'],
-                      child: Text(instructor['full_name'] ?? 'Senza nome'),
-                    );
-                  }).toList(),
+              items: _availableInstructors.map((instructor) {
+                return DropdownMenuItem<String>(
+                  value: instructor['id'],
+                  child: Text(instructor['full_name'] ?? 'Senza nome'),
+                );
+              }).toList(),
               onChanged: (value) {
                 setState(() {
                   _scheduleTemplates[index]['instructor_id'] = value!;
@@ -1184,15 +1244,15 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
                     ),
                     SizedBox(height: 1.h),
                     DropdownButtonFormField<String>(
-                      value:
+                      initialValue:
                           // Normalize the stored human-readable label to the dropdown key
                           (template['location'] == null ||
                                   template['location'] == 'Sala Principale' ||
                                   template['location'] == 'Sala 1° piano')
                               ? 'sala_1_piano'
                               : template['location'] == 'Sala 2° piano'
-                              ? 'sala_2_piano'
-                              : 'sala_1_piano',
+                                  ? 'sala_2_piano'
+                                  : 'sala_1_piano',
                       decoration: InputDecoration(
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
@@ -1205,11 +1265,11 @@ class _SeasonConfigurationWidgetState extends State<SeasonConfigurationWidget> {
                       items: [
                         DropdownMenuItem(
                           value: 'sala_1_piano',
-                          child: Text('Sala 1° piano'),
+                          child: Text('seasonal_schedule.room_floor_1'.tr()),
                         ),
                         DropdownMenuItem(
                           value: 'sala_2_piano',
-                          child: Text('Sala 2° piano'),
+                          child: Text('seasonal_schedule.room_floor_2'.tr()),
                         ),
                       ],
                       onChanged: (value) {

@@ -5,9 +5,6 @@ class AppConstants {
   static const String teamAddress = 'via giulio bezzi 25, 48026 Russi - RA';
   static const String teamLogo = 'assets/images/146804-1762122410365.jpg';
 
-  // Martial Arts Disciplines - Production Ready
-  static const List<String> disciplines = ['BJJ', 'MMA', 'SAMBO', 'Grappling'];
-
   // App Configuration - Production Ready
   static const String appVersion = '1.0.0';
   static const String supportEmail = 'lutadordeeliteravenna@gmail.com';
@@ -24,32 +21,6 @@ class AppConstants {
   // Notification Constants
   static const String defaultNotificationTitle = 'Team Ragnarok APP';
   static const int maxNotifications = 50;
-
-  // Production-Ready Subscription Plans
-  // Note: These are now reference data - actual plans should be fetched from Supabase
-  static const List<Map<String, dynamic>> subscriptionPlansReference = [
-    {
-      "id": "single_entry",
-      "title": "Ingresso Singolo",
-      "price": 10,
-      "frequency": "Per Allenamento",
-      "description": "Un singolo ingresso per allenamento",
-    },
-    {
-      "id": "multi_entry_10",
-      "title": "Pacchetto 10 Ingressi",
-      "price": 80,
-      "frequency": "Pacchetto",
-      "description": "Pacchetto di 10 ingressi per allenamenti",
-    },
-    {
-      "id": "monthly_unlimited",
-      "title": "Abbonamento Mensile",
-      "price": 60,
-      "frequency": "Mensile",
-      "description": "Abbonamento mensile illimitato",
-    },
-  ];
 
   // Production Environment Settings
   static const bool isProduction = true;
@@ -74,26 +45,10 @@ class AppConstants {
 
   // Admin Account Configuration
   static const String principalAdminEmail = 'lutadordeeliteravenna@gmail.com';
-  static const List<String> testAccountEmails = [
-    'studente@teamragnarok.com',
-    'instructor@teamragnarok.com',
-  ];
 
   // Biometric Authentication Settings
   static const int biometricSetupTimeoutMinutes = 5;
   static const bool enableBiometricDebug = true; // Set to false in production
-
-  // User Approval Settings
-  static const List<String> autoApprovalTestAccounts = [
-    'studente@teamragnarok.com',
-    'instructor@teamragnarok.com',
-  ];
-
-  /// Check if an email is a test account (should not require admin approval)
-  static bool isTestAccount(String email) {
-    return autoApprovalTestAccounts.contains(email.toLowerCase()) ||
-        testAccountEmails.contains(email.toLowerCase());
-  }
 
   /// Check if an email is the principal admin account
   static bool isPrincipalAdminEmail(String email) {

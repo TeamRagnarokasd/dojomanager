@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sizer/sizer.dart';
+import '../../../core/app_export.dart';
 
 class SponsorImageUploadWidget extends StatefulWidget {
   final String? currentImageUrl;
@@ -96,7 +97,7 @@ class _SponsorImageUploadWidgetState extends State<SponsorImageUploadWidget> {
                 onPressed:
                     _isUploading ? null : () => _pickImage(ImageSource.gallery),
                 icon: const Icon(Icons.photo_library),
-                label: const Text('Galleria'),
+                label: Text('common.gallery'.tr()),
               ),
             ),
             SizedBox(width: 2.w),
@@ -105,7 +106,7 @@ class _SponsorImageUploadWidgetState extends State<SponsorImageUploadWidget> {
                 onPressed:
                     _isUploading ? null : () => _pickImage(ImageSource.camera),
                 icon: const Icon(Icons.camera_alt),
-                label: const Text('Fotocamera'),
+                label: Text('sponsor_ui.camera'.tr()),
               ),
             ),
             if (_selectedImage != null || widget.currentImageUrl != null) ...[
@@ -136,7 +137,7 @@ class _SponsorImageUploadWidgetState extends State<SponsorImageUploadWidget> {
             ),
             SizedBox(height: 2.h),
             Text(
-              'Caricamento in corso...',
+              'common.uploading'.tr(),
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ],
@@ -212,7 +213,7 @@ class _SponsorImageUploadWidgetState extends State<SponsorImageUploadWidget> {
         ),
         SizedBox(height: 2.h),
         Text(
-          'Carica un\'immagine',
+          'common.upload_image'.tr(),
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w500,
@@ -262,7 +263,7 @@ class _SponsorImageUploadWidgetState extends State<SponsorImageUploadWidget> {
         ),
         SizedBox(height: 2.h),
         Text(
-          'Errore nel caricamento\ndell\'immagine',
+          'sponsor_ui.image_load_error'.tr(),
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.error,
@@ -331,7 +332,8 @@ class _SponsorImageUploadWidgetState extends State<SponsorImageUploadWidget> {
       }
     } catch (error) {
       setState(() {
-        _error = 'Errore nella selezione dell\'immagine: ${error.toString()}';
+        _error = 'sponsor_ui.image_select_error'
+            .tr(namedArgs: {'error': error.toString()});
       });
       print('Error picking image: $error');
     }

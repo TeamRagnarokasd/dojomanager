@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
@@ -44,14 +43,14 @@ class AdminReceiptListWidget extends StatelessWidget {
           ),
           SizedBox(height: 2.h),
           Text(
-            'Nessuna ricevuta trovata',
+            'receipt.no_receipts_found'.tr(),
             style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
               color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
             ),
           ),
           SizedBox(height: 1.h),
           Text(
-            'Le ricevute emesse appariranno qui',
+            'receipt.empty_list_hint'.tr(),
             style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
               color: AppTheme.lightTheme.colorScheme.onSurfaceVariant
                   .withValues(alpha: 0.7),
@@ -323,9 +322,9 @@ class AdminReceiptListWidget extends StatelessWidget {
       case 'satispay':
         return 'Satispay';
       case 'cash':
-        return 'Contanti';
+        return 'payment.cash'.tr();
       case 'bank_transfer':
-        return 'Bonifico';
+        return 'payment.bank_transfer'.tr();
       default:
         return method.toUpperCase();
     }

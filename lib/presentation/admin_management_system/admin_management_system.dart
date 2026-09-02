@@ -1,12 +1,12 @@
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_export.dart';
+import '../../services/italian_receipt_service.dart';
 import '../../services/supabase_service.dart';
-import '../../theme/app_theme.dart';
 
 class AdminManagementSystem extends StatefulWidget {
   const AdminManagementSystem({super.key});
@@ -65,13 +65,38 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   String _selectedStatus = 'approved';
   String _selectedRole = 'student';
   String _selectedMedicalCertificateStatus = 'pending';
+  String _selectedRoleTitle =
+      'profile.default_student_role'.tr(); // NEW: Role title state
 
   Map<String, dynamic>? selectedUserForEdit;
+
+  // Team data controllers
+  final TextEditingController _teamNameController = TextEditingController();
+  final TextEditingController _teamAddressController = TextEditingController();
+  final TextEditingController _teamTaxCodeController = TextEditingController();
+  final TextEditingController _teamPhoneController = TextEditingController();
+  final TextEditingController _teamEmailController = TextEditingController();
+  final TextEditingController _teamPecController = TextEditingController();
+  bool _isLoadingTeamData = false;
+  bool _isSavingTeamData = false;
+  Map<String, dynamic>? _teamOrgInfo;
 
   @override
   void initState() {
     super.initState();
     _initializeAdminSystem();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map && args['initialTab'] != null) {
+      final tab = args['initialTab'] as String;
+      if (selectedTab != tab) {
+        setState(() => selectedTab = tab);
+      }
+    }
   }
 
   @override
@@ -98,6 +123,13 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
     _editParentGuardianCodiceFiscaleController.dispose();
     _editParentGuardianRelationController.dispose();
 
+    _teamNameController.dispose();
+    _teamAddressController.dispose();
+    _teamTaxCodeController.dispose();
+    _teamPhoneController.dispose();
+    _teamEmailController.dispose();
+    _teamPecController.dispose();
+
     super.dispose();
   }
 
@@ -106,7 +138,9 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       await _checkAdminAccess();
       await _loadSystemData();
     } catch (e) {
-      _showErrorMessage('Errore di accesso: ${e.toString()}');
+      _showErrorMessage(
+        'admin_management.access_error'.tr(namedArgs: {'error': e.toString()}),
+      );
     } finally {
       if (mounted) {
         setState(() => isLoading = false);
@@ -143,7 +177,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       }
     } catch (e) {
       print('Error checking admin access: $e');
-      throw Exception('Errore nel controllo dei permessi amministratore');
+      throw Exception('admin_management.admin_permission_error'.tr());
     }
   }
 
@@ -157,7 +191,33 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
             .from('user_profiles')
             .select()
             .order('created_at', ascending: false);
-        systemUsers = usersResponse ?? [];
+
+        final rawUsers = List<Map<String, dynamic>>.from(usersResponse ?? []);
+
+        // Fetch child profiles for each user
+        final enrichedUsers = await Future.wait(
+          rawUsers.map((user) async {
+            try {
+              final childrenResponse = await client
+                  .from('child_profiles')
+                  .select(
+                    'id, first_name, last_name, birth_date, image_consent, is_active, tax_code, codice_fiscale, profile_photo_url, medical_certificate_url, medical_certificate_pending, medical_certificate_uploaded_at',
+                  )
+                  .eq('guardian_id', user['id'])
+                  .eq('is_active', true)
+                  .order('created_at', ascending: true);
+              user['child_profiles'] = List<Map<String, dynamic>>.from(
+                childrenResponse,
+              );
+            } catch (e) {
+              debugPrint('Error fetching children for user ${user['id']}: $e');
+              user['child_profiles'] = <Map<String, dynamic>>[];
+            }
+            return user;
+          }),
+        );
+
+        systemUsers = enrichedUsers;
       } catch (e) {
         print('Error loading users: $e');
         systemUsers = [];
@@ -208,7 +268,9 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       await _loadSystemData();
     } catch (e) {
       print('Error promoting user: $e');
-      _showErrorMessage('Errore nella promozione: ${e.toString()}');
+      _showErrorMessage(
+        'admin_management.promote_error'.tr(namedArgs: {'error': e.toString()}),
+      );
     }
   }
 
@@ -233,7 +295,9 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       await _loadSystemData();
     } catch (e) {
       print('Error updating user profile: $e');
-      _showErrorMessage('Errore nell\'aggiornamento: ${e.toString()}');
+      _showErrorMessage(
+        'admin_management.update_error'.tr(namedArgs: {'error': e.toString()}),
+      );
     }
   }
 
@@ -248,18 +312,18 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         final result = await showDialog<ImageSource>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text('Seleziona fonte immagine'),
+            title: Text('admin_management.image_source_title'.tr()),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 ListTile(
                   leading: Icon(Icons.camera_alt),
-                  title: Text('Camera'),
+                  title: Text('common.camera'.tr()),
                   onTap: () => Navigator.pop(context, ImageSource.camera),
                 ),
                 ListTile(
                   leading: Icon(Icons.photo_library),
-                  title: Text('Galleria'),
+                  title: Text('common.gallery'.tr()),
                   onTap: () => Navigator.pop(context, ImageSource.gallery),
                 ),
               ],
@@ -294,7 +358,11 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       }
     } catch (e) {
       print('Error updating user photo: $e');
-      _showErrorMessage('Errore nell\'aggiornamento foto: ${e.toString()}');
+      _showErrorMessage(
+        'admin_management.photo_update_error'.tr(
+          namedArgs: {'error': e.toString()},
+        ),
+      );
     }
   }
 
@@ -326,7 +394,9 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       await _loadSystemData();
     } catch (e) {
       print('Error sending communication: $e');
-      _showErrorMessage('Errore nell\'invio: ${e.toString()}');
+      _showErrorMessage(
+        'admin_management.send_error'.tr(namedArgs: {'error': e.toString()}),
+      );
     }
   }
 
@@ -341,12 +411,12 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       return;
     }
 
-    // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
+    // Show confirmation dialog with receipt choice
+    final choice = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          'Conferma Eliminazione',
+          'admin_management.confirm_deletion'.tr(),
           style: GoogleFonts.inter(fontWeight: FontWeight.w600),
         ),
         content: Column(
@@ -365,10 +435,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            Text(
-              'Email: $userEmail',
-              style: GoogleFonts.inter(fontSize: 14),
-            ),
+            Text('Email: $userEmail', style: GoogleFonts.inter(fontSize: 14)),
             SizedBox(height: 16),
             Container(
               padding: EdgeInsets.all(12),
@@ -381,7 +448,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '⚠️ Attenzione:',
+                    '⚠️ Cosa vuoi fare con le ricevute associate?',
                     style: GoogleFonts.inter(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -390,7 +457,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                   ),
                   SizedBox(height: 4),
                   Text(
-                    '• L\'utente verrà eliminato permanentemente\n• Le ricevute associate verranno preservate\n• Questa azione non può essere annullata',
+                    'Scegli se conservare o eliminare le ricevute collegate a questo utente.',
                     style: GoogleFonts.inter(
                       fontSize: 11,
                       color: Colors.orange.shade800,
@@ -403,43 +470,109 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('Annulla'),
+            onPressed: () => Navigator.pop(context, null),
+            child: Text('common.cancel'.tr()),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'keep_receipts'),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.orange.shade700,
+            ),
+            child: Text(
+              'Elimina utente\n(conserva ricevute)',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(fontSize: 12),
+            ),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(context, 'delete_receipts'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            child: Text('Elimina'),
+            child: Text(
+              'Elimina tutto\n(utente + ricevute)',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(fontSize: 12),
+            ),
           ),
         ],
       ),
     );
 
-    if (confirmed != true) return;
+    if (choice == null) return;
 
     try {
       final client = SupabaseService.instance.client;
 
-      // Call the safe_delete_user function
-      final result = await client.rpc(
-        'safe_delete_user',
-        params: {'target_user_id': userId},
-      );
-
-      if (result['success'] == true) {
-        _showSuccessMessage(
-          'Utente eliminato con successo (ricevute preservate)',
+      if (choice == 'delete_receipts') {
+        // Call function that also deletes receipts
+        final rawResult = await client.rpc(
+          'safe_delete_user_with_receipts',
+          params: {'target_user_id': userId},
         );
-        await _loadSystemData(); // Refresh the user list
+        // RPC may return a Map or a List wrapping a Map
+        final result = rawResult is List ? rawResult.first : rawResult;
+        if (result is Map && result['success'] == true) {
+          final int receiptsCount =
+              (result['receipts_count'] as num?)?.toInt() ?? 0;
+          final String msg = receiptsCount == 0
+              ? 'Utente eliminato con successo. Nessuna ricevuta associata trovata.'
+              : 'Utente e $receiptsCount ricevuta/e associate eliminati con successo.';
+          _showSuccessMessage(msg);
+          await _loadSystemData();
+        } else {
+          _showErrorMessage(
+            (result is Map ? result['error']?.toString() : null) ??
+                'admin_management.delete_error'.tr(namedArgs: {'error': ''}),
+          );
+        }
       } else {
-        _showErrorMessage(result['error'] ?? 'Errore durante l\'eliminazione');
+        // Call the safe_delete_user function (preserves receipts)
+        final result = await client.rpc(
+          'safe_delete_user',
+          params: {'target_user_id': userId},
+        );
+        if (result['success'] == true) {
+          _showSuccessMessage(
+            'Utente eliminato con successo (ricevute preservate)',
+          );
+          await _loadSystemData();
+        } else {
+          _showErrorMessage(
+            result['error']?.toString() ??
+                'admin_management.delete_error'.tr(namedArgs: {'error': ''}),
+          );
+        }
       }
     } catch (e) {
       print('Error deleting user: $e');
-      _showErrorMessage('Errore durante l\'eliminazione: ${e.toString()}');
+      _showErrorMessage(
+        'admin_management.delete_error'.tr(namedArgs: {'error': e.toString()}),
+      );
+    }
+  }
+
+  Future<void> _acceptUser(String userId, String userName) async {
+    try {
+      final client = SupabaseService.instance.client;
+
+      // CRITICAL FIX: Direct update with 'approved' status (ENUM compliant)
+      await client
+          .from('user_profiles')
+          .update({'status': 'approved'}) // CRITICAL: Must use 'approved'
+          .eq('id', userId);
+
+      // Force UI refresh
+      if (mounted) {
+        setState(() {});
+      }
+
+      _showSuccessMessage('Utente $userName approvato con successo!');
+      await _loadSystemData(); // Refresh the user list
+    } catch (e) {
+      print('Error approving user: $e');
+      _showErrorMessage('Errore: ${e.toString()}');
     }
   }
 
@@ -475,7 +608,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         appBar: AppBar(
           backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
           title: Text(
-            'Gestione Sistema',
+            'admin_management.title'.tr(),
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurface,
               fontSize: 18,
@@ -505,7 +638,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Gestione Sistema',
+              'admin_management.title'.tr(),
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 18,
@@ -611,7 +744,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                               ),
                             ),
                             Text(
-                              'Gestione Sistema',
+                              'admin_management.title'.tr(),
                               style: TextStyle(
                                 color: Theme.of(
                                   context,
@@ -731,22 +864,27 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       padding: EdgeInsets.all(16),
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Gestione Utenti Sistema',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
+            Expanded(
+              child: Text(
+                'admin_management.user_management_title'.tr(),
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
+            SizedBox(width: 8),
             ElevatedButton.icon(
               onPressed: _loadSystemData,
               icon: Icon(Icons.refresh, size: 18),
-              label: Text('Aggiorna'),
+              label: Text('admin_management.add_short'.tr()),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.primary,
                 foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
             ),
           ],
@@ -764,7 +902,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                 ),
                 SizedBox(height: 16),
                 Text(
-                  'Nessun utente trovato',
+                  'reminders.no_users_found'.tr(),
                   style: TextStyle(
                     fontSize: 16,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -782,151 +920,1066 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   Widget _buildUserCard(Map<String, dynamic> user) {
     final role = user['role']?.toString() ?? 'student';
     final isActive = user['is_active'] == true;
+    final userStatus = user['status']?.toString() ?? 'pending';
     final userEmail = user['email']?.toString() ?? '';
     final userName = user['full_name']?.toString() ?? 'Nome non disponibile';
     final userId = user['id']?.toString() ?? '';
+    final roleTitle =
+        user['role_title']?.toString() ?? 'profile.default_student_role'.tr();
 
-    return Container(
-      margin: EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(12.0),
-        elevation: 2,
-        shadowColor: Theme.of(context).shadowColor.withValues(alpha: 0.1),
-        child: InkWell(
-          onTap: () => _showUserEditDialog(user),
-          borderRadius: BorderRadius.circular(12.0),
-          child: Container(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () => _updateUserPhoto(user['id']),
-                      child: CircleAvatar(
-                        backgroundColor: _getRoleColor(
-                          role,
-                        ).withValues(alpha: 0.1),
-                        backgroundImage: user['profile_image_url'] != null
-                            ? NetworkImage(user['profile_image_url'])
-                            : null,
-                        child: user['profile_image_url'] == null
-                            ? Icon(
-                                _getRoleIcon(role),
-                                color: _getRoleColor(role),
-                                size: 20,
-                              )
-                            : null,
+    final needsAcceptance = userStatus != 'approved';
+
+    final childProfiles = (user['child_profiles'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          margin: EdgeInsets.only(bottom: childProfiles.isEmpty ? 12 : 4),
+          child: Material(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(12.0),
+            elevation: 2,
+            shadowColor: Theme.of(context).shadowColor.withValues(alpha: 0.1),
+            child: Container(
+              padding: EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () => _updateUserPhoto(user['id']),
+                        child: CircleAvatar(
+                          backgroundColor: _getRoleColor(
+                            role,
+                          ).withValues(alpha: 0.1),
+                          backgroundImage: user['profile_image_url'] != null
+                              ? NetworkImage(user['profile_image_url'])
+                              : null,
+                          child: user['profile_image_url'] == null
+                              ? Icon(
+                                  _getRoleIcon(role),
+                                  color: _getRoleColor(role),
+                                  size: 20,
+                                )
+                              : null,
+                        ),
                       ),
-                    ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            userName,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
-                          ),
-                          Text(
-                            userEmail,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          if (user['phone'] != null)
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                             Text(
-                              'Tel: ${user['phone']}',
+                              userName,
                               style: TextStyle(
-                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                            ),
+                            Text(
+                              userEmail,
+                              style: TextStyle(
+                                fontSize: 12,
                                 color: Theme.of(
                                   context,
                                 ).colorScheme.onSurfaceVariant,
                               ),
                             ),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.badge,
+                                  size: 12,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Ruolo: $roleTitle',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (user['phone'] != null)
+                              Text(
+                                'Tel: ${user['phone']}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _getRoleColor(role).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12.0),
+                        ),
+                        child: Text(
+                          _getRoleLabel(role),
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                            color: _getRoleColor(role),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 12),
+                  // Action row — use Wrap to avoid overflow
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isActive ? Icons.check_circle : Icons.cancel,
+                            color: isActive ? Colors.green : Colors.red,
+                            size: 14,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            isActive
+                                ? 'admin_management.active_status'.tr()
+                                : 'admin_management.deactivated_status'.tr(),
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: isActive ? Colors.green : Colors.red,
+                            ),
+                          ),
+                        ],
+                      ),
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.pushNamed(
+                            context,
+                            AppRoutes.userProfile,
+                            arguments: user,
+                          );
+                        },
+                        icon: Icon(Icons.person, size: 16),
+                        label: Text('admin_management.personal_card'.tr()),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Theme.of(
+                            context,
+                          ).colorScheme.primary,
+                          minimumSize: Size.zero,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                      if (needsAcceptance)
+                        IconButton(
+                          onPressed: () => _acceptUser(userId, userName),
+                          icon: Icon(Icons.check_circle, color: Colors.green),
+                          tooltip: 'admin_management.accept_user_tooltip'.tr(),
+                          iconSize: 24,
+                          padding: EdgeInsets.zero,
+                          constraints: BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                        ),
+                      if (isPrincipalAdmin || currentUser?['role'] == 'admin')
+                        IconButton(
+                          onPressed: () => _showRoleModificationDialog(user),
+                          icon: Icon(Icons.edit, color: Colors.blue),
+                          tooltip: 'admin_management.edit_role_tooltip'.tr(),
+                          iconSize: 20,
+                          padding: EdgeInsets.zero,
+                          constraints: BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                        ),
+                      if (isPrincipalAdmin &&
+                          userEmail != 'lutadordeeliteravenna@gmail.com')
+                        TextButton.icon(
+                          onPressed: () =>
+                              _deleteUser(userId, userName, userEmail),
+                          icon: Icon(Icons.delete, size: 16),
+                          label: Text('common.delete'.tr()),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            minimumSize: Size.zero,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                      if (isPrincipalAdmin && role != 'principal_admin')
+                        TextButton.icon(
+                          onPressed: () => _showPromotionDialog(user),
+                          icon: Icon(Icons.admin_panel_settings, size: 16),
+                          label: Text('profile.role'.tr()),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.orange,
+                            minimumSize: Size.zero,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // ── Child profiles inline under parent ──────────────────────
+        if (childProfiles.isNotEmpty)
+          Padding(
+            padding: EdgeInsets.only(left: 16, bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: childProfiles.map((child) {
+                final firstName = child['first_name'] as String? ?? '';
+                final lastName = child['last_name'] as String? ?? '';
+                final childName = '$firstName $lastName'.trim();
+                final imageConsent = child['image_consent'] as bool? ?? false;
+                final birthDate = child['birth_date'] as String?;
+                String? age;
+                if (birthDate != null) {
+                  try {
+                    final bd = DateTime.parse(birthDate);
+                    final now = DateTime.now();
+                    int a = now.year - bd.year;
+                    if (now.month < bd.month ||
+                        (now.month == bd.month && now.day < bd.day)) a--;
+                    age = '$a anni';
+                  } catch (_) {}
+                }
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => Navigator.pushNamed(
+                      context,
+                      AppRoutes.adminChildProfile,
+                      arguments: {'child': child, 'parent': user},
+                    ).then((_) => _loadSystemData()),
+                    borderRadius: BorderRadius.circular(10.0),
+                    child: Container(
+                      margin: EdgeInsets.only(bottom: 6),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(10.0),
+                        border: Border.all(
+                          color: imageConsent
+                              ? Colors.green.withValues(alpha: 0.4)
+                              : Colors.orange.withValues(alpha: 0.5),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          // Left accent bar
+                          Container(
+                            width: 3,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color:
+                                  imageConsent ? Colors.green : Colors.orange,
+                              borderRadius: BorderRadius.circular(2.0),
+                            ),
+                          ),
+                          SizedBox(width: 10),
+                          _ChildPhotoAvatar(
+                            storagePath: child['profile_photo_url'] as String?,
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        childName.isEmpty
+                                            ? 'Minore'
+                                            : childName,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onSurface,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.withValues(
+                                          alpha: 0.2,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          6.0,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'Minore',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10,
+                                          color: Colors.blue[300],
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: 3),
+                                Row(
+                                  children: [
+                                    if (age != null) ...[
+                                      Icon(
+                                        Icons.cake,
+                                        size: 11,
+                                        color: Colors.grey[500],
+                                      ),
+                                      SizedBox(width: 3),
+                                      Text(
+                                        age,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 11,
+                                          color: Colors.grey[400],
+                                        ),
+                                      ),
+                                      SizedBox(width: 10),
+                                    ],
+                                    Icon(
+                                      imageConsent
+                                          ? Icons.photo_camera
+                                          : Icons.no_photography_outlined,
+                                      size: 11,
+                                      color: imageConsent
+                                          ? Colors.green[400]
+                                          : Colors.orange[400],
+                                    ),
+                                    SizedBox(width: 3),
+                                    Text(
+                                      imageConsent
+                                          ? 'Liberatoria OK'
+                                          : 'No liberatoria',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 11,
+                                        color: imageConsent
+                                            ? Colors.green[400]
+                                            : Colors.orange[400],
+                                        fontWeight: imageConsent
+                                            ? FontWeight.w400
+                                            : FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Delete button (same logic as adults)
+                          if (isPrincipalAdmin)
+                            GestureDetector(
+                              onTap: () => _deleteChildProfile(child, user),
+                              child: Container(
+                                padding: EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withValues(alpha: 0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.red[400],
+                                  size: 16,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _getRoleColor(role).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12.0),
-                      ),
-                      child: Text(
-                        _getRoleLabel(role),
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                          color: _getRoleColor(role),
-                        ),
-                      ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // 🎯 Show edit dialog for a child/minor profile
+  void _showEditChildDialog(
+    Map<String, dynamic> child,
+    Map<String, dynamic> parentUser,
+  ) {
+    final childId = child['id']?.toString() ?? '';
+    final firstNameCtrl = TextEditingController(
+      text: child['first_name']?.toString() ?? '',
+    );
+    final lastNameCtrl = TextEditingController(
+      text: child['last_name']?.toString() ?? '',
+    );
+    final taxCodeCtrl = TextEditingController(
+      text: (child['tax_code'] ?? child['codice_fiscale'])?.toString() ?? '',
+    );
+    final phoneCtrl = TextEditingController(
+      text: child['phone']?.toString() ?? '',
+    );
+    final cityCtrl = TextEditingController(
+      text: child['city']?.toString() ?? '',
+    );
+    final emergencyNameCtrl = TextEditingController(
+      text: child['emergency_contact_name']?.toString() ?? '',
+    );
+    final emergencyPhoneCtrl = TextEditingController(
+      text: child['emergency_contact_phone']?.toString() ?? '',
+    );
+    final medicalNotesCtrl = TextEditingController(
+      text: child['medical_notes']?.toString() ?? '',
+    );
+    bool imageConsent = child['image_consent'] as bool? ?? false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, dialogSetState) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.child_care, color: Colors.blue[300]),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Modifica Profilo Minore',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Genitore: ${parentUser['full_name'] ?? ''}',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: Colors.grey[500],
+                  ),
+                ),
+                SizedBox(height: 16),
+                TextField(
+                  controller: firstNameCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Nome',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                  ],
+                    prefixIcon: Icon(Icons.person),
+                  ),
                 ),
                 SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(
-                      isActive ? Icons.check_circle : Icons.cancel,
-                      color: isActive ? Colors.green : Colors.red,
-                      size: 14,
+                TextField(
+                  controller: lastNameCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Cognome',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    SizedBox(width: 4),
-                    Text(
-                      isActive ? 'Attivo' : 'Disattivato',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: isActive ? Colors.green : Colors.red,
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                ),
+                SizedBox(height: 12),
+                TextField(
+                  controller: taxCodeCtrl,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    labelText: 'Codice Fiscale',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    prefixIcon: Icon(Icons.badge),
+                  ),
+                ),
+                SizedBox(height: 12),
+                TextField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(
+                    labelText: 'Telefono',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    prefixIcon: Icon(Icons.phone),
+                  ),
+                ),
+                SizedBox(height: 12),
+                TextField(
+                  controller: cityCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Città',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    prefixIcon: Icon(Icons.location_city),
+                  ),
+                ),
+                SizedBox(height: 12),
+                TextField(
+                  controller: emergencyNameCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Contatto emergenza (nome)',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    prefixIcon: Icon(Icons.emergency),
+                  ),
+                ),
+                SizedBox(height: 12),
+                TextField(
+                  controller: emergencyPhoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(
+                    labelText: 'Contatto emergenza (tel)',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    prefixIcon: Icon(Icons.phone_in_talk),
+                  ),
+                ),
+                SizedBox(height: 12),
+                TextField(
+                  controller: medicalNotesCtrl,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: 'Note mediche',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    prefixIcon: Icon(Icons.medical_services),
+                  ),
+                ),
+                SizedBox(height: 12),
+                // Image consent toggle
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: imageConsent
+                        ? Colors.green.withValues(alpha: 0.08)
+                        : Colors.orange.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: imageConsent
+                          ? Colors.green.withValues(alpha: 0.4)
+                          : Colors.orange.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        imageConsent
+                            ? Icons.photo_camera
+                            : Icons.no_photography_outlined,
+                        color: imageConsent ? Colors.green : Colors.orange,
+                        size: 20,
                       ),
-                    ),
-                    const Spacer(),
-                    TextButton.icon(
-                      onPressed: () => _showUserEditDialog(user),
-                      icon: Icon(Icons.edit, size: 16),
-                      label: Text('Modifica'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                    // Add delete button right next to edit button for admin-level users
-                    if (isPrincipalAdmin &&
-                        userEmail != 'lutadordeeliteravenna@gmail.com')
-                      TextButton.icon(
-                        onPressed: () =>
-                            _deleteUser(userId, userName, userEmail),
-                        icon: Icon(Icons.delete, size: 16),
-                        label: Text('Elimina'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.red,
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Liberatoria immagini',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
-                    if (isPrincipalAdmin && role != 'principal_admin')
-                      TextButton.icon(
-                        onPressed: () => _showPromotionDialog(user),
-                        icon: Icon(Icons.admin_panel_settings, size: 16),
-                        label: Text('Ruolo'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.orange,
-                        ),
+                      Switch(
+                        value: imageConsent,
+                        activeThumbColor: Colors.green,
+                        onChanged: (val) =>
+                            dialogSetState(() => imageConsent = val),
                       ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Annulla'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await _saveChildProfileChanges(
+                  childId: childId,
+                  firstName: firstNameCtrl.text,
+                  lastName: lastNameCtrl.text,
+                  taxCode: taxCodeCtrl.text,
+                  phone: phoneCtrl.text,
+                  city: cityCtrl.text,
+                  emergencyContactName: emergencyNameCtrl.text,
+                  emergencyContactPhone: emergencyPhoneCtrl.text,
+                  medicalNotes: medicalNotesCtrl.text,
+                  imageConsent: imageConsent,
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Colors.white,
+              ),
+              child: Text('Salva'),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  Future<void> _saveChildProfileChanges({
+    required String childId,
+    required String firstName,
+    required String lastName,
+    required String taxCode,
+    required String phone,
+    required String city,
+    required String emergencyContactName,
+    required String emergencyContactPhone,
+    required String medicalNotes,
+    required bool imageConsent,
+  }) async {
+    try {
+      final client = SupabaseService.instance.client;
+      final data = <String, dynamic>{
+        'first_name': firstName.trim(),
+        'last_name': lastName.trim(),
+        'image_consent': imageConsent,
+      };
+      if (taxCode.trim().isNotEmpty) {
+        data['tax_code'] = taxCode.trim().toUpperCase();
+        data['codice_fiscale'] = taxCode.trim().toUpperCase();
+      }
+      if (phone.trim().isNotEmpty) data['phone'] = phone.trim();
+      if (city.trim().isNotEmpty) data['city'] = city.trim();
+      if (emergencyContactName.trim().isNotEmpty)
+        data['emergency_contact_name'] = emergencyContactName.trim();
+      if (emergencyContactPhone.trim().isNotEmpty)
+        data['emergency_contact_phone'] = emergencyContactPhone.trim();
+      if (medicalNotes.trim().isNotEmpty)
+        data['medical_notes'] = medicalNotes.trim();
+
+      await client.from('child_profiles').update(data).eq('id', childId);
+      _showSuccessMessage('Profilo minore aggiornato con successo');
+      await _loadSystemData();
+    } catch (e) {
+      _showErrorMessage('Errore aggiornamento profilo minore: $e');
+    }
+  }
+
+  // 🎯 Delete a child/minor profile with confirmation dialog
+  Future<void> _deleteChildProfile(
+    Map<String, dynamic> child,
+    Map<String, dynamic> parentUser,
+  ) async {
+    final childId = child['id']?.toString() ?? '';
+    final firstName = child['first_name']?.toString() ?? '';
+    final lastName = child['last_name']?.toString() ?? '';
+    final childName = '$firstName $lastName'.trim();
+    final displayName = childName.isEmpty ? 'Minore' : childName;
+    final parentName = parentUser['full_name']?.toString() ?? 'Genitore';
+
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.delete_forever, color: Colors.red, size: 22),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Elimina Profilo Minore',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Sei sicuro di voler eliminare questo profilo minore?',
+              style: GoogleFonts.inter(fontSize: 16),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Minore: $displayName',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              'Genitore/Tutore: $parentName',
+              style: GoogleFonts.inter(fontSize: 14),
+            ),
+            SizedBox(height: 16),
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Text(
+                'ℹ️ Le ricevute non verranno eliminate: sono intestate al genitore, non al minore.',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: Colors.blue.shade800,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('common.cancel'.tr()),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(
+              'Elimina Profilo',
+              style: GoogleFonts.inter(fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final client = SupabaseService.instance.client;
+      // Delete only the child profile record — receipts belong to the parent
+      await client.from('child_profiles').delete().eq('id', childId);
+      _showSuccessMessage('Profilo minore eliminato con successo.');
+      await _loadSystemData();
+    } catch (e) {
+      debugPrint('Error deleting child profile: $e');
+      _showErrorMessage('Errore eliminazione profilo minore: ${e.toString()}');
+    }
+  }
+
+  // 🎯 NEW: Show role modification dialog with dropdown
+  void _showRoleModificationDialog(Map<String, dynamic> user) {
+    final currentRoleTitle =
+        user['role_title']?.toString() ?? 'profile.default_student_role'.tr();
+    String selectedRoleTitle = currentRoleTitle;
+    String selectedSystemRole = user['role']?.toString() ?? 'student';
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, dialogSetState) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.badge, color: Theme.of(context).colorScheme.primary),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'admin_management.edit_user_role_title'.tr(),
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'admin_management.edit_role_for'.tr(
+                    namedArgs: {'name': '${user['full_name']}'},
+                  ),
+                  style: GoogleFonts.inter(fontSize: 14),
+                ),
+                SizedBox(height: 16),
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'ℹ️ Stato attuale:',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue.shade800,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Titolo: $currentRoleTitle',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue.shade900,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Ruolo sistema: ${_getRoleLabel(user['role']?.toString() ?? 'student')}',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue.shade900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 16),
+                // ── SEZIONE 1: Ruolo di sistema ──
+                Text(
+                  'Ruolo di sistema (badge a destra)',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedSystemRole,
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    prefixIcon: Icon(Icons.admin_panel_settings),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 16,
+                    ),
+                  ),
+                  items: [
+                    DropdownMenuItem(value: 'student', child: Text('Studente')),
+                    DropdownMenuItem(
+                      value: 'instructor',
+                      child: Text('Istruttore'),
+                    ),
+                    DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                    DropdownMenuItem(
+                      value: 'instructor_admin',
+                      child: Text('Istruttore Admin'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'instructor_student',
+                      child: Text('Istruttore Allievo'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      dialogSetState(() {
+                        selectedSystemRole = value;
+                      });
+                    }
+                  },
+                ),
+                SizedBox(height: 16),
+                // ── SEZIONE 2: Titolo visibile ──
+                Text(
+                  'admin_management.select_new_role_label'.tr(),
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedRoleTitle,
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    prefixIcon: Icon(Icons.badge),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 16,
+                    ),
+                  ),
+                  items: [
+                    'profile.default_student_role'.tr(),
+                    'Pro',
+                    'Istruttore Fitness',
+                    'Coach',
+                    'Staff',
+                    'Headcoach',
+                    'Presidente',
+                  ].map((roleOption) {
+                    return DropdownMenuItem<String>(
+                      value: roleOption,
+                      child: Text(
+                        roleOption,
+                        style: GoogleFonts.inter(fontSize: 14),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      dialogSetState(() {
+                        selectedRoleTitle = value;
+                      });
+                    }
+                  },
+                ),
+                SizedBox(height: 16),
+                Container(
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Text(
+                    '⚠️ Questa modifica aggiornerà sia il ruolo di sistema che il titolo visibile nel profilo utente.',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      color: Colors.orange.shade800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('common.cancel'.tr()),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _updateUserRoleTitle(
+                  user['id'],
+                  selectedRoleTitle,
+                  user['full_name'],
+                  systemRole: selectedSystemRole,
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Colors.white,
+              ),
+              child: Text('common.save'.tr()),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 🎯 NEW: Update user role_title in database
+  Future<void> _updateUserRoleTitle(
+    String userId,
+    String newRoleTitle,
+    String userName, {
+    String? systemRole,
+  }) async {
+    // Security check: only admins can modify roles
+    if (!isPrincipalAdmin && currentUser?['role'] != 'admin') {
+      _showErrorMessage('Solo gli amministratori possono modificare i ruoli');
+      return;
+    }
+
+    try {
+      final client = SupabaseService.instance.client;
+
+      // Build update map
+      final Map<String, dynamic> updates = {'role_title': newRoleTitle};
+      if (systemRole != null) {
+        updates['role'] = systemRole;
+      }
+
+      // Update role_title (and optionally role) in user_profiles
+      await client.from('user_profiles').update(updates).eq('id', userId);
+
+      // Log the admin activity
+      await client.from('admin_activity_log').insert({
+        'admin_id': currentUser?['id'],
+        'action_type': 'ROLE_TITLE_UPDATE',
+        'description': systemRole != null
+            ? 'Ruolo sistema aggiornato a: $systemRole — Titolo: $newRoleTitle'
+            : 'Ruolo utente aggiornato a: $newRoleTitle',
+        'target_user_id': userId,
+      });
+
+      _showSuccessMessage('Ruolo di $userName aggiornato con successo');
+      await _loadSystemData(); // Refresh the user list
+    } catch (e) {
+      print('Error updating user role_title: $e');
+      _showErrorMessage(
+        'admin_management.role_update_error'.tr(
+          namedArgs: {'error': e.toString()},
+        ),
+      );
+    }
   }
 
   Widget _buildCommunicationsTab() {
@@ -978,8 +2031,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
               TextField(
                 controller: _communicationTitleController,
                 decoration: InputDecoration(
-                  labelText: 'Titolo *',
-                  hintText: 'Inserisci il titolo della comunicazione',
+                  labelText: 'admin_management.comm_title_label'.tr(),
+                  hintText: 'admin_management.comm_title_hint'.tr(),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
                   ),
@@ -991,9 +2044,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                 controller: _communicationContentController,
                 maxLines: 4,
                 decoration: InputDecoration(
-                  labelText: 'Contenuto *',
-                  hintText:
-                      'Scrivi il messaggio importante per tutti gli utenti...',
+                  labelText: 'admin_management.comm_content_label'.tr(),
+                  hintText: 'admin_management.comm_content_hint'.tr(),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
                   ),
@@ -1019,7 +2071,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                 child: ElevatedButton.icon(
                   onPressed: _sendCommunication,
                   icon: Icon(Icons.send),
-                  label: Text('Invia Comunicazione'),
+                  label: Text('admin_management.send_communication'.tr()),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryColor,
                     foregroundColor: Colors.white,
@@ -1057,7 +2109,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                   ),
                   SizedBox(height: 16),
                   Text(
-                    'Nessuna comunicazione inviata',
+                    'common.no_communications'.tr(),
                     style: GoogleFonts.inter(
                       fontSize: 16,
                       color: AppTheme.textSecondaryLight,
@@ -1136,7 +2188,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
           Row(
             children: [
               Text(
-                'Destinatari: ${communication['target_audience'] ?? 'Tutti'}',
+                'Destinatari: ${communication['target_audience'] ?? 'disciplines.all'.tr()}',
                 style: GoogleFonts.inter(
                   fontSize: 11,
                   color: AppTheme.textSecondaryLight,
@@ -1170,6 +2222,11 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
           ),
         ),
         SizedBox(height: 16),
+
+        // ── TEAM DATA CARD ──────────────────────────────────────────────
+        _buildTeamDataCard(),
+        SizedBox(height: 16),
+
         // Principal Admin Credentials Card
         Container(
           padding: EdgeInsets.all(16),
@@ -1238,6 +2295,242 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         ),
       ],
     );
+  }
+
+  Widget _buildTeamDataCard() {
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(13),
+            blurRadius: 8.0,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.business, color: Colors.red.shade700, size: 20),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Dati Team / ASD',
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: AppTheme.textPrimaryLight,
+                  ),
+                ),
+              ),
+              if (_teamOrgInfo == null && !_isLoadingTeamData)
+                TextButton.icon(
+                  onPressed: _loadTeamData,
+                  icon: Icon(Icons.edit, size: 16),
+                  label: Text('Modifica'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.red.shade700,
+                  ),
+                ),
+            ],
+          ),
+          SizedBox(height: 4),
+          Text(
+            'Modifica i dati del team che appaiono nelle ricevute non fiscali.',
+            style: GoogleFonts.inter(fontSize: 11, color: Colors.grey.shade600),
+          ),
+          SizedBox(height: 12),
+          if (_isLoadingTeamData)
+            Center(child: CircularProgressIndicator())
+          else if (_teamOrgInfo == null)
+            OutlinedButton.icon(
+              onPressed: _loadTeamData,
+              icon: Icon(Icons.edit_note),
+              label: Text('Carica e modifica dati team'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red.shade700,
+                side: BorderSide(color: Colors.red.shade300),
+              ),
+            )
+          else
+            _buildTeamDataForm(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTeamDataForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildTextField(
+          controller: _teamNameController,
+          label: 'Nome ASD / Team',
+          icon: Icons.business,
+        ),
+        SizedBox(height: 12),
+        _buildTextField(
+          controller: _teamAddressController,
+          label: 'Indirizzo sede (via, città, CAP)',
+          icon: Icons.location_on,
+          maxLines: 2,
+        ),
+        SizedBox(height: 12),
+        _buildTextField(
+          controller: _teamTaxCodeController,
+          label: 'Codice Fiscale',
+          icon: Icons.credit_card,
+        ),
+        SizedBox(height: 12),
+        _buildTextField(
+          controller: _teamPhoneController,
+          label: 'Telefono (opzionale)',
+          icon: Icons.phone,
+          keyboardType: TextInputType.phone,
+        ),
+        SizedBox(height: 12),
+        _buildTextField(
+          controller: _teamEmailController,
+          label: 'Email (opzionale)',
+          icon: Icons.email,
+          keyboardType: TextInputType.emailAddress,
+        ),
+        SizedBox(height: 12),
+        _buildTextField(
+          controller: _teamPecController,
+          label: 'PEC (opzionale)',
+          icon: Icons.mark_email_read,
+          keyboardType: TextInputType.emailAddress,
+        ),
+        SizedBox(height: 16),
+        Container(
+          padding: EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.blue.shade200),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, size: 14, color: Colors.blue.shade700),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Le modifiche saranno applicate a tutte le ricevute successive.',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: Colors.blue.shade700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () {
+                  setState(() => _teamOrgInfo = null);
+                },
+                child: Text('Annulla'),
+              ),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: _isSavingTeamData ? null : _saveTeamData,
+                icon: _isSavingTeamData
+                    ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(Icons.save),
+                label: Text(_isSavingTeamData ? 'Salvataggio...' : 'Salva'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _loadTeamData() async {
+    setState(() => _isLoadingTeamData = true);
+    try {
+      final italianReceiptService = ItalianReceiptService();
+      final orgInfo = await italianReceiptService.getOrganizationInfo();
+      _teamNameController.text = orgInfo.name;
+      _teamAddressController.text = orgInfo.address;
+      _teamTaxCodeController.text = orgInfo.taxCode;
+      _teamPhoneController.text = orgInfo.phone ?? '';
+      _teamEmailController.text = orgInfo.email ?? '';
+      _teamPecController.text = orgInfo.pec ?? '';
+      setState(() {
+        _teamOrgInfo = {
+          'id': orgInfo.id,
+          'name': orgInfo.name,
+          'address': orgInfo.address,
+          'tax_code': orgInfo.taxCode,
+          'phone': orgInfo.phone,
+          'email': orgInfo.email,
+          'pec': orgInfo.pec,
+        };
+        _isLoadingTeamData = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingTeamData = false);
+      _showErrorMessage('Errore nel caricamento dei dati team: $e');
+    }
+  }
+
+  Future<void> _saveTeamData() async {
+    if (_teamNameController.text.trim().isEmpty ||
+        _teamAddressController.text.trim().isEmpty ||
+        _teamTaxCodeController.text.trim().isEmpty) {
+      _showErrorMessage('Nome, indirizzo e codice fiscale sono obbligatori');
+      return;
+    }
+    setState(() => _isSavingTeamData = true);
+    try {
+      final italianReceiptService = ItalianReceiptService();
+      await italianReceiptService.updateOrganizationInfo(
+        name: _teamNameController.text.trim(),
+        address: _teamAddressController.text.trim(),
+        taxCode: _teamTaxCodeController.text.trim(),
+        phone: _teamPhoneController.text.trim().isEmpty
+            ? null
+            : _teamPhoneController.text.trim(),
+        email: _teamEmailController.text.trim().isEmpty
+            ? null
+            : _teamEmailController.text.trim(),
+        pec: _teamPecController.text.trim().isEmpty
+            ? null
+            : _teamPecController.text.trim(),
+      );
+      setState(() {
+        _isSavingTeamData = false;
+        _teamOrgInfo = null;
+      });
+      _showSuccessMessage('Dati team aggiornati con successo!');
+    } catch (e) {
+      setState(() => _isSavingTeamData = false);
+      _showErrorMessage('Errore nel salvataggio: $e');
+    }
   }
 
   void _showUserEditDialog(Map<String, dynamic> user) {
@@ -1309,7 +2602,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                       SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Modifica Profilo Utente Completo',
+                          'admin_management.edit_full_profile'.tr(),
                           style: GoogleFonts.inter(
                             fontWeight: FontWeight.w600,
                             fontSize: 18,
@@ -1334,7 +2627,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                       children: [
                         // User Info Section
                         _buildFormSection(
-                          'Informazioni Personali',
+                          'profile.personal_info'.tr(),
                           Icons.person,
                           [
                             _buildTextField(
@@ -1352,14 +2645,14 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                             SizedBox(height: 16),
                             _buildTextField(
                               controller: _editPhoneController,
-                              label: 'Telefono',
+                              label: 'profile.phone'.tr(),
                               icon: Icons.phone,
                               keyboardType: TextInputType.phone,
                             ),
                             SizedBox(height: 16),
                             _buildTextField(
                               controller: _editCodiceFiscaleController,
-                              label: 'Codice Fiscale',
+                              label: 'profile.tax_code'.tr(),
                               icon: Icons.credit_card,
                             ),
                             SizedBox(height: 16),
@@ -1390,9 +2683,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                                   border: Border.all(
                                     color: Colors.grey.shade400,
                                   ),
-                                  borderRadius: BorderRadius.circular(
-                                    8,
-                                  ),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Row(
                                   children: [
@@ -1404,7 +2695,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                                     Text(
                                       _selectedBirthDate != null
                                           ? '${_selectedBirthDate!.day}/${_selectedBirthDate!.month}/${_selectedBirthDate!.year}'
-                                          : 'Data di Nascita',
+                                          : 'profile.birth_date'.tr(),
                                       style: TextStyle(
                                         fontSize: 16,
                                         color: _selectedBirthDate != null
@@ -1423,12 +2714,12 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
 
                         // Address Section
                         _buildFormSection(
-                          'Indirizzo',
+                          'profile.address'.tr(),
                           Icons.location_on,
                           [
                             _buildTextField(
                               controller: _editAddressLineController,
-                              label: 'Indirizzo',
+                              label: 'profile.address'.tr(),
                               icon: Icons.home,
                             ),
                             SizedBox(height: 16),
@@ -1438,7 +2729,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                                   flex: 2,
                                   child: _buildTextField(
                                     controller: _editCityController,
-                                    label: 'Città',
+                                    label: 'profile.city'.tr(),
                                     icon: Icons.location_city,
                                   ),
                                 ),
@@ -1446,7 +2737,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                                 Expanded(
                                   child: _buildTextField(
                                     controller: _editProvinceController,
-                                    label: 'Provincia',
+                                    label: 'profile.province'.tr(),
                                     icon: Icons.map,
                                   ),
                                 ),
@@ -1455,7 +2746,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                             SizedBox(height: 16),
                             _buildTextField(
                               controller: _editCapController,
-                              label: 'CAP',
+                              label: 'profile.zip_code'.tr(),
                               icon: Icons.local_post_office,
                               keyboardType: TextInputType.number,
                             ),
@@ -1466,7 +2757,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
 
                         // Emergency Contact Section
                         _buildFormSection(
-                          'Contatto di Emergenza',
+                          'profile.emergency_contact'.tr(),
                           Icons.emergency,
                           [
                             _buildTextField(
@@ -1477,7 +2768,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                             SizedBox(height: 16),
                             _buildTextField(
                               controller: _editEmergencyPhoneController,
-                              label: 'Telefono Emergenza',
+                              label: 'profile.emergency_phone'.tr(),
                               icon: Icons.phone_in_talk,
                               keyboardType: TextInputType.phone,
                             ),
@@ -1488,16 +2779,14 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
 
                         // Parent/Guardian Section (if minor)
                         _buildFormSection(
-                          'Informazioni Genitore/Tutore',
+                          'profile.parent_guardian_info'.tr(),
                           Icons.family_restroom,
                           [
                             CheckboxListTile(
-                              title: Text('Utente Minorenne'),
+                              title: Text('admin_management.minor_user'.tr()),
                               value: _isMinor,
                               onChanged: (value) {
-                                dialogSetState(
-                                  () => _isMinor = value ?? false,
-                                );
+                                dialogSetState(() => _isMinor = value ?? false);
                               },
                             ),
                             if (_isMinor) ...[
@@ -1508,7 +2797,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                                     child: _buildTextField(
                                       controller:
                                           _editParentGuardianNameController,
-                                      label: 'Nome Genitore/Tutore',
+                                      label:
+                                          'profile.parent_guardian_name'.tr(),
                                       icon: Icons.person,
                                     ),
                                   ),
@@ -1526,14 +2816,14 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                               SizedBox(height: 16),
                               _buildTextField(
                                 controller: _editParentGuardianEmailController,
-                                label: 'Email Genitore/Tutore',
+                                label: 'profile.parent_guardian_email'.tr(),
                                 icon: Icons.email,
                                 keyboardType: TextInputType.emailAddress,
                               ),
                               SizedBox(height: 16),
                               _buildTextField(
                                 controller: _editParentGuardianPhoneController,
-                                label: 'Telefono Genitore/Tutore',
+                                label: 'profile.parent_guardian_phone'.tr(),
                                 icon: Icons.phone,
                                 keyboardType: TextInputType.phone,
                               ),
@@ -1541,7 +2831,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                               _buildTextField(
                                 controller:
                                     _editParentGuardianCodiceFiscaleController,
-                                label: 'Codice Fiscale Genitore/Tutore',
+                                label: 'profile.parent_guardian_tax_code'.tr(),
                                 icon: Icons.credit_card,
                               ),
                               SizedBox(height: 16),
@@ -1565,7 +2855,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                             Column(
                               children: [
                                 DropdownButtonFormField<String>(
-                                  value: _selectedRole,
+                                  initialValue: _selectedRole,
                                   decoration: InputDecoration(
                                     labelText: 'Ruolo Utente',
                                     border: OutlineInputBorder(
@@ -1578,20 +2868,25 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                                   items: [
                                     DropdownMenuItem(
                                       value: 'student',
-                                      child: Text('Studente'),
+                                      child: Text('roles.student'.tr()),
                                     ),
                                     DropdownMenuItem(
                                       value: 'instructor',
-                                      child: Text('Istruttore'),
+                                      child: Text(
+                                        'class_schedule.instructor'.tr(),
+                                      ),
                                     ),
                                     if (isPrincipalAdmin) ...[
                                       DropdownMenuItem(
                                         value: 'admin',
-                                        child: Text('Amministratore'),
+                                        child: Text('roles.admin'.tr()),
                                       ),
                                       DropdownMenuItem(
                                         value: 'instructor_admin',
-                                        child: Text('Istruttore Admin'),
+                                        child: Text(
+                                          'dashboard.role_instructor_admin'
+                                              .tr(),
+                                        ),
                                       ),
                                     ],
                                   ],
@@ -1605,32 +2900,32 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                                 ),
                                 SizedBox(height: 16),
                                 DropdownButtonFormField<String>(
-                                  value: _selectedStatus,
+                                  initialValue: _selectedStatus,
                                   decoration: InputDecoration(
                                     labelText: 'Stato Account',
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
                                     ),
-                                    prefixIcon: Icon(
-                                      Icons.check_circle,
-                                    ),
+                                    prefixIcon: Icon(Icons.check_circle),
                                   ),
                                   items: [
                                     DropdownMenuItem(
                                       value: 'pending',
-                                      child: Text('In Attesa'),
+                                      child: Text('common.pending'.tr()),
                                     ),
                                     DropdownMenuItem(
                                       value: 'approved',
-                                      child: Text('Approvato'),
+                                      child: Text('common.approved'.tr()),
                                     ),
                                     DropdownMenuItem(
                                       value: 'rejected',
-                                      child: Text('Rifiutato'),
+                                      child: Text('common.rejected'.tr()),
                                     ),
                                     DropdownMenuItem(
                                       value: 'suspended',
-                                      child: Text('Sospeso'),
+                                      child: Text(
+                                        'admin_management.suspended'.tr(),
+                                      ),
                                     ),
                                   ],
                                   onChanged: (value) {
@@ -1643,32 +2938,33 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                                 ),
                                 SizedBox(height: 16),
                                 DropdownButtonFormField<String>(
-                                  value: _selectedMedicalCertificateStatus,
+                                  initialValue:
+                                      _selectedMedicalCertificateStatus,
                                   decoration: InputDecoration(
                                     labelText: 'Stato Certificato Medico',
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
                                     ),
-                                    prefixIcon: Icon(
-                                      Icons.medical_services,
-                                    ),
+                                    prefixIcon: Icon(Icons.medical_services),
                                   ),
                                   items: [
                                     DropdownMenuItem(
                                       value: 'pending',
-                                      child: Text('In Attesa'),
+                                      child: Text('common.pending'.tr()),
                                     ),
                                     DropdownMenuItem(
                                       value: 'approved',
-                                      child: Text('Approvato'),
+                                      child: Text('common.approved'.tr()),
                                     ),
                                     DropdownMenuItem(
                                       value: 'expired',
-                                      child: Text('Scaduto'),
+                                      child: Text(
+                                        'profile.status_expired'.tr(),
+                                      ),
                                     ),
                                     DropdownMenuItem(
                                       value: 'rejected',
-                                      child: Text('Rifiutato'),
+                                      child: Text('common.rejected'.tr()),
                                     ),
                                   ],
                                   onChanged: (value) {
@@ -1683,7 +2979,9 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                                 ),
                                 SizedBox(height: 16),
                                 CheckboxListTile(
-                                  title: Text('Account Attivo'),
+                                  title: Text(
+                                    'admin_management.active_account'.tr(),
+                                  ),
                                   subtitle: Text(
                                     'L\'utente può accedere al sistema',
                                   ),
@@ -1721,7 +3019,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                           style: OutlinedButton.styleFrom(
                             padding: EdgeInsets.symmetric(vertical: 16),
                           ),
-                          child: Text('Annulla'),
+                          child: Text('common.cancel'.tr()),
                         ),
                       ),
                       SizedBox(width: 16),
@@ -1729,12 +3027,13 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                         child: ElevatedButton(
                           onPressed: () => _saveCompleteUserProfile(user),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                Theme.of(context).colorScheme.primary,
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
                             foregroundColor: Colors.white,
                             padding: EdgeInsets.symmetric(vertical: 16),
                           ),
-                          child: Text('Salva Modifiche'),
+                          child: Text('profile.save_changes'.tr()),
                         ),
                       ),
                     ],
@@ -1829,8 +3128,9 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
             : null;
         if (currentBirthDate == null ||
             !_selectedBirthDate!.isAtSameMomentAs(currentBirthDate)) {
-          updates['birth_date'] =
-              _selectedBirthDate!.toIso8601String().split('T')[0];
+          updates['birth_date'] = _selectedBirthDate!.toIso8601String().split(
+                'T',
+              )[0];
         }
       }
 
@@ -1958,7 +3258,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       } else {
         // No changes made
         Navigator.pop(context);
-        _showSuccessMessage('Nessuna modifica da salvare');
+        _showSuccessMessage('common.no_changes'.tr());
       }
     } catch (e) {
       // Close loading dialog if still open
@@ -1966,7 +3266,9 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         Navigator.pop(context);
       }
       print('Error saving complete user profile: $e');
-      _showErrorMessage('Errore nel salvataggio: ${e.toString()}');
+      _showErrorMessage(
+        'admin_management.save_error'.tr(namedArgs: {'error': e.toString()}),
+      );
     }
   }
 
@@ -1975,14 +3277,16 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          'Gestisci Ruolo Utente',
+          'admin_management.manage_user_role'.tr(),
           style: GoogleFonts.inter(fontWeight: FontWeight.w600),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Seleziona il nuovo ruolo per ${user['full_name']}:',
+              'admin_management.select_role_for'.tr(
+                namedArgs: {'name': '${user['full_name']}'},
+              ),
               style: GoogleFonts.inter(fontSize: 14),
             ),
             SizedBox(height: 16),
@@ -2006,7 +3310,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Annulla'),
+            child: Text('common.cancel'.tr()),
           ),
         ],
       ),
@@ -2048,16 +3352,117 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   String _getRoleLabel(String role) {
     switch (role) {
       case 'principal_admin':
-        return 'Admin Principale';
+        return 'dashboard.role_principal_admin'.tr();
       case 'admin':
-        return 'Amministratore';
+        return 'roles.admin'.tr();
       case 'instructor_admin':
-        return 'Istruttore Admin';
+        return 'dashboard.role_instructor_admin'.tr();
       case 'instructor':
-        return 'Istruttore';
+        return 'dashboard.role_instructor'.tr();
       case 'student':
       default:
-        return 'Studente';
+        return 'dashboard.role_student'.tr();
     }
+  }
+}
+
+/// Small circular avatar for a child profile in the admin list.
+/// Loads the signed URL from Supabase storage and shows the photo if available,
+/// otherwise falls back to the child_care icon.
+class _ChildPhotoAvatar extends StatefulWidget {
+  final String? storagePath;
+  const _ChildPhotoAvatar({this.storagePath});
+
+  @override
+  State<_ChildPhotoAvatar> createState() => _ChildPhotoAvatarState();
+}
+
+class _ChildPhotoAvatarState extends State<_ChildPhotoAvatar> {
+  String? _signedUrl;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUrl();
+  }
+
+  @override
+  void didUpdateWidget(_ChildPhotoAvatar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.storagePath != widget.storagePath) {
+      _loadUrl();
+    }
+  }
+
+  Future<void> _loadUrl() async {
+    if (widget.storagePath == null || widget.storagePath!.isEmpty) {
+      setState(() => _signedUrl = null);
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final url = await Supabase.instance.client.storage
+          .from('user_docs')
+          .createSignedUrl(widget.storagePath!, 3600);
+      if (mounted)
+        setState(() {
+          _signedUrl = url;
+          _loading = false;
+        });
+    } catch (_) {
+      if (mounted)
+        setState(() {
+          _signedUrl = null;
+          _loading = false;
+        });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Container(
+        width: 28,
+        height: 28,
+        decoration: const BoxDecoration(
+          color: Color(0x26448AFF),
+          shape: BoxShape.circle,
+        ),
+        child: const Center(
+          child: SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.blue,
+            ),
+          ),
+        ),
+      );
+    }
+    if (_signedUrl != null) {
+      return ClipOval(
+        child: Image.network(
+          _signedUrl!,
+          width: 28,
+          height: 28,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _fallbackIcon(),
+        ),
+      );
+    }
+    return _fallbackIcon();
+  }
+
+  Widget _fallbackIcon() {
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.blue.withValues(alpha: 0.15),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(Icons.child_care, color: Colors.blue[300], size: 16),
+    );
   }
 }

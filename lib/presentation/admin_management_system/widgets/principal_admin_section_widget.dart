@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
-import '../../../theme/app_theme.dart';
 
 class PrincipalAdminSectionWidget extends StatelessWidget {
   final VoidCallback onCredentialsView;
@@ -61,7 +60,7 @@ class PrincipalAdminSectionWidget extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'Accesso completo al sistema',
+                      'admin_profile.full_access'.tr(),
                       style: GoogleFonts.inter(
                         fontSize: 14.sp,
                         color: AppTheme.textSecondaryLight,
@@ -114,7 +113,8 @@ class PrincipalAdminSectionWidget extends StatelessWidget {
                   ],
                 ),
                 SizedBox(height: 12.h),
-                _buildCredentialRow('Email', 'lutadordeeliteravenna@gmail.com'),
+                _buildCredentialRow(
+                    'common.email'.tr(), 'lutadordeeliteravenna@gmail.com'),
                 SizedBox(height: 8.h),
                 _buildCredentialRow('Password', 'Magnus833cc',
                     isPassword: true),
@@ -156,7 +156,7 @@ class PrincipalAdminSectionWidget extends StatelessWidget {
                 child: ElevatedButton.icon(
                   onPressed: onCredentialsView,
                   icon: Icon(Icons.visibility, size: 18.sp),
-                  label: Text('Visualizza Credenziali'),
+                  label: Text('admin_management.view_credentials'.tr()),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.orange,
                     foregroundColor: Colors.white,
@@ -172,7 +172,7 @@ class PrincipalAdminSectionWidget extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: () => _showAccessLog(context),
                   icon: Icon(Icons.history, size: 18.sp),
-                  label: Text('Log Accessi'),
+                  label: Text('admin_management.access_log'.tr()),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.primaryLight,
                     padding: EdgeInsets.symmetric(vertical: 12.h),
@@ -242,7 +242,7 @@ class PrincipalAdminSectionWidget extends StatelessWidget {
             itemBuilder: (context, index) {
               return ListTile(
                 leading: Icon(Icons.login, color: Colors.green),
-                title: Text('Accesso effettuato'),
+                title: Text('admin_management.login_performed'.tr()),
                 subtitle: Text('IP: 192.168.1.${100 + index}'),
                 trailing: Text(
                   '${DateTime.now().subtract(Duration(hours: index + 1)).day}/${DateTime.now().month}',
@@ -255,7 +255,7 @@ class PrincipalAdminSectionWidget extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Chiudi'),
+            child: Text('common.close'.tr()),
           ),
         ],
       ),

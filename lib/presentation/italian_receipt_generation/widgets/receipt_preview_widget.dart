@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../models/receipt_model.dart';
+import '../../../core/app_export.dart';
 
 class ReceiptPreviewWidget extends StatelessWidget {
   final ItalianReceiptModel receipt;
@@ -13,298 +13,88 @@ class ReceiptPreviewWidget extends StatelessWidget {
     required this.onGeneratePdf,
   }) : super(key: key);
 
+  String _fmt(double v) => '€${v.toStringAsFixed(2).replaceAll('.', ',')}';
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(16.sp),
-      child: Column(
-        children: [
-          // Action buttons
-          Row(
+    return Column(
+      children: [
+        // ── Action buttons ──────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Row(
             children: [
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: onGeneratePdf,
-                  icon: const Icon(Icons.picture_as_pdf),
-                  label: const Text('Genera PDF'),
+                  icon: const Icon(Icons.picture_as_pdf, size: 18),
+                  label: Text('italian_receipt.generate_pdf'.tr(),
+                      style: TextStyle(fontWeight: FontWeight.w600)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red.shade600,
                     foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(vertical: 12.sp),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    elevation: 2,
                   ),
                 ),
               ),
-              SizedBox(width: 12.sp),
+              const SizedBox(width: 12),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () {
-                    // TODO: Add share functionality
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Funzione di condivisione in arrivo!'),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.share),
-                  label: const Text('Condividi'),
+                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('receipt.share_coming_soon'.tr())),
+                  ),
+                  icon: const Icon(Icons.share, size: 18),
+                  label: Text('italian_receipt.share'.tr(),
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
                   style: OutlinedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: 12.sp),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
                     side: BorderSide(color: Colors.red.shade600),
                     foregroundColor: Colors.red.shade600,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
               ),
             ],
           ),
-          SizedBox(height: 16.sp),
-
-          // Professional Receipt Preview Card
-          Expanded(
-            child: Card(
-              elevation: 8,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12.sp),
-              ),
-              child: Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(24.sp),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12.sp),
-                  color: Colors.white,
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildProfessionalHeader(),
-                      SizedBox(height: 24.sp),
-                      _buildReceiptTitle(),
-                      SizedBox(height: 20.sp),
-                      _buildCustomerInfo(),
-                      SizedBox(height: 20.sp),
-                      _buildProfessionalReceiptTable(),
-                      SizedBox(height: 20.sp),
-                      _buildPaymentInfo(),
-                      SizedBox(height: 20.sp),
-                      _buildVatSummary(),
-                      SizedBox(height: 24.sp),
-                      _buildFooter(),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProfessionalHeader() {
-    return Container(
-      padding: EdgeInsets.all(16.sp),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.red.shade700, Colors.red.shade500],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
         ),
-        borderRadius: BorderRadius.circular(12.sp),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.red.shade200,
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Team Ragnarok Logo
-          Container(
-            width: 80.sp,
-            height: 80.sp,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12.sp),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(26),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12.sp),
-              child: Image.asset(
-                'assets/images/152933-1756821415426.jpg',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.red.shade400, Colors.red.shade600],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      'TEAM\nRAGNAROK',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(
-                        fontSize: 8.sp,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        height: 1.1,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          SizedBox(width: 20.sp),
 
-          // Organization info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  receipt.organizationInfo?.name ?? 'Team Ragnarok ASD',
-                  style: GoogleFonts.inter(
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                SizedBox(height: 6.sp),
-                Text(
-                  receipt.organizationInfo?.address ??
-                      'via giulio bezzi 25, 48026 Russi - RA',
-                  style: GoogleFonts.inter(
-                    fontSize: 12.sp,
-                    color: Colors.white.withAlpha(230),
-                  ),
-                ),
-                SizedBox(height: 4.sp),
-                Text(
-                  'C.F.: ${receipt.organizationInfo?.taxCode ?? '92100170395'}',
-                  style: GoogleFonts.inter(
-                    fontSize: 12.sp,
-                    color: Colors.white.withAlpha(230),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+        const SizedBox(height: 12),
 
-  Widget _buildReceiptTitle() {
-    return Container(
-      padding: EdgeInsets.all(16.sp),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(8.sp),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Ricevuta Fiscale - ${receipt.receiptNumber.split('-').last} del ${receipt.formattedIssueDate}',
-            style: GoogleFonts.inter(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.bold,
-              color: Colors.red.shade700,
-            ),
-          ),
-          if (receipt.validityEndDate != null) ...[
-            SizedBox(height: 6.sp),
-            Text(
-              'Scadenza iscrizione: ${receipt.validityEndDate!.day.toString().padLeft(2, '0')}-${receipt.validityEndDate!.month.toString().padLeft(2, '0')}-${receipt.validityEndDate!.year}',
-              style: GoogleFonts.inter(
-                fontSize: 12.sp,
-                color: Colors.grey.shade700,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCustomerInfo() {
-    return Container(
-      padding: EdgeInsets.all(16.sp),
-      decoration: BoxDecoration(
-        color: Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(8.sp),
-        border: Border.all(color: Colors.blue.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.person,
-                color: Colors.blue.shade600,
-                size: 16.sp,
-              ),
-              SizedBox(width: 8.sp),
-              Text(
-                'Dati di fatturazione',
-                style: GoogleFonts.inter(
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue.shade800,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12.sp),
-          _buildInfoRow('DEST:', receipt.customerName),
-          if (receipt.customerTaxCode != null) ...[
-            SizedBox(height: 4.sp),
-            _buildInfoRow('C.F.', receipt.customerTaxCode!),
-          ],
-          if (receipt.customerAddress != null) ...[
-            SizedBox(height: 4.sp),
-            _buildInfoRow('Indirizzo', receipt.customerAddress!),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 70.sp,
-          child: Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 12.sp,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey.shade700,
-            ),
-          ),
-        ),
+        // ── Receipt card ────────────────────────────────────────────────
         Expanded(
-          child: Text(
-            value,
-            style: GoogleFonts.inter(
-              fontSize: 12.sp,
-              color: Colors.grey.shade800,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Card(
+              color: Colors.white,
+              elevation: 6,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+              clipBehavior: Clip.antiAlias,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildHeader(),
+                    const SizedBox(height: 14),
+                    _buildReceiptTitle(),
+                    const SizedBox(height: 12),
+                    _buildCustomerInfo(),
+                    const SizedBox(height: 12),
+                    _buildItemDetail(),
+                    const SizedBox(height: 12),
+                    _buildPaymentInfo(),
+                    const SizedBox(height: 12),
+                    _buildVatAndTotal(),
+                    const SizedBox(height: 14),
+                    _buildFooter(),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -312,386 +102,620 @@ class ReceiptPreviewWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildProfessionalReceiptTable() {
+  // ── Header ────────────────────────────────────────────────────────────
+  Widget _buildHeader() {
     return Container(
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8.sp),
-        border: Border.all(color: Colors.grey.shade300),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.shade100,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+        gradient: LinearGradient(
+          colors: [Colors.red.shade700, Colors.red.shade500],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Logo
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(30),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/images/152933-1756821415426.jpg',
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.red.shade400, Colors.red.shade700],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'TR',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  receipt.organizationInfo?.name ?? 'Team Ragnarok ASD',
+                  style: GoogleFonts.inter(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  receipt.organizationInfo?.address ??
+                      'via giulio bezzi 25, 48026 Russi - RA',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: Colors.white.withAlpha(230),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'C.F.: ${receipt.organizationInfo?.taxCode ?? '92100170395'}',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: Colors.white.withAlpha(220),
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Receipt title ─────────────────────────────────────────────────────
+  Widget _buildReceiptTitle() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with gradient background
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.red.shade600, Colors.red.shade500],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              ),
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(8.sp),
-                topRight: Radius.circular(8.sp),
-              ),
-            ),
-            child: Table(
-              columnWidths: const {
-                0: FlexColumnWidth(3),
-                1: FlexColumnWidth(1),
-                2: FlexColumnWidth(2),
-                3: FlexColumnWidth(1),
-                4: FlexColumnWidth(1.5),
-                5: FlexColumnWidth(2),
-              },
-              children: [
-                TableRow(
-                  children: [
-                    _buildProfessionalTableCell('Nome', isHeader: true),
-                    _buildProfessionalTableCell('Quantità', isHeader: true),
-                    _buildProfessionalTableCell('Prezzo unitario',
-                        isHeader: true),
-                    _buildProfessionalTableCell('Sconto', isHeader: true),
-                    _buildProfessionalTableCell('Iva', isHeader: true),
-                    _buildProfessionalTableCell('Importo', isHeader: true),
-                  ],
-                ),
-              ],
+          Text(
+            'italian_receipt.fiscal_receipt_n'.tr(
+                namedArgs: {'number': receipt.receiptNumber.split('-').last}),
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Colors.red.shade700,
             ),
           ),
-
-          // Data row with alternating background
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(8.sp),
-                bottomRight: Radius.circular(8.sp),
-              ),
-            ),
-            child: Table(
-              columnWidths: const {
-                0: FlexColumnWidth(3),
-                1: FlexColumnWidth(1),
-                2: FlexColumnWidth(2),
-                3: FlexColumnWidth(1),
-                4: FlexColumnWidth(1.5),
-                5: FlexColumnWidth(2),
-              },
-              children: [
-                TableRow(
-                  children: [
-                    _buildProfessionalTableCell(
-                        '${receipt.description}\n${receipt.formattedValidityPeriod}'),
-                    _buildProfessionalTableCell(receipt.quantity.toString()),
-                    _buildProfessionalTableCell(
-                      '€${receipt.unitPrice.toStringAsFixed(2).replaceAll('.', ',')}',
-                    ),
-                    _buildProfessionalTableCell(
-                      receipt.discountPercentage > 0
-                          ? '${receipt.discountPercentage.toStringAsFixed(0)}%'
-                          : '-',
-                    ),
-                    _buildProfessionalTableCell(
-                      '${receipt.vatRate}% ${receipt.fiscalNotes?.contains('N2.2') == true ? 'N2.2' : ''}',
-                    ),
-                    _buildProfessionalTableCell(
-                      '€${receipt.amount.toStringAsFixed(2).replaceAll('.', ',')}',
-                      isTotal: true,
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          const SizedBox(height: 4),
+          Text(
+            'italian_receipt.issued_on'
+                .tr(namedArgs: {'date': receipt.formattedIssueDate}),
+            style: GoogleFonts.inter(fontSize: 12, color: Colors.grey.shade600),
           ),
+          if (receipt.validityEndDate != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              'italian_receipt.subscription_expiry'.tr(namedArgs: {
+                'date': '${receipt.validityEndDate!.day.toString().padLeft(2, '0')}-'
+                    '${receipt.validityEndDate!.month.toString().padLeft(2, '0')}-'
+                    '${receipt.validityEndDate!.year}'
+              }),
+              style:
+                  GoogleFonts.inter(fontSize: 12, color: Colors.grey.shade600),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildProfessionalTableCell(String text,
-      {bool isHeader = false, bool isTotal = false}) {
+  // ── Customer info ─────────────────────────────────────────────────────
+  Widget _buildCustomerInfo() {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 12.sp),
-      child: Text(
-        text,
-        style: GoogleFonts.inter(
-          fontSize: isHeader ? 11.sp : 10.sp,
-          fontWeight: isHeader
-              ? FontWeight.bold
-              : (isTotal ? FontWeight.bold : FontWeight.normal),
-          color: isHeader
-              ? Colors.white
-              : isTotal
-                  ? Colors.red.shade700
-                  : Colors.grey.shade800,
-          height: 1.2,
-        ),
-        textAlign: isHeader ? TextAlign.center : TextAlign.left,
-      ),
-    );
-  }
-
-  Widget _buildPaymentInfo() {
-    return Container(
-      padding: EdgeInsets.all(16.sp),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.green.shade50,
-        borderRadius: BorderRadius.circular(8.sp),
-        border: Border.all(color: Colors.green.shade200),
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue.shade100),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                Icons.payment,
-                color: Colors.green.shade600,
-                size: 16.sp,
-              ),
-              SizedBox(width: 8.sp),
+              Icon(Icons.person, color: Colors.blue.shade600, size: 16),
+              const SizedBox(width: 6),
               Text(
-                'METODO PAGAMENTO: ${receipt.paymentMethodText}',
+                'italian_receipt.billing_data'.tr(),
                 style: GoogleFonts.inter(
-                  fontSize: 14.sp,
+                  fontSize: 13,
                   fontWeight: FontWeight.bold,
-                  color: Colors.green.shade800,
+                  color: Colors.blue.shade800,
                 ),
               ),
             ],
           ),
-          if (receipt.fiscalNotes != null) ...[
-            SizedBox(height: 12.sp),
-            Text(
-              'NOTE FISCALI',
-              style: GoogleFonts.inter(
-                fontSize: 12.sp,
-                fontWeight: FontWeight.bold,
-                color: Colors.green.shade800,
-              ),
-            ),
-            SizedBox(height: 4.sp),
-            Text(
-              receipt.fiscalNotes!,
-              style: GoogleFonts.inter(
-                fontSize: 10.sp,
-                color: Colors.green.shade700,
-              ),
-            ),
+          const SizedBox(height: 10),
+          _kv('italian_receipt.recipient'.tr(), receipt.customerName),
+          if (receipt.customerTaxCode != null) ...[
+            const SizedBox(height: 4),
+            _kv('profile.tax_code'.tr(), receipt.customerTaxCode!),
+          ],
+          if (receipt.customerAddress != null) ...[
+            const SizedBox(height: 4),
+            _kv('profile.address'.tr(), receipt.customerAddress!),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildVatSummary() {
+  // ── Item detail ───────────────────────────────────────────────────────
+  Widget _buildItemDetail() {
+    final hasDiscount = receipt.discountPercentage > 0;
+    final vatLabel =
+        '${receipt.vatRate}%${receipt.fiscalNotes?.contains('N2.2') == true ? ' (N2.2)' : ''}';
+
     return Container(
-      padding: EdgeInsets.all(16.sp),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.orange.shade50, Colors.orange.shade100],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(8.sp),
-        border: Border.all(color: Colors.orange.shade200),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Table header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.red.shade600, Colors.red.shade500],
+              ),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(7)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.receipt_long, color: Colors.white, size: 15),
+                const SizedBox(width: 6),
+                Text(
+                  'italian_receipt.service_details'.tr(),
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Description
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: Text(
+              receipt.description,
+              style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade800),
+            ),
+          ),
+          if (receipt.formattedValidityPeriod.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 3, 12, 0),
+              child: Text(
+                receipt.formattedValidityPeriod,
+                style: GoogleFonts.inter(
+                    fontSize: 11, color: Colors.grey.shade500),
+              ),
+            ),
+
+          const SizedBox(height: 10),
+          Divider(color: Colors.grey.shade200, height: 1),
+
+          // Details grid
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                        child: _detailChip('italian_receipt.quantity'.tr(),
+                            receipt.quantity.toString())),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: _detailChip('italian_receipt.unit_price'.tr(),
+                            _fmt(receipt.unitPrice))),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                        child: _detailChip(
+                            'italian_receipt.discount'.tr(),
+                            hasDiscount
+                                ? '${receipt.discountPercentage.toStringAsFixed(0)}%'
+                                : '—')),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child:
+                            _detailChip('italian_receipt.vat'.tr(), vatLabel)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          Divider(color: Colors.grey.shade200, height: 1),
+
+          // Row amount
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius:
+                  const BorderRadius.vertical(bottom: Radius.circular(7)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'italian_receipt.amount'.tr(),
+                  style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade700),
+                ),
+                Text(
+                  _fmt(receipt.amount),
+                  style: GoogleFonts.inter(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red.shade700),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailChip(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'RIEPILOGO IVA',
-            style: GoogleFonts.inter(
-              fontSize: 14.sp,
-              fontWeight: FontWeight.bold,
-              color: Colors.orange.shade800,
-            ),
-          ),
-          SizedBox(height: 12.sp),
+          Text(label,
+              style:
+                  GoogleFonts.inter(fontSize: 10, color: Colors.grey.shade500)),
+          const SizedBox(height: 2),
+          Text(value,
+              style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade800),
+              overflow: TextOverflow.ellipsis),
+        ],
+      ),
+    );
+  }
 
-          // IVA Table
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(6.sp),
-              border: Border.all(color: Colors.orange.shade200),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  padding:
-                      EdgeInsets.symmetric(vertical: 8.sp, horizontal: 12.sp),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade100,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(6.sp),
-                      topRight: Radius.circular(6.sp),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'IMPONIBILE',
-                        style: GoogleFonts.inter(
-                          fontSize: 11.sp,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange.shade800,
-                        ),
-                      ),
-                      Text(
-                        'IMPOSTE',
-                        style: GoogleFonts.inter(
-                          fontSize: 11.sp,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange.shade800,
-                        ),
-                      ),
-                      Text(
-                        'IMPORTO',
-                        style: GoogleFonts.inter(
-                          fontSize: 11.sp,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange.shade800,
-                        ),
-                      ),
-                    ],
-                  ),
+  // ── Payment info ──────────────────────────────────────────────────────
+  Widget _buildPaymentInfo() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.green.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(Icons.payment, color: Colors.green.shade600, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                'italian_receipt.payment_method_header'.tr(),
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green.shade700,
+                  letterSpacing: 0.4,
                 ),
-                Padding(
-                  padding:
-                      EdgeInsets.symmetric(vertical: 8.sp, horizontal: 12.sp),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '${receipt.vatRate}%',
-                        style: GoogleFonts.inter(
-                          fontSize: 11.sp,
-                          color: Colors.grey.shade800,
-                        ),
-                      ),
-                      Text(
-                        '€${receipt.taxableAmount.toStringAsFixed(2).replaceAll('.', ',')}',
-                        style: GoogleFonts.inter(
-                          fontSize: 11.sp,
-                          color: Colors.grey.shade800,
-                        ),
-                      ),
-                      Text(
-                        '€${receipt.vatAmount.toStringAsFixed(2).replaceAll('.', ',')}',
-                        style: GoogleFonts.inter(
-                          fontSize: 11.sp,
-                          color: Colors.grey.shade800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          SizedBox(height: 16.sp),
-
-          // Total summary
-          Container(
-            padding: EdgeInsets.all(12.sp),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.red.shade600, Colors.red.shade500],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
               ),
-              borderRadius: BorderRadius.circular(8.sp),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            receipt.paymentMethodText,
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Colors.green.shade900,
             ),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          ),
+          if (receipt.fiscalNotes != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'italian_receipt.fiscal_notes_header'.tr(),
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.green.shade700,
+                letterSpacing: 0.4,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              receipt.fiscalNotes!,
+              style:
+                  GoogleFonts.inter(fontSize: 12, color: Colors.green.shade800),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── VAT summary + grand total ─────────────────────────────────────────
+  Widget _buildVatAndTotal() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // VAT table
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.orange.shade200),
+          ),
+          child: Column(
+            children: [
+              // Header row
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade100,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(7)),
+                ),
+                child: Row(
                   children: [
-                    Text(
-                      'Imponibile €${receipt.taxableAmount.toStringAsFixed(2).replaceAll('.', ',')}',
-                      style: GoogleFonts.inter(
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+                    Expanded(
+                      child: Text('italian_receipt.vat_rate_header'.tr(),
+                          style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange.shade800)),
                     ),
-                    Text(
-                      'Totale IVA €${receipt.vatAmount.toStringAsFixed(2).replaceAll('.', ',')}',
-                      style: GoogleFonts.inter(
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+                    Expanded(
+                      child: Text('italian_receipt.taxable_header'.tr(),
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange.shade800)),
+                    ),
+                    Expanded(
+                      child: Text('italian_receipt.tax_header'.tr(),
+                          textAlign: TextAlign.end,
+                          style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange.shade800)),
                     ),
                   ],
                 ),
-                SizedBox(height: 8.sp),
-                Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.symmetric(vertical: 8.sp),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(6.sp),
-                  ),
-                  child: Text(
-                    'TOTALE: €${receipt.amount.toStringAsFixed(2).replaceAll('.', ',')}',
-                    style: GoogleFonts.inter(
-                      fontSize: 18.sp,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red.shade700,
+              ),
+              // Data row
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text('${receipt.vatRate}%',
+                          style: GoogleFonts.inter(
+                              fontSize: 13, color: Colors.grey.shade800)),
                     ),
-                    textAlign: TextAlign.center,
+                    Expanded(
+                      child: Text(_fmt(receipt.taxableAmount),
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.inter(
+                              fontSize: 13, color: Colors.grey.shade800)),
+                    ),
+                    Expanded(
+                      child: Text(_fmt(receipt.vatAmount),
+                          textAlign: TextAlign.end,
+                          style: GoogleFonts.inter(
+                              fontSize: 13, color: Colors.grey.shade800)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        // Grand total
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.red.shade700, Colors.red.shade500],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _totalLine(
+                      'italian_receipt.taxable'.tr(),
+                      _fmt(receipt.taxableAmount),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _totalLine(
+                      'italian_receipt.vat'.tr(),
+                      _fmt(receipt.vatAmount),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Text(
+                  'italian_receipt.total'
+                      .tr(namedArgs: {'amount': _fmt(receipt.amount)}),
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red.shade700,
+                    letterSpacing: 0.5,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _totalLine(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: GoogleFonts.inter(
+                fontSize: 11, color: Colors.white.withAlpha(200))),
+        const SizedBox(height: 2),
+        Text(value,
+            style: GoogleFonts.inter(
+                fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+            overflow: TextOverflow.ellipsis),
+      ],
+    );
+  }
+
+  // ── Footer ─────────────────────────────────────────────────────────────
+  Widget _buildFooter() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Text(
+            'italian_receipt.generated_by'.tr(),
+            style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade600),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'italian_receipt.powered_by'.tr(),
+            style: GoogleFonts.inter(
+                fontSize: 10,
+                fontStyle: FontStyle.italic,
+                color: Colors.grey.shade500),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFooter() {
-    return Container(
-      padding: EdgeInsets.all(16.sp),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(8.sp),
-      ),
-      child: Center(
-        child: Column(
-          children: [
-            Text(
-              'Ricevuta Fiscale generata da APP Palestre',
-              style: GoogleFonts.inter(
-                fontSize: 10.sp,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade700,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 2.sp),
-            Text(
-              'powered by Shaggy Owl S.r.l.s',
-              style: GoogleFonts.inter(
-                fontSize: 9.sp,
-                fontStyle: FontStyle.italic,
-                color: Colors.grey.shade600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+  // ── Helpers ─────────────────────────────────────────────────────────────
+  Widget _kv(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 96,
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade600),
+          ),
         ),
-      ),
+        Expanded(
+          child: Text(
+            value,
+            style: GoogleFonts.inter(fontSize: 12, color: Colors.grey.shade800),
+          ),
+        ),
+      ],
     );
   }
 }

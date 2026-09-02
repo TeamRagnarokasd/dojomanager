@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cron/cron.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -16,21 +17,26 @@ class NotificationService {
   final Cron _cron = Cron();
 
   Future<void> initialize() async {
+    if (kIsWeb) {
+      // flutter_local_notifications is not supported on web — skip initialization
+      return;
+    }
+
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
     const DarwinInitializationSettings initializationSettingsIOS =
         DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-    );
+          requestAlertPermission: true,
+          requestBadgePermission: true,
+          requestSoundPermission: true,
+        );
 
     const InitializationSettings initializationSettings =
         InitializationSettings(
-      android: initializationSettingsAndroid,
-      iOS: initializationSettingsIOS,
-    );
+          android: initializationSettingsAndroid,
+          iOS: initializationSettingsIOS,
+        );
 
     await _flutterLocalNotificationsPlugin.initialize(
       initializationSettings,
@@ -47,17 +53,15 @@ class NotificationService {
   Future<void> _requestPermissions() async {
     await _flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.requestNotificationsPermission();
 
     await _flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin>()
-        ?.requestPermissions(
-          alert: true,
-          badge: true,
-          sound: true,
-        );
+          IOSFlutterLocalNotificationsPlugin
+        >()
+        ?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
   void _onDidReceiveNotificationResponse(NotificationResponse response) {
@@ -83,12 +87,13 @@ class NotificationService {
       // Get all active users (in real implementation, fetch from user service)
       final List<String> activeUserIds = [
         'user-id-1',
-        'user-id-2'
+        'user-id-2',
       ]; // Mock data
 
       for (String userId in activeUserIds) {
-        final needsReminder =
-            await _receiptService.needsPaymentReminder(userId);
+        final needsReminder = await _receiptService.needsPaymentReminder(
+          userId,
+        );
 
         if (needsReminder) {
           await _sendPaymentReminderNotification(userId);
@@ -101,24 +106,25 @@ class NotificationService {
   }
 
   Future<void> _sendPaymentReminderNotification(String userId) async {
+    if (kIsWeb) return;
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-      'payment_reminder',
-      'Payment Reminders',
-      channelDescription: 'Notifications for monthly payment reminders',
-      importance: Importance.high,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-      color: Color(0xFF2196F3),
-      autoCancel: true,
-    );
+          'payment_reminder',
+          'Payment Reminders',
+          channelDescription: 'Notifications for monthly payment reminders',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          color: Color(0xFF2196F3),
+          autoCancel: true,
+        );
 
     const DarwinNotificationDetails iOSPlatformChannelSpecifics =
         DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-    );
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        );
 
     const NotificationDetails platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
@@ -139,24 +145,25 @@ class NotificationService {
     required int receiptNumber,
     required double amount,
   }) async {
+    if (kIsWeb) return;
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-      'receipt_generated',
-      'Receipt Notifications',
-      channelDescription: 'Notifications for generated receipts',
-      importance: Importance.high,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-      color: Color(0xFF4CAF50),
-      autoCancel: true,
-    );
+          'receipt_generated',
+          'Receipt Notifications',
+          channelDescription: 'Notifications for generated receipts',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          color: Color(0xFF4CAF50),
+          autoCancel: true,
+        );
 
     const DarwinNotificationDetails iOSPlatformChannelSpecifics =
         DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-    );
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        );
 
     const NotificationDetails platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
@@ -214,8 +221,9 @@ class NotificationService {
 
       // Add admin communications as notifications
       for (final communication in adminCommunications) {
-        final timeAgo =
-            _getTimeAgo(DateTime.parse(communication['created_at']));
+        final timeAgo = _getTimeAgo(
+          DateTime.parse(communication['created_at']),
+        );
         notifications.add({
           'id': communication['id'],
           'title': communication['title'] ?? 'Comunicazione Admin',
@@ -238,8 +246,10 @@ class NotificationService {
             user_profiles!inner(full_name, email)
           ''')
           .eq('status', 'confirmed')
-          .gte('confirmed_at',
-              DateTime.now().subtract(Duration(days: 7)).toIso8601String())
+          .gte(
+            'confirmed_at',
+            DateTime.now().subtract(Duration(days: 7)).toIso8601String(),
+          )
           .order('confirmed_at', ascending: false)
           .limit(5);
 
@@ -260,27 +270,32 @@ class NotificationService {
         });
       }
 
-      // 4. Check for medical certificates expiring soon
-      final medicalCertExpiring = await client
-          .from('user_profiles')
-          .select('id, full_name, medical_certificate_status')
-          .eq('medical_certificate_status', 'pending')
-          .eq('is_active', true)
-          .limit(5);
+      // 4. Get pending password reset requests
+      try {
+        final passwordResetRequests = await client
+            .from('password_reset_requests')
+            .select('id, user_full_name, user_email, requested_at')
+            .eq('status', 'pending')
+            .order('requested_at', ascending: false)
+            .limit(5);
 
-      if (medicalCertExpiring.isNotEmpty) {
-        notifications.add({
-          'id': 'medical_cert_expiring',
-          'title': 'Certificati Medici in Sospeso',
-          'description':
-              '${medicalCertExpiring.length} certificati medici richiedono verifica',
-          'type': 'admin_task',
-          'priority': 'medium',
-          'icon': Icons.medical_information,
-          'time': 'Controlla ora',
-          'route': '/user-management-system',
-          'data': medicalCertExpiring,
-        });
+        for (final request in passwordResetRequests) {
+          final timeAgo = _getTimeAgo(DateTime.parse(request['requested_at']));
+          notifications.add({
+            'id': request['id'],
+            'title': 'Richiesta Recupero Password',
+            'description':
+                '${request['user_full_name']} ha richiesto il recupero della password',
+            'type': 'admin_task',
+            'priority': 'high',
+            'icon': Icons.lock_reset,
+            'time': timeAgo,
+            'route': '/admin-management-system',
+            'data': request,
+          });
+        }
+      } catch (_) {
+        // Table may not exist yet — skip silently
       }
 
       // Sort notifications by priority and time
@@ -338,11 +353,28 @@ class NotificationService {
           .from('admin_communications')
           .select('id')
           .eq('priority', 'high')
-          .gte('created_at',
-              DateTime.now().subtract(Duration(days: 7)).toIso8601String())
+          .gte(
+            'created_at',
+            DateTime.now().subtract(Duration(days: 7)).toIso8601String(),
+          )
           .count(CountOption.exact);
 
-      return pendingCountResponse.count + highPriorityCommunicationsResponse.count;
+      // Count pending password reset requests
+      int passwordResetCount = 0;
+      try {
+        final passwordResetResponse = await client
+            .from('password_reset_requests')
+            .select('id')
+            .eq('status', 'pending')
+            .count(CountOption.exact);
+        passwordResetCount = passwordResetResponse.count;
+      } catch (_) {
+        // Table may not exist yet — skip silently
+      }
+
+      return pendingCountResponse.count +
+          highPriorityCommunicationsResponse.count +
+          passwordResetCount;
     } catch (error) {
       print('Error getting high priority notifications count: $error');
       return 0;
@@ -354,10 +386,12 @@ class NotificationService {
   }
 
   Future<void> cancelAllNotifications() async {
+    if (kIsWeb) return;
     await _flutterLocalNotificationsPlugin.cancelAll();
   }
 
   Future<void> cancelNotification(int id) async {
+    if (kIsWeb) return;
     await _flutterLocalNotificationsPlugin.cancel(id);
   }
 

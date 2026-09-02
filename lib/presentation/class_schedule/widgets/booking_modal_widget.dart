@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
-import '../../../widgets/custom_icon_widget.dart';
 
 class BookingModalWidget extends StatefulWidget {
   final Map<String, dynamic> classData;
-  final VoidCallback onBookingConfirmed;
+  final Future<bool> Function() onBookingConfirmed;
 
   const BookingModalWidget({
     Key? key,
@@ -28,6 +27,8 @@ class _BookingModalWidgetState extends State<BookingModalWidget> {
     final capacity = widget.classData['capacity'] ?? 20;
     final enrolled = widget.classData['enrolled'] ?? 0;
     final availableSpots = capacity - enrolled;
+    final isEntryBased = widget.classData['booking_type'] == 'entry_based';
+    final entriesRemaining = widget.classData['entries_remaining'] as int?;
 
     return Container(
       decoration: BoxDecoration(
@@ -100,7 +101,7 @@ class _BookingModalWidgetState extends State<BookingModalWidget> {
                               ),
                               SizedBox(width: 1.w),
                               Text(
-                                'Prenotato',
+                                'class_schedule.status_booked'.tr(),
                                 style: theme.textTheme.labelSmall!.copyWith(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
@@ -117,25 +118,25 @@ class _BookingModalWidgetState extends State<BookingModalWidget> {
                   // Class details
                   _buildDetailRow(
                     context,
-                    'Istruttore',
+                    'class_schedule.instructor'.tr(),
                     widget.classData['instructor'] ?? 'Da definire',
                     'person',
                   ),
                   _buildDetailRow(
                     context,
-                    'Orario',
+                    'class_schedule.time'.tr(),
                     widget.classData['time'] ?? '',
                     'schedule',
                   ),
                   _buildDetailRow(
                     context,
-                    'Data',
+                    'class_schedule.date'.tr(),
                     widget.classData['date'] ?? '',
                     'calendar_today',
                   ),
                   _buildDetailRow(
                     context,
-                    'Posti disponibili',
+                    'class_schedule.available_spots'.tr(),
                     '$availableSpots/$capacity',
                     'people',
                     valueColor: availableSpots > 0 ? Colors.green : Colors.red,
@@ -146,13 +147,80 @@ class _BookingModalWidgetState extends State<BookingModalWidget> {
                   // Capacity indicator
                   _buildCapacityIndicator(context, enrolled, capacity),
 
+                  // Entry balance for entry-based subscriptions
+                  if (isEntryBased && entriesRemaining != null) ...[
+                    SizedBox(height: 2.h),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 4.w,
+                        vertical: 1.5.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: entriesRemaining <= 1
+                            ? Colors.orange.withValues(alpha: 0.1)
+                            : theme.primaryColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: entriesRemaining <= 1
+                              ? Colors.orange.withValues(alpha: 0.3)
+                              : theme.primaryColor.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          CustomIconWidget(
+                            iconName: 'confirmation_number',
+                            color: entriesRemaining <= 1
+                                ? Colors.orange
+                                : theme.primaryColor,
+                            size: 22,
+                          ),
+                          SizedBox(width: 3.w),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'class_schedule.entries_remaining_label'.tr(),
+                                  style: theme.textTheme.bodySmall!.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                SizedBox(height: 0.3.h),
+                                Text(
+                                  '$entriesRemaining',
+                                  style: theme.textTheme.titleMedium!.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: entriesRemaining <= 1
+                                        ? Colors.orange
+                                        : theme.primaryColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (entriesRemaining <= 1)
+                            Text(
+                              entriesRemaining == 1
+                                  ? 'class_schedule.last_entry'.tr()
+                                  : 'class_schedule.exhausted'.tr(),
+                              style: theme.textTheme.labelMedium!.copyWith(
+                                color: Colors.orange,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   SizedBox(height: 3.h),
 
                   // Description
                   if (widget.classData['description'] != null &&
                       widget.classData['description'].isNotEmpty) ...[
                     Text(
-                      'Descrizione',
+                      'common.description'.tr(),
                       style: theme.textTheme.titleMedium!.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -172,7 +240,7 @@ class _BookingModalWidgetState extends State<BookingModalWidget> {
                   if (widget.classData['instructorBio'] != null &&
                       widget.classData['instructorBio'].isNotEmpty) ...[
                     Text(
-                      'Istruttore',
+                      'class_schedule.instructor'.tr(),
                       style: theme.textTheme.titleMedium!.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -210,7 +278,7 @@ class _BookingModalWidgetState extends State<BookingModalWidget> {
                           SizedBox(width: 3.w),
                           Expanded(
                             child: Text(
-                              'La prenotazione può essere cancellata fino al giorno precedente la lezione.',
+                              'class_schedule.cancel_policy'.tr(),
                               style: theme.textTheme.bodySmall!.copyWith(
                                 color: theme.primaryColor,
                                 height: 1.4,
@@ -254,7 +322,7 @@ class _BookingModalWidgetState extends State<BookingModalWidget> {
                         ),
                       ),
                       child: Text(
-                        'Chiudi',
+                        'class_schedule.close_modal'.tr(),
                         style: theme.textTheme.titleSmall!.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                           fontWeight: FontWeight.w600,
@@ -295,10 +363,10 @@ class _BookingModalWidgetState extends State<BookingModalWidget> {
                             )
                           : Text(
                               isBooked
-                                  ? 'Cancella Prenotazione'
+                                  ? 'class_schedule.cancel_booking'.tr()
                                   : availableSpots > 0
-                                      ? 'Prenota Classe'
-                                      : 'Classe Piena',
+                                      ? 'class_schedule.book_class'.tr()
+                                      : 'class_schedule.class_full'.tr(),
                               style: theme.textTheme.titleSmall!.copyWith(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w600,
@@ -382,7 +450,7 @@ class _BookingModalWidgetState extends State<BookingModalWidget> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'Partecipanti',
+              'class_schedule.participants'.tr(),
               style: theme.textTheme.titleSmall!.copyWith(
                 fontWeight: FontWeight.w600,
               ),
@@ -430,13 +498,14 @@ class _BookingModalWidgetState extends State<BookingModalWidget> {
     });
 
     try {
-      // Add a small delay for better UX
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      widget.onBookingConfirmed();
+      final success = await widget.onBookingConfirmed();
 
       if (mounted) {
-        Navigator.of(context).pop();
+        Navigator.of(context).pop(success);
+      }
+    } catch (_) {
+      if (mounted) {
+        Navigator.of(context).pop(false);
       }
     } finally {
       if (mounted) {

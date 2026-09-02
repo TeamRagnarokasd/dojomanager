@@ -132,7 +132,7 @@ class AppTheme {
     dividerColor: dividerLight,
 
     // AppBar theme with professional authority
-    appBarTheme: AppBarTheme(
+    appBarTheme: AppBarThemeData(
       backgroundColor: surfaceLight,
       foregroundColor: textPrimaryLight,
       elevation: 1.0, // Minimal elevation
@@ -149,7 +149,7 @@ class AppTheme {
     ),
 
     // Card theme with adaptive elevation
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: cardLight,
       elevation: 2.0, // Subtle depth for hierarchy
       shadowColor: shadowLight,
@@ -165,14 +165,14 @@ class AppTheme {
       elevation: 4.0,
       type: BottomNavigationBarType.fixed,
       selectedLabelStyle: GoogleFonts.inter(
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-        letterSpacing: 0.4,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.2,
       ),
       unselectedLabelStyle: GoogleFonts.inter(
-        fontSize: 12,
-        fontWeight: FontWeight.w400,
-        letterSpacing: 0.4,
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        letterSpacing: 0.2,
       ),
     ),
 
@@ -241,7 +241,7 @@ class AppTheme {
     textTheme: _buildTextTheme(isLight: true),
 
     // Input decoration with focused states
-    inputDecorationTheme: InputDecorationTheme(
+    inputDecorationTheme: InputDecorationThemeData(
       fillColor: surfaceLight,
       filled: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -346,7 +346,7 @@ class AppTheme {
     ),
 
     // Tab bar theme
-    tabBarTheme: TabBarTheme(
+    tabBarTheme: TabBarThemeData(
       labelColor: primaryLight,
       unselectedLabelColor: textSecondaryLight,
       indicatorColor: primaryLight,
@@ -442,7 +442,7 @@ class AppTheme {
     dividerColor: dividerDark,
 
     // AppBar theme with professional authority
-    appBarTheme: AppBarTheme(
+    appBarTheme: AppBarThemeData(
       backgroundColor: surfaceDark,
       foregroundColor: textPrimaryDark,
       elevation: 1.0,
@@ -459,7 +459,7 @@ class AppTheme {
     ),
 
     // Card theme with adaptive elevation
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: cardDark,
       elevation: 2.0,
       shadowColor: shadowDark,
@@ -475,14 +475,14 @@ class AppTheme {
       elevation: 4.0,
       type: BottomNavigationBarType.fixed,
       selectedLabelStyle: GoogleFonts.inter(
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-        letterSpacing: 0.4,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.2,
       ),
       unselectedLabelStyle: GoogleFonts.inter(
-        fontSize: 12,
-        fontWeight: FontWeight.w400,
-        letterSpacing: 0.4,
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        letterSpacing: 0.2,
       ),
     ),
 
@@ -551,7 +551,7 @@ class AppTheme {
     textTheme: _buildTextTheme(isLight: false),
 
     // Input decoration with focused states
-    inputDecorationTheme: InputDecorationTheme(
+    inputDecorationTheme: InputDecorationThemeData(
       fillColor: surfaceDark,
       filled: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -656,7 +656,7 @@ class AppTheme {
     ),
 
     // Tab bar theme
-    tabBarTheme: TabBarTheme(
+    tabBarTheme: TabBarThemeData(
       labelColor: primaryDark,
       unselectedLabelColor: textSecondaryDark,
       indicatorColor: primaryDark,
@@ -810,11 +810,11 @@ class AppTheme {
         height: 1.43,
       ),
       bodySmall: GoogleFonts.inter(
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: FontWeight.w400,
         color: textSecondary,
-        letterSpacing: 0.4,
-        height: 1.33,
+        letterSpacing: 0.3,
+        height: 1.4,
       ),
 
       // Label styles for buttons and captions
@@ -833,11 +833,11 @@ class AppTheme {
         height: 1.33,
       ),
       labelSmall: GoogleFonts.inter(
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: FontWeight.w500,
         color: textDisabled,
-        letterSpacing: 0.5,
-        height: 1.45,
+        letterSpacing: 0.4,
+        height: 1.4,
       ),
     );
   }

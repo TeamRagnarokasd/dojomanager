@@ -3,7 +3,6 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
-import '../../../widgets/custom_icon_widget.dart';
 
 class PaymentTransactionCard extends StatelessWidget {
   final Map<String, dynamic> transaction;
@@ -54,7 +53,7 @@ class PaymentTransactionCard extends StatelessWidget {
               backgroundColor: Theme.of(context).colorScheme.primary,
               foregroundColor: Theme.of(context).colorScheme.onPrimary,
               icon: Icons.download,
-              label: 'Scarica\nRicevuta',
+              label: 'payment.download_receipt'.tr(),
               borderRadius: BorderRadius.circular(12),
             ),
             SlidableAction(
@@ -62,7 +61,7 @@ class PaymentTransactionCard extends StatelessWidget {
               backgroundColor: Theme.of(context).colorScheme.tertiary,
               foregroundColor: Theme.of(context).colorScheme.onTertiary,
               icon: Icons.share,
-              label: 'Condividi',
+              label: 'common.share'.tr(),
               borderRadius: BorderRadius.circular(12),
             ),
             SlidableAction(
@@ -70,7 +69,7 @@ class PaymentTransactionCard extends StatelessWidget {
               backgroundColor: Theme.of(context).colorScheme.secondary,
               foregroundColor: Theme.of(context).colorScheme.onSecondary,
               icon: Icons.support_agent,
-              label: 'Contatta\nSupporto',
+              label: 'payment.contact_support_short'.tr(),
               borderRadius: BorderRadius.circular(12),
             ),
           ],

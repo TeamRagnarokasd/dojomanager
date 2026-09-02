@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../widgets/custom_image_widget.dart';
+import '../../../core/app_export.dart';
 
 class SponsorCardWidget extends StatelessWidget {
   final Map<String, dynamic> sponsor;
@@ -126,7 +126,9 @@ class SponsorCardWidget extends StatelessWidget {
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
-                              isActive ? 'Attivo' : 'Inattivo',
+                              isActive
+                                  ? 'sponsor_ui.active'.tr()
+                                  : 'sponsor_ui.inactive'.tr(),
                               style: TextStyle(
                                 color: isActive ? Colors.green : Colors.red,
                                 fontSize: 12.sp,
@@ -214,7 +216,7 @@ class SponsorCardWidget extends StatelessWidget {
                   child: TextButton.icon(
                     onPressed: () => _launchUrl(sponsor['external_url']),
                     icon: const Icon(Icons.open_in_new, size: 16),
-                    label: const Text('Visita'),
+                    label: Text('common.visit'.tr()),
                     style: TextButton.styleFrom(
                       foregroundColor: Theme.of(context).colorScheme.primary,
                     ),
@@ -225,7 +227,7 @@ class SponsorCardWidget extends StatelessWidget {
                 TextButton.icon(
                   onPressed: onEdit,
                   icon: const Icon(Icons.edit, size: 16),
-                  label: const Text('Modifica'),
+                  label: Text('profile.modify'.tr()),
                   style: TextButton.styleFrom(
                     foregroundColor: Theme.of(context).colorScheme.secondary,
                   ),
@@ -238,7 +240,9 @@ class SponsorCardWidget extends StatelessWidget {
                     isActive ? Icons.pause : Icons.play_arrow,
                     size: 16,
                   ),
-                  label: Text(isActive ? 'Disattiva' : 'Attiva'),
+                  label: Text(isActive
+                      ? 'admin_discipline.deactivate'.tr()
+                      : 'common.active'.tr()),
                   style: TextButton.styleFrom(
                     foregroundColor: isActive ? Colors.orange : Colors.green,
                   ),
@@ -248,7 +252,7 @@ class SponsorCardWidget extends StatelessWidget {
                 TextButton.icon(
                   onPressed: onDelete,
                   icon: const Icon(Icons.delete, size: 16),
-                  label: const Text('Elimina'),
+                  label: Text('common.delete'.tr()),
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.red,
                   ),

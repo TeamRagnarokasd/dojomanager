@@ -51,10 +51,13 @@ class InstructorManagementService {
             status,
             created_at,
             updated_at
-          ''').inFilter('role', [
-        'instructor',
-        'instructor_admin'
-      ]).order('full_name');
+          ''')
+          .inFilter('role', [
+            'instructor',
+            'instructor_admin',
+            'instructor_student',
+          ])
+          .order('full_name');
 
       return List<Map<String, dynamic>>.from(response);
     } catch (error) {
@@ -68,8 +71,9 @@ class InstructorManagementService {
     String instructorId,
   ) async {
     try {
-      final response =
-          await Supabase.instance.client.from('user_profiles').select('''
+      final response = await Supabase.instance.client
+          .from('user_profiles')
+          .select('''
             id,
             full_name,
             email,
@@ -86,7 +90,9 @@ class InstructorManagementService {
             updated_at,
             approved_at,
             approved_by
-          ''').eq('id', instructorId).single();
+          ''')
+          .eq('id', instructorId)
+          .single();
 
       return response;
     } catch (error) {
@@ -175,10 +181,13 @@ class InstructorManagementService {
           .getPublicUrl(path);
 
       // Update user profile with new image URL
-      await Supabase.instance.client.from('user_profiles').update({
-        'profile_image_url': publicUrl,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', instructorId);
+      await Supabase.instance.client
+          .from('user_profiles')
+          .update({
+            'profile_image_url': publicUrl,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', instructorId);
 
       return publicUrl;
     } catch (error) {
@@ -197,8 +206,10 @@ class InstructorManagementService {
           .select('discipline')
           .eq('instructor_id', instructorId);
 
-      final disciplines =
-          response.map((item) => item['discipline'] as String).toSet().toList();
+      final disciplines = response
+          .map((item) => item['discipline'] as String)
+          .toSet()
+          .toList();
 
       return disciplines;
     } catch (error) {
@@ -257,8 +268,8 @@ class InstructorManagementService {
         'cancelled_classes': cancelledClassesResponse.length,
         'completion_rate': totalClassesResponse.length > 0
             ? ((completedClassesResponse.length / totalClassesResponse.length) *
-                    100)
-                .round()
+                      100)
+                  .round()
             : 0,
       };
     } catch (error) {
@@ -299,10 +310,13 @@ class InstructorManagementService {
       }
 
       // Update instructor role
-      await Supabase.instance.client.from('user_profiles').update({
-        'role': newRole,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', instructorId);
+      await Supabase.instance.client
+          .from('user_profiles')
+          .update({
+            'role': newRole,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', instructorId);
 
       return true;
     } catch (error) {
@@ -317,10 +331,13 @@ class InstructorManagementService {
     bool isActive,
   ) async {
     try {
-      await Supabase.instance.client.from('user_profiles').update({
-        'is_active': isActive,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', instructorId);
+      await Supabase.instance.client
+          .from('user_profiles')
+          .update({
+            'is_active': isActive,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', instructorId);
 
       return true;
     } catch (error) {
@@ -385,10 +402,13 @@ class InstructorManagementService {
       }
 
       // Update profile to remove image URL
-      await Supabase.instance.client.from('user_profiles').update({
-        'profile_image_url': null,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', instructorId);
+      await Supabase.instance.client
+          .from('user_profiles')
+          .update({
+            'profile_image_url': null,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', instructorId);
 
       return true;
     } catch (error) {
@@ -400,8 +420,10 @@ class InstructorManagementService {
   /// Get all instructors with their user profile information
   Future<List<Map<String, dynamic>>> getAllInstructorsWithProfiles() async {
     try {
-      final response =
-          await _supabaseService.client.from('instructor_profiles').select('''
+      // 1. Fetch instructors who have a full instructor_profiles entry
+      final response = await _supabaseService.client
+          .from('instructor_profiles')
+          .select('''
             *,
             user_profiles!inner(
               id,
@@ -413,55 +435,107 @@ class InstructorManagementService {
               role,
               profile_image_url
             )
-          ''').order('created_at', ascending: false);
+          ''')
+          .order('created_at', ascending: false);
 
-      return response.map<Map<String, dynamic>>((item) {
-        final instructor = Map<String, dynamic>.from(item);
-        final userProfile = instructor['user_profiles'] as Map<String, dynamic>;
+      final List<Map<String, dynamic>> fullInstructors = response
+          .map<Map<String, dynamic>>((item) {
+            final instructor = Map<String, dynamic>.from(item);
+            final userProfile =
+                instructor['user_profiles'] as Map<String, dynamic>;
 
-        // Flatten the structure for easier use
-        return {
-          'instructor_id': instructor['id'],
-          'user_id': instructor['user_id'],
-          'full_name': userProfile['full_name'],
-          'email': userProfile['email'],
-          'phone': userProfile['phone'],
-          'profile_image_url': instructor['profile_image_url'] ??
-              userProfile['profile_image_url'],
-          'bio': instructor['bio'],
-          'primary_discipline': instructor['primary_discipline'],
-          'disciplines': instructor['disciplines'],
-          'specializations': instructor['specializations'],
-          'years_experience': instructor['years_experience'],
-          'achievements': instructor['achievements'],
-          'certifications': instructor['certifications'],
-          'languages': instructor['languages'],
-          'is_active': instructor['is_active'],
-          'join_date': instructor['join_date'],
-          'created_at': instructor['created_at'],
-          'user_status': userProfile['status'],
-          'user_role': userProfile['role'],
-        };
-      }).toList();
+            return {
+              'instructor_id': instructor['id'],
+              'user_id': instructor['user_id'],
+              'full_name': userProfile['full_name'],
+              'email': userProfile['email'],
+              'phone': userProfile['phone'],
+              'profile_image_url':
+                  instructor['profile_image_url'] ??
+                  userProfile['profile_image_url'],
+              'bio': instructor['bio'],
+              'primary_discipline': instructor['primary_discipline'],
+              'disciplines': instructor['disciplines'],
+              'specializations': instructor['specializations'],
+              'years_experience': instructor['years_experience'],
+              'achievements': instructor['achievements'],
+              'certifications': instructor['certifications'],
+              'languages': instructor['languages'],
+              'is_active': instructor['is_active'],
+              'join_date': instructor['join_date'],
+              'created_at': instructor['created_at'],
+              'user_status': userProfile['status'],
+              'user_role': userProfile['role'],
+              'profile_incomplete': false,
+            };
+          })
+          .toList();
+
+      // 2. Collect user_ids that already have a full instructor profile
+      final Set<String> existingUserIds = fullInstructors
+          .map((i) => i['user_id'] as String)
+          .toSet();
+
+      // 3. Fetch users with role='instructor' who don't have an instructor_profiles entry
+      final usersResponse = await _supabaseService.client
+          .from('user_profiles')
+          .select(
+            'id, full_name, email, phone, profile_image_url, is_active, status, role, created_at',
+          )
+          .inFilter('role', [
+            'instructor',
+            'instructor_student',
+            'instructor_admin',
+          ]);
+
+      final List<Map<String, dynamic>> incompleteInstructors = [];
+      for (final user in usersResponse) {
+        final userId = user['id'] as String;
+        if (!existingUserIds.contains(userId)) {
+          incompleteInstructors.add({
+            'instructor_id': null,
+            'user_id': userId,
+            'full_name': user['full_name'],
+            'email': user['email'],
+            'phone': user['phone'],
+            'profile_image_url': user['profile_image_url'],
+            'bio': null,
+            'primary_discipline': null,
+            'disciplines': null,
+            'specializations': null,
+            'years_experience': null,
+            'achievements': null,
+            'certifications': null,
+            'languages': null,
+            'is_active': user['is_active'] ?? true,
+            'join_date': null,
+            'created_at': user['created_at'],
+            'user_status': user['status'],
+            'user_role': user['role'],
+            'profile_incomplete': true,
+          });
+        }
+      }
+
+      // 4. Incomplete profiles appear first so they are visible at the top
+      return [...incompleteInstructors, ...fullInstructors];
     } catch (e) {
       throw Exception('Errore nel caricamento degli istruttori: $e');
     }
   }
 
-  /// Get approved students who can be promoted to instructors
+  /// Get all users who can be promoted to instructors (including admins)
   Future<List<Map<String, dynamic>>> getApprovedStudents() async {
     try {
       final response = await _supabaseService.client
           .from('user_profiles')
           .select('*')
-          .eq('role', 'student')
-          .eq('status', 'approved')
-          .eq('is_active', true)
+          .neq('role', 'instructor')
           .order('full_name', ascending: true);
 
       return response.cast<Map<String, dynamic>>();
     } catch (e) {
-      throw Exception('Errore nel caricamento degli studenti: $e');
+      throw Exception('Errore nel caricamento degli utenti: $e');
     }
   }
 
@@ -472,7 +546,8 @@ class InstructorManagementService {
       // 1. Update user role to instructor
       await _supabaseService.client
           .from('user_profiles')
-          .update({'role': 'instructor'}).eq('id', userId);
+          .update({'role': 'instructor'})
+          .eq('id', userId);
 
       // 2. Create instructor profile with basic information
       await _supabaseService.client.from('instructor_profiles').insert({
@@ -530,18 +605,22 @@ class InstructorManagementService {
       };
 
       print(
-          '📤 Calling database function with parameters: ${params.keys.toList()}');
+        '📤 Calling database function with parameters: ${params.keys.toList()}',
+      );
 
       // Use the database function to create instructor profile
-      final result = await _supabaseService.client
-          .rpc('create_instructor_profile', params: params);
+      final result = await _supabaseService.client.rpc(
+        'create_instructor_profile',
+        params: params,
+      );
 
       print('📥 Database function result: $result');
 
       // Check if the function call was successful
       final success = result['success'] as bool? ?? false;
       if (!success) {
-        final error = result['error'] as String? ??
+        final error =
+            result['error'] as String? ??
             'Errore sconosciuto nella creazione dell\'istruttore';
         print('❌ Database function reported error: $error');
         throw Exception(error);
@@ -562,19 +641,81 @@ class InstructorManagementService {
       } else if (e.toString().contains('permission denied') ||
           e.toString().contains('amministratori possono')) {
         throw Exception(
-            'Autorizzazioni insufficienti per creare l\'istruttore');
+          'Autorizzazioni insufficienti per creare l\'istruttore',
+        );
       } else if (e.toString().contains('violates foreign key constraint')) {
         throw Exception(
-            'Errore nella creazione del profilo utente. Verifica che tutti i dati siano corretti');
+          'Errore nella creazione del profilo utente. Verifica che tutti i dati siano corretti',
+        );
       } else if (e.toString().contains('network') ||
           e.toString().contains('connection') ||
           e.toString().contains('timeout')) {
         throw Exception(
-            'Errore di connessione. Verifica la tua connessione internet e riprova');
+          'Errore di connessione. Verifica la tua connessione internet e riprova',
+        );
       } else {
         throw Exception(
-            'Errore nella creazione dell\'istruttore: ${e.toString()}');
+          'Errore nella creazione dell\'istruttore: ${e.toString()}',
+        );
       }
+    }
+  }
+
+  /// Completes the instructor profile for a user already promoted to instructor role.
+  /// This does NOT create a new auth user — it only inserts/updates the instructor_profiles entry.
+  Future<void> completeInstructorProfile(
+    String userId,
+    Map<String, dynamic> instructorData,
+  ) async {
+    try {
+      print('🔄 Completing instructor profile for user: $userId');
+
+      // Extract image data
+      final XFile? imageFile = instructorData['profile_image_file'] as XFile?;
+      final Uint8List? webImageBytes =
+          instructorData['web_image_bytes'] as Uint8List?;
+      String? profileImageUrl;
+
+      // Handle image upload if provided
+      if (imageFile != null) {
+        print('📸 Processing profile image...');
+        profileImageUrl = await _uploadProfileImage(imageFile, webImageBytes);
+        if (profileImageUrl != null) {
+          print('✅ Profile image uploaded successfully');
+          // Also update user_profiles with the new image
+          await _supabaseService.client
+              .from('user_profiles')
+              .update({
+                'profile_image_url': profileImageUrl,
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('id', userId);
+        }
+      }
+
+      final profileData = {
+        'user_id': userId,
+        'bio': instructorData['bio'] ?? '',
+        'primary_discipline': instructorData['primary_discipline'],
+        'disciplines': instructorData['disciplines'] ?? [],
+        'years_experience': instructorData['years_experience'] ?? 1,
+        'achievements': instructorData['achievements'] ?? [],
+        'certifications': instructorData['certifications'] ?? [],
+        'languages': instructorData['languages'] ?? [],
+        'is_active': true,
+        'join_date': DateTime.now().toIso8601String().split('T')[0],
+        if (profileImageUrl != null) 'profile_image_url': profileImageUrl,
+      };
+
+      // Upsert so it works even if a partial record already exists
+      await _supabaseService.client
+          .from('instructor_profiles')
+          .upsert(profileData, onConflict: 'user_id');
+
+      print('✅ Instructor profile completed successfully');
+    } catch (e) {
+      print('❌ Error completing instructor profile: $e');
+      throw Exception('Errore nel completamento del profilo istruttore: $e');
     }
   }
 
@@ -588,7 +729,9 @@ class InstructorManagementService {
 
   /// Upload profile image with cross-platform support
   Future<String?> _uploadProfileImage(
-      XFile imageFile, Uint8List? webBytes) async {
+    XFile imageFile,
+    Uint8List? webBytes,
+  ) async {
     try {
       // Generate unique filename
       final timestamp = DateTime.now().millisecondsSinceEpoch;
@@ -685,7 +828,8 @@ class InstructorManagementService {
       // 2. Demote user to student role
       await _supabaseService.client
           .from('user_profiles')
-          .update({'role': 'student'}).eq('id', userId);
+          .update({'role': 'student'})
+          .eq('id', userId);
     } catch (e) {
       throw Exception('Errore nell\'eliminazione dell\'istruttore: $e');
     }
@@ -731,8 +875,9 @@ class InstructorManagementService {
     bool? isActive,
   }) async {
     try {
-      var queryBuilder =
-          _supabaseService.client.from('instructor_profiles').select('''
+      var queryBuilder = _supabaseService.client
+          .from('instructor_profiles')
+          .select('''
             *,
             user_profiles!inner(
               id,

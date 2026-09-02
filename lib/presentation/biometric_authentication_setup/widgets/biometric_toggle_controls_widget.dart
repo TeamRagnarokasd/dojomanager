@@ -255,7 +255,7 @@ class BiometricToggleControlsWidget extends StatelessWidget {
             onChanged: (value) {
               onSettingChanged(key, value);
             },
-            activeColor: const Color(0xFFFF0000),
+            activeThumbColor: const Color(0xFFFF0000),
             activeTrackColor: const Color(0xFFFF0000).withAlpha(77),
             inactiveTrackColor: Colors.grey.shade700,
             inactiveThumbColor: Colors.grey.shade500,

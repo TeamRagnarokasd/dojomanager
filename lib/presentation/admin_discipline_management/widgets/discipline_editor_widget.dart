@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
+import './instructor_selection_dialog_widget.dart';
+import './discipline_subscription_plans_widget.dart';
+import '../../../services/discipline_service.dart';
 
 class DisciplineEditorWidget extends StatefulWidget {
   final Map<String, dynamic>? discipline;
@@ -21,6 +25,7 @@ class DisciplineEditorWidget extends StatefulWidget {
 class _DisciplineEditorWidgetState extends State<DisciplineEditorWidget> {
   late Map<String, dynamic> _disciplineData;
   bool _isLoading = false;
+  final DisciplineService _disciplineService = DisciplineService.instance;
 
   @override
   void initState() {
@@ -63,8 +68,9 @@ class _DisciplineEditorWidgetState extends State<DisciplineEditorWidget> {
               const SizedBox(width: 12),
               Text(
                 isEditing
-                    ? 'Dettagli ${_disciplineData['name']}'
-                    : 'Nuova Disciplina',
+                    ? 'admin_discipline.discipline_details'
+                        .tr(namedArgs: {'name': '${_disciplineData['name']}'})
+                    : 'admin_discipline.new_discipline'.tr(),
                 style: theme.textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
@@ -87,6 +93,8 @@ class _DisciplineEditorWidgetState extends State<DisciplineEditorWidget> {
                   if (isEditing) ...[
                     _buildInfoSection(),
                     const SizedBox(height: 24),
+                    _buildSubscriptionPlansSection(),
+                    const SizedBox(height: 24),
                     _buildInstructorsSection(),
                     const SizedBox(height: 24),
                     _buildScheduleSection(),
@@ -106,7 +114,7 @@ class _DisciplineEditorWidgetState extends State<DisciplineEditorWidget> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: widget.onCancel,
-                  child: const Text('Annulla'),
+                  child: Text('common.cancel'.tr()),
                 ),
               ),
               const SizedBox(width: 16),
@@ -114,7 +122,9 @@ class _DisciplineEditorWidgetState extends State<DisciplineEditorWidget> {
                 child: ElevatedButton(
                   onPressed:
                       isEditing ? _navigateToManagement : _navigateToCreate,
-                  child: Text(isEditing ? 'Gestisci' : 'Crea'),
+                  child: Text(isEditing
+                      ? 'admin_discipline.manage'.tr()
+                      : 'common.create'.tr()),
                 ),
               ),
             ],
@@ -132,7 +142,7 @@ class _DisciplineEditorWidgetState extends State<DisciplineEditorWidget> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Informazioni Disciplina',
+              'admin_discipline.discipline_info'.tr(),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -188,24 +198,23 @@ class _DisciplineEditorWidgetState extends State<DisciplineEditorWidget> {
             Row(
               children: [
                 Text(
-                  'Istruttori',
+                  'admin_management.instructors_filter'.tr(),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
                 ),
                 const Spacer(),
                 TextButton.icon(
-                  onPressed: () =>
-                      Navigator.pushNamed(context, '/instructor-management'),
+                  onPressed: _showInstructorSelectionDialog,
                   icon: const Icon(Icons.edit, size: 16),
-                  label: const Text('Gestisci'),
+                  label: Text('admin_discipline.manage'.tr()),
                 ),
               ],
             ),
             const SizedBox(height: 12),
             if (instructors.isEmpty)
               Text(
-                'Nessun istruttore assegnato',
+                'admin_discipline.no_instructor'.tr(),
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context)
                           .colorScheme
@@ -251,18 +260,18 @@ class _DisciplineEditorWidgetState extends State<DisciplineEditorWidget> {
                 TextButton.icon(
                   onPressed: () => Navigator.pushNamed(
                     context,
-                    '/seasonal-schedule-management',
+                    '/seasonal-schedule-creation',
                     arguments: {'disciplineFilter': _disciplineData['id']},
                   ),
                   icon: const Icon(Icons.edit, size: 16),
-                  label: const Text('Modifica'),
+                  label: Text('profile.modify'.tr()),
                 ),
               ],
             ),
             const SizedBox(height: 12),
             if (schedule.isEmpty)
               Text(
-                'Nessun orario programmato',
+                'seasonal_schedule.no_schedule_in_card'.tr(),
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context)
                           .colorScheme
@@ -302,6 +311,13 @@ class _DisciplineEditorWidgetState extends State<DisciplineEditorWidget> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSubscriptionPlansSection() {
+    return DisciplineSubscriptionPlansWidget(
+      disciplineId: _disciplineData['id'] ?? '',
+      disciplineName: _disciplineData['name'] ?? '',
     );
   }
 
@@ -370,6 +386,105 @@ class _DisciplineEditorWidgetState extends State<DisciplineEditorWidget> {
     );
   }
 
+  void _showInstructorSelectionDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => InstructorSelectionDialogWidget(
+        discipline: _disciplineData['id'],
+        disciplineName: _disciplineData['name'],
+        currentInstructors: List<String>.from(
+          _disciplineData['instructors'],
+        ),
+        onInstructorSelected: _handleInstructorSelected,
+      ),
+    );
+  }
+
+  Future<void> _handleInstructorSelected(
+    String instructorUserId,
+    String instructorName,
+  ) async {
+    try {
+      // Show loading indicator
+      setState(() => _isLoading = true);
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('admin_discipline.assigning_instructor'.tr()),
+            ],
+          ),
+        ),
+      );
+
+      // Get current season ID for context
+      final seasonId =
+          await _disciplineService.getCurrentSeasonIdForInstructorAssignment();
+
+      // Update instructor assignment for this discipline
+      final success = await _disciplineService.updateDisciplineInstructor(
+        discipline: _disciplineData['id'],
+        newInstructorUserId: instructorUserId,
+        seasonId: seasonId,
+      );
+
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+
+      if (success) {
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Istruttore $instructorName assegnato a ${_disciplineData['name']} con successo',
+            ),
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            action: SnackBarAction(
+              label: 'common.ok'.tr(),
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
+          ),
+        );
+
+        // Trigger refresh by calling onSave callback
+        widget.onSave(_disciplineData);
+      } else {
+        throw Exception('Operazione fallita');
+      }
+    } catch (error) {
+      // Close loading dialog if still open
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+
+      // Show error message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'admin_discipline.assign_error'
+                .tr(namedArgs: {'error': error.toString()}),
+          ),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          action: SnackBarAction(
+            label: 'common.ok'.tr(),
+            textColor: Colors.white,
+            onPressed: () {},
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   void _navigateToManagement() {
     widget.onCancel();
     Navigator.pushNamed(context, '/instructor-management');
@@ -377,6 +492,6 @@ class _DisciplineEditorWidgetState extends State<DisciplineEditorWidget> {
 
   void _navigateToCreate() {
     widget.onCancel();
-    Navigator.pushNamed(context, '/seasonal-schedule-management');
+    Navigator.pushNamed(context, '/seasonal-schedule-creation');
   }
 }

@@ -4,6 +4,7 @@ import 'package:sizer/sizer.dart';
 
 import '../../constants/app_constants.dart';
 import '../../core/app_export.dart';
+import '../../services/discipline_service.dart';
 import './widgets/event_calendar_widget.dart';
 import './widgets/event_card_widget.dart';
 import './widgets/event_creation_form_widget.dart';
@@ -73,12 +74,15 @@ class _AdminEventManagementState extends State<AdminEventManagement>
   DateTime selectedMonth = DateTime.now();
   bool isCreatingEvent = false;
 
+  // Disciplines loaded from Supabase
+  List<String> _dynamicDisciplines = [];
+
   final List<String> eventFilters = [
     'all',
     'seminari',
     'stage',
     'active',
-    'upcoming'
+    'upcoming',
   ];
   final List<String> availableInstructors = [
     'Marco Silva - BJJ',
@@ -94,6 +98,24 @@ class _AdminEventManagementState extends State<AdminEventManagement>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadDisciplines();
+  }
+
+  Future<void> _loadDisciplines() async {
+    try {
+      final disciplines = await DisciplineService.instance
+          .getActiveDisciplines();
+      if (mounted) {
+        setState(() {
+          _dynamicDisciplines = disciplines
+              .map((d) => (d['name'] ?? d['id'] ?? '').toString())
+              .where((name) => name.isNotEmpty)
+              .toList();
+        });
+      }
+    } catch (_) {
+      // Silently fail — disciplines list will be empty, form still works
+    }
   }
 
   @override
@@ -108,7 +130,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
       backgroundColor: Colors.black,
       appBar: AppBar(
         title: Text(
-          'Gestione Eventi',
+          'admin_event.title'.tr(),
           style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
             color: Colors.white,
             fontWeight: FontWeight.w600,
@@ -144,9 +166,9 @@ class _AdminEventManagementState extends State<AdminEventManagement>
         ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(text: 'Lista Eventi'),
-            Tab(text: 'Calendario'),
+          tabs: [
+            Tab(text: 'admin_event.tab_list'.tr()),
+            Tab(text: 'admin_event.tab_calendar'.tr()),
           ],
           indicatorColor: const Color(0xFFFF0000),
           labelColor: Colors.white,
@@ -165,10 +187,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
         ),
         child: TabBarView(
           controller: _tabController,
-          children: [
-            _buildEventsList(),
-            _buildEventsCalendar(),
-          ],
+          children: [_buildEventsList(), _buildEventsCalendar()],
         ),
       ),
       floatingActionButton: Column(
@@ -215,7 +234,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
               foregroundColor: Colors.white,
               heroTag: "create_event",
               icon: const Icon(Icons.add),
-              label: const Text('Nuovo Evento'),
+              label: Text('admin_event.new_event'.tr()),
             ),
           ),
         ],
@@ -311,7 +330,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Pianificazione Stagionale',
+                      'admin_event.seasonal_planning_title'.tr(),
                       style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
@@ -319,7 +338,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
                     ),
                     SizedBox(height: 0.5.h),
                     Text(
-                      'Gestisci palinsesti, schemi orari e programmazione stagionale',
+                      'admin_event.seasonal_planning_subtitle'.tr(),
                       style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                         color: Colors.grey[300],
                       ),
@@ -336,7 +355,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
                 child: ElevatedButton.icon(
                   onPressed: _navigateToSeasonalSchedule,
                   icon: const Icon(Icons.calendar_view_month, size: 18),
-                  label: const Text('Apri Palinsesto'),
+                  label: Text('admin_event.open_schedule'.tr()),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.orange[600],
                     foregroundColor: Colors.white,
@@ -361,7 +380,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
                     color: Colors.orange[600],
                     size: 20,
                   ),
-                  tooltip: 'Info Pianificazione',
+                  tooltip: 'admin_event.seasonal_info_tooltip'.tr(),
                 ),
               ),
             ],
@@ -388,14 +407,10 @@ class _AdminEventManagementState extends State<AdminEventManagement>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.event_note,
-            size: 80,
-            color: Colors.grey[600],
-          ),
+          Icon(Icons.event_note, size: 80, color: Colors.grey[600]),
           SizedBox(height: 2.h),
           Text(
-            'Nessun evento trovato',
+            'admin_event.no_events_found'.tr(),
             style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.w600,
@@ -403,7 +418,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
           ),
           SizedBox(height: 1.h),
           Text(
-            'Crea il tuo primo seminario o stage\nper Team Ragnarok',
+            'admin_event.create_first_event'.tr(),
             textAlign: TextAlign.center,
             style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
               color: Colors.grey[400],
@@ -411,7 +426,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
           ),
           SizedBox(height: 2.h),
           Text(
-            'Per pianificazioni stagionali usa il\nPalinsesto Stagionale',
+            'admin_event.use_seasonal_schedule'.tr(),
             textAlign: TextAlign.center,
             style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
               color: Colors.orange[400],
@@ -425,24 +440,28 @@ class _AdminEventManagementState extends State<AdminEventManagement>
               ElevatedButton.icon(
                 onPressed: _navigateToSeasonalSchedule,
                 icon: const Icon(Icons.calendar_view_month),
-                label: const Text('Palinsesto'),
+                label: Text('admin_event_ui.schedule'.tr()),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange[600],
                   foregroundColor: Colors.white,
-                  padding:
-                      EdgeInsets.symmetric(horizontal: 6.w, vertical: 1.5.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 6.w,
+                    vertical: 1.5.h,
+                  ),
                 ),
               ),
               SizedBox(width: 4.w),
               ElevatedButton.icon(
                 onPressed: _showCreateEventDialog,
                 icon: const Icon(Icons.add),
-                label: const Text('Crea Evento'),
+                label: Text('admin_event_ui.create_event'.tr()),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFF0000),
                   foregroundColor: Colors.white,
-                  padding:
-                      EdgeInsets.symmetric(horizontal: 6.w, vertical: 1.5.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 6.w,
+                    vertical: 1.5.h,
+                  ),
                 ),
               ),
             ],
@@ -461,7 +480,8 @@ class _AdminEventManagementState extends State<AdminEventManagement>
       if (selectedFilter == 'active' && event['status'] != 'active')
         return false;
       if (selectedFilter == 'upcoming' &&
-          event['date'].isBefore(DateTime.now())) return false;
+          event['date'].isBefore(DateTime.now()))
+        return false;
 
       // Filter by month
       if (event['date'].month != selectedMonth.month ||
@@ -470,8 +490,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
       }
 
       return true;
-    }).toList()
-      ..sort((a, b) => a['date'].compareTo(b['date']));
+    }).toList()..sort((a, b) => a['date'].compareTo(b['date']));
   }
 
   void _showCreateEventDialog() {
@@ -481,7 +500,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
       backgroundColor: Colors.transparent,
       builder: (context) => EventCreationFormWidget(
         availableInstructors: availableInstructors,
-        disciplines: AppConstants.disciplines,
+        disciplines: _dynamicDisciplines,
         onSave: (eventData) {
           _createEvent(eventData);
           Navigator.pop(context);
@@ -499,7 +518,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
       builder: (context) => EventCreationFormWidget(
         initialDate: date,
         availableInstructors: availableInstructors,
-        disciplines: AppConstants.disciplines,
+        disciplines: _dynamicDisciplines,
         onSave: (eventData) {
           _createEvent(eventData);
           Navigator.pop(context);
@@ -542,7 +561,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
       builder: (context) => EventCreationFormWidget(
         existingEvent: event,
         availableInstructors: availableInstructors,
-        disciplines: AppConstants.disciplines,
+        disciplines: _dynamicDisciplines,
         onSave: (eventData) {
           _updateEvent(eventId, eventData);
           Navigator.pop(context);
@@ -597,10 +616,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: Text(
-          'Elimina Evento',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: Text('Elimina Evento', style: TextStyle(color: Colors.white)),
         content: Text(
           'Sei sicuro di voler eliminare "${event['title']}"?\nQuesta azione non può essere annullata.',
           style: TextStyle(color: Colors.grey[300]),
@@ -608,7 +624,10 @@ class _AdminEventManagementState extends State<AdminEventManagement>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Annulla', style: TextStyle(color: Colors.grey[400])),
+            child: Text(
+              'common.cancel'.tr(),
+              style: TextStyle(color: Colors.grey[400]),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
@@ -623,9 +642,10 @@ class _AdminEventManagementState extends State<AdminEventManagement>
                 ),
               );
             },
-            style:
-                ElevatedButton.styleFrom(backgroundColor: AppTheme.errorLight),
-            child: const Text('Elimina'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.errorLight,
+            ),
+            child: Text('common.delete'.tr()),
           ),
         ],
       ),
@@ -637,8 +657,9 @@ class _AdminEventManagementState extends State<AdminEventManagement>
       final index = specialEvents.indexWhere((e) => e['id'] == eventId);
       if (index != -1) {
         final currentStatus = specialEvents[index]['status'];
-        specialEvents[index]['status'] =
-            currentStatus == 'active' ? 'inactive' : 'active';
+        specialEvents[index]['status'] = currentStatus == 'active'
+            ? 'inactive'
+            : 'active';
       }
     });
   }
@@ -692,10 +713,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
   // Navigation method for seasonal schedule
   void _navigateToSeasonalSchedule() {
     HapticFeedback.lightImpact();
-    Navigator.pushNamed(
-      context,
-      AppRoutes.seasonalScheduleManagement,
-    );
+    Navigator.pushNamed(context, '/seasonal-schedule-creation');
   }
 
   // Info method for seasonal schedule
@@ -747,7 +765,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
             ),
             SizedBox(height: 3.h),
             Text(
-              'Funzionalità Disponibili:',
+              'admin_event.features_available'.tr(),
               style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
@@ -756,23 +774,23 @@ class _AdminEventManagementState extends State<AdminEventManagement>
             SizedBox(height: 2.h),
             _buildInfoItem(
               Icons.schedule,
-              'Schema Orari',
-              'Crea template settimanali per lezioni ricorrenti',
+              'admin_event.weekly_schema'.tr(),
+              'admin_event.weekly_schema_desc'.tr(),
             ),
             _buildInfoItem(
               Icons.event_busy,
-              'Gestione Festività',
-              'Definisci giorni di chiusura e vacanze',
+              'admin_event.holiday_management'.tr(),
+              'admin_event.holiday_management_desc'.tr(),
             ),
             _buildInfoItem(
               Icons.auto_awesome,
-              'Generazione Automatica',
-              'Crea automaticamente tutte le lezioni della stagione',
+              'admin_event.auto_generation'.tr(),
+              'admin_event.auto_generation_desc'.tr(),
             ),
             _buildInfoItem(
               Icons.preview,
-              'Anteprima Completa',
-              'Visualizza e modifica il calendario generato',
+              'admin_event.full_preview'.tr(),
+              'admin_event.full_preview_desc'.tr(),
             ),
             SizedBox(height: 3.h),
             SizedBox(
@@ -783,7 +801,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
                   _navigateToSeasonalSchedule();
                 },
                 icon: const Icon(Icons.arrow_forward),
-                label: const Text('Accedi al Palinsesto'),
+                label: Text('admin_event_ui.access_schedule'.tr()),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange[600],
                   foregroundColor: Colors.white,
@@ -813,11 +831,7 @@ class _AdminEventManagementState extends State<AdminEventManagement>
               color: Colors.orange[600]!.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(
-              icon,
-              color: Colors.orange[400],
-              size: 20,
-            ),
+            child: Icon(icon, color: Colors.orange[400], size: 20),
           ),
           SizedBox(width: 3.w),
           Expanded(

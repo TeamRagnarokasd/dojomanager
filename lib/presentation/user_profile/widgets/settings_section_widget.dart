@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/app_export.dart';
 import '../../../constants/app_constants.dart';
+import '../../../constants/profile_typography.dart';
+import '../../../widgets/language_settings_widget.dart';
 
 class SettingsSectionWidget extends StatelessWidget {
   final bool notificationsEnabled;
@@ -27,14 +30,16 @@ class SettingsSectionWidget extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Impostazioni',
+            'profile.settings'.tr(),
             style: GoogleFonts.inter(
               color: Colors.white,
-              fontSize: 14.sp,
+              fontSize: ProfileTypography.sectionTitle,
               fontWeight: FontWeight.w600,
             ),
           ),
           SizedBox(height: 3.h),
+          const LanguageSettingsWidget(),
+          SizedBox(height: 2.h),
           _buildNotificationToggle(),
           SizedBox(height: 2.h),
           _buildPrivacyControls(),
@@ -52,25 +57,27 @@ class SettingsSectionWidget extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.notifications, color: Colors.red, size: 5.w),
+          Icon(Icons.notifications, color: Colors.red, size: 22),
           SizedBox(width: 3.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Notifiche Push',
+                  'profile.push_notifications'.tr(),
                   style: GoogleFonts.inter(
                     color: Colors.white,
-                    fontSize: 11.sp,
+                    fontSize: ProfileTypography.rowLabel,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                SizedBox(height: 0.3.h),
                 Text(
-                  'Ricevi notifiche per lezioni e aggiornamenti',
+                  'profile.push_notifications_subtitle'.tr(),
                   style: GoogleFonts.inter(
                     color: Colors.grey[400],
-                    fontSize: 9.sp,
+                    fontSize: ProfileTypography.subtitle,
+                    height: 1.35,
                   ),
                 ),
               ],
@@ -79,7 +86,7 @@ class SettingsSectionWidget extends StatelessWidget {
           Switch(
             value: notificationsEnabled,
             onChanged: onNotificationChanged,
-            activeColor: Colors.red,
+            activeThumbColor: Colors.red,
             activeTrackColor: Colors.red.withAlpha(77),
           ),
         ],
@@ -99,24 +106,24 @@ class SettingsSectionWidget extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.privacy_tip, color: Colors.red, size: 5.w),
+              Icon(Icons.privacy_tip, color: Colors.red, size: 22),
               SizedBox(width: 3.w),
               Text(
-                'Privacy e Sicurezza',
+                'profile.privacy_security'.tr(),
                 style: GoogleFonts.inter(
                   color: Colors.white,
-                  fontSize: 11.sp,
+                  fontSize: ProfileTypography.rowLabel,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
           SizedBox(height: 2.h),
-          _buildPrivacyOption('Profilo Pubblico', true),
+          _buildPrivacyOption('profile.public_profile'.tr(), true),
           SizedBox(height: 1.h),
-          _buildPrivacyOption('Condividi Progressi', false),
+          _buildPrivacyOption('profile.share_progress'.tr(), false),
           SizedBox(height: 1.h),
-          _buildPrivacyOption('Ricevi Messaggi da Istruttori', true),
+          _buildPrivacyOption('profile.instructor_messages'.tr(), true),
         ],
       ),
     );
@@ -126,11 +133,13 @@ class SettingsSectionWidget extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          title,
-          style: GoogleFonts.inter(
-            color: Colors.grey[300],
-            fontSize: 10.sp,
+        Expanded(
+          child: Text(
+            title,
+            style: GoogleFonts.inter(
+              color: Colors.grey[300],
+              fontSize: ProfileTypography.optionLabel,
+            ),
           ),
         ),
         Switch(
@@ -138,7 +147,7 @@ class SettingsSectionWidget extends StatelessWidget {
           onChanged: (newValue) {
             // Handle privacy setting change
           },
-          activeColor: Colors.red,
+          activeThumbColor: Colors.red,
           activeTrackColor: Colors.red.withAlpha(77),
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),

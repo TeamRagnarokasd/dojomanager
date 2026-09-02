@@ -282,7 +282,7 @@ class RecentActivityWidget extends StatelessWidget {
                 color: AppTheme.primaryLight,
                 size: 24,
               ),
-              title: const Text('Visualizza Dettagli'),
+              title: Text('dashboard.view_details'.tr()),
               onTap: () {
                 Navigator.pop(context);
                 // Handle view details
@@ -294,7 +294,7 @@ class RecentActivityWidget extends StatelessWidget {
                 color: AppTheme.secondaryLight,
                 size: 24,
               ),
-              title: const Text('Condividi'),
+              title: Text('common.share'.tr()),
               onTap: () {
                 Navigator.pop(context);
                 // Handle share
@@ -306,7 +306,7 @@ class RecentActivityWidget extends StatelessWidget {
                 color: AppTheme.warningLight,
                 size: 24,
               ),
-              title: const Text('Imposta Promemoria'),
+              title: Text('dashboard.set_reminder'.tr()),
               onTap: () {
                 Navigator.pop(context);
                 // Handle reminder

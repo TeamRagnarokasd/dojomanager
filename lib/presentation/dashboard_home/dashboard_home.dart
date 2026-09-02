@@ -3,11 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../routes/app_routes.dart';
+import '../../core/app_export.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/main_navigation_wrapper.dart';
 import '../user_profile/widgets/team_certifications_widget.dart';
 import './widgets/notification_banner_widget.dart';
+import './widgets/profile_switcher_widget.dart';
 import './widgets/role_based_content_widget.dart';
 import './widgets/sponsor_shop_section_widget.dart';
 
@@ -32,11 +33,14 @@ class _DashboardHomeState extends State<DashboardHome>
   // SIMPLIFIED: Remove complex retry mechanism that was causing issues
   String? _errorMessage;
 
+  // Next upcoming booking data
+  Map<String, dynamic>? _nextBooking;
+
   final List<Map<String, dynamic>> _bottomNavItems = [
-    {'label': 'Home', 'icon': 'home'},
-    {'label': 'Classi', 'icon': 'school'},
-    {'label': 'Pagamenti', 'icon': 'payment'},
-    {'label': 'Profilo', 'icon': 'person'},
+    {'label': 'nav.home'.tr(), 'icon': 'home'},
+    {'label': 'nav.classes'.tr(), 'icon': 'school'},
+    {'label': 'nav.payments'.tr(), 'icon': 'payment'},
+    {'label': 'nav.profile'.tr(), 'icon': 'person'},
   ];
 
   @override
@@ -103,12 +107,12 @@ class _DashboardHomeState extends State<DashboardHome>
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Alcuni dati potrebbero non essere aggiornati';
+          _errorMessage = 'dashboard.limited_data'.tr();
           // Set default values so dashboard can still display
           _userProfile ??= {
             'id': user.id,
             'email': user.email ?? '',
-            'full_name': user.email?.split('@')[0] ?? 'Utente',
+            'full_name': user.email?.split('@')[0] ?? 'common.user'.tr(),
             'role': 'student',
             'status': 'approved',
             'is_active': true,
@@ -134,7 +138,7 @@ class _DashboardHomeState extends State<DashboardHome>
       profile = {
         'id': user.id,
         'email': user.email ?? '',
-        'full_name': user.email?.split('@')[0] ?? 'Utente',
+        'full_name': user.email?.split('@')[0] ?? 'common.user'.tr(),
         'role': 'student',
         'status': 'approved',
         'is_active': true,
@@ -175,6 +179,157 @@ class _DashboardHomeState extends State<DashboardHome>
       print('  - Role: $role');
       print('  - Full Name: ${profile?['full_name']}');
     }
+
+    // Load next upcoming booking for the notification banner
+    await _loadNextUpcomingBooking(user.id);
+  }
+
+  /// Queries the next upcoming confirmed booking for the current user.
+  /// Shows the red banner only when a real future booking exists.
+  Future<void> _loadNextUpcomingBooking(String userId) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final now = DateTime.now();
+      final todayStr = now.toIso8601String().split('T')[0];
+      final nowTimeStr =
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:00';
+
+      // Query confirmed bookings with their schedule instance details
+      final response = await supabase
+          .from('class_registrations')
+          .select('''
+            id,
+            registration_status,
+            schedule_instances!inner (
+              id,
+              discipline,
+              class_date,
+              start_time,
+              end_time
+            )
+          ''')
+          .eq('user_id', userId)
+          .eq('registration_status', 'registered')
+          .gte('schedule_instances.class_date', todayStr)
+          .order('schedule_instances(class_date)', ascending: true)
+          .limit(10);
+
+      if (response.isEmpty) {
+        if (mounted) setState(() => _nextBooking = null);
+        return;
+      }
+
+      // Find the next booking that hasn't started yet
+      Map<String, dynamic>? nextBooking;
+      for (final row in response) {
+        final instance = row['schedule_instances'];
+        if (instance == null) continue;
+        final classDateStr = instance['class_date'] as String?;
+        final startTimeStr = instance['start_time'] as String?;
+        if (classDateStr == null || startTimeStr == null) continue;
+
+        // Parse date and time
+        DateTime? classDateTime;
+        try {
+          final timeParts = startTimeStr.split(':');
+          final hour = int.parse(timeParts[0]);
+          final minute = int.parse(timeParts[1]);
+          final dateParts = classDateStr.split('-');
+          classDateTime = DateTime(
+            int.parse(dateParts[0]),
+            int.parse(dateParts[1]),
+            int.parse(dateParts[2]),
+            hour,
+            minute,
+          );
+        } catch (_) {
+          continue;
+        }
+
+        // Only show if the class is in the future
+        if (classDateTime.isAfter(now)) {
+          nextBooking = {
+            'discipline': instance['discipline'] ?? '',
+            'class_date': classDateStr,
+            'start_time': startTimeStr,
+            'datetime': classDateTime,
+          };
+          break;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _nextBooking = nextBooking;
+          // Reset banner visibility when new data is loaded
+          if (nextBooking != null) {
+            _showNotificationBanner = true;
+          }
+        });
+      }
+    } catch (e) {
+      print('⚠️ Error loading next booking: $e');
+      if (mounted) setState(() => _nextBooking = null);
+    }
+  }
+
+  /// Formats the upcoming booking into a human-readable Italian message.
+  String _getUpcomingBookingMessage() {
+    if (_nextBooking == null) return '';
+
+    final discipline = _nextBooking!['discipline'] as String? ?? '';
+    final classDateStr = _nextBooking!['class_date'] as String? ?? '';
+    final startTimeStr = _nextBooking!['start_time'] as String? ?? '';
+    final classDateTime = _nextBooking!['datetime'] as DateTime?;
+
+    // Format time (HH:MM)
+    String timeFormatted = '';
+    if (startTimeStr.isNotEmpty) {
+      final parts = startTimeStr.split(':');
+      if (parts.length >= 2) {
+        timeFormatted = '${parts[0]}:${parts[1]}';
+      }
+    }
+
+    // Format date label
+    String dateLabel = '';
+    if (classDateTime != null) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final tomorrow = today.add(const Duration(days: 1));
+      final classDay = DateTime(
+        classDateTime.year,
+        classDateTime.month,
+        classDateTime.day,
+      );
+
+      if (classDay == today) {
+        dateLabel = 'oggi';
+      } else if (classDay == tomorrow) {
+        dateLabel = 'domani';
+      } else {
+        // Italian weekday names
+        const weekdays = [
+          'lunedì',
+          'martedì',
+          'mercoledì',
+          'giovedì',
+          'venerdì',
+          'sabato',
+          'domenica',
+        ];
+        dateLabel = weekdays[classDateTime.weekday - 1];
+      }
+    }
+
+    if (discipline.isNotEmpty &&
+        timeFormatted.isNotEmpty &&
+        dateLabel.isNotEmpty) {
+      return 'Ricorda: il tuo prossimo allenamento di $discipline è $dateLabel alle $timeFormatted';
+    } else if (discipline.isNotEmpty && timeFormatted.isNotEmpty) {
+      return 'Ricorda: il tuo prossimo allenamento di $discipline è alle $timeFormatted';
+    }
+    return 'Hai un allenamento prenotato in arrivo';
   }
 
   // SIMPLIFIED: Clean navigation to login
@@ -230,16 +385,18 @@ class _DashboardHomeState extends State<DashboardHome>
     _refreshController.stop();
     _refreshController.reset();
 
+    if (!mounted) return;
     setState(() {
       _isRefreshing = false;
     });
 
     // Show success feedback
     HapticFeedback.lightImpact();
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Dashboard aggiornato',
+          'dashboard.refreshed'.tr(),
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             color: Theme.of(context).colorScheme.onSecondary,
           ),
@@ -282,23 +439,23 @@ class _DashboardHomeState extends State<DashboardHome>
     final String greeting;
 
     if (hour < 12) {
-      greeting = 'Buongiorno';
+      greeting = 'dashboard.greeting_morning'.tr();
     } else if (hour < 18) {
-      greeting = 'Buon pomeriggio';
+      greeting = 'dashboard.greeting_afternoon'.tr();
     } else {
-      greeting = 'Buonasera';
+      greeting = 'dashboard.greeting_evening'.tr();
     }
 
     final String roleTitle;
     switch (_currentUserRole) {
       case UserRole.student:
-        roleTitle = 'Atleta';
+        roleTitle = 'dashboard.role_athlete'.tr();
         break;
       case UserRole.instructor:
-        roleTitle = 'Istruttore';
+        roleTitle = 'dashboard.role_instructor'.tr();
         break;
       case UserRole.admin:
-        roleTitle = 'Amministratore';
+        roleTitle = 'dashboard.role_admin'.tr();
         break;
     }
 
@@ -321,34 +478,35 @@ class _DashboardHomeState extends State<DashboardHome>
 
     switch (_userRole) {
       case 'student':
+      case 'instructor_student':
         quickActions = [
           {
-            'title': 'Palinsesto Classi',
-            'subtitle': 'Visualizza orari lezioni',
-            'icon': Icons.event_note,
+            'title': 'Le Mie Lezioni',
+            'subtitle': 'Visualizza e prenota lezioni',
+            'icon': Icons.calendar_today,
             'route': '/class-schedule',
-            'color': Theme.of(context).colorScheme.secondary,
+            'color': Colors.blue,
           },
           {
-            'title': 'Archivio Ricevute',
-            'subtitle': 'Le tue ricevute personali',
-            'icon': Icons.receipt_long,
-            'route': '/receipt-archive',
-            'color': Theme.of(context).colorScheme.primary,
+            'title': 'instructor_directory.title'.tr(),
+            'subtitle': 'Scopri il team di esperti',
+            'icon': Icons.group,
+            'route': '/instructor-directory',
+            'color': Color(0xFFFF0000),
           },
           {
-            'title': 'Storico Pagamenti',
+            'title': 'Pagamenti',
             'subtitle': 'Visualizza pagamenti',
             'icon': Icons.payment,
             'route': '/payment-history',
             'color': Colors.green,
           },
           {
-            'title': 'Profilo Utente',
-            'subtitle': 'Gestisci il tuo profilo',
+            'title': 'Profilo',
+            'subtitle': 'Gestisci i tuoi dati',
             'icon': Icons.person,
             'route': '/user-profile',
-            'color': Colors.blue,
+            'color': Colors.purple,
           },
         ];
         break;
@@ -390,7 +548,7 @@ class _DashboardHomeState extends State<DashboardHome>
         // COMPLETELY NEW ADMIN CONTROL PANEL
         quickActions = [
           {
-            'title': 'Gestione Sponsor',
+            'title': 'admin_sponsor.title'.tr(),
             'subtitle': 'Amministra sponsor e partner',
             'icon': Icons.business,
             'route': '/admin-sponsor-management',
@@ -400,7 +558,7 @@ class _DashboardHomeState extends State<DashboardHome>
             'title': 'Palinsesto Stagionale',
             'subtitle': 'Configura stagioni e orari',
             'icon': Icons.calendar_view_month,
-            'route': '/seasonal-schedule-management',
+            'route': '/seasonal-schedule-creation',
             'color': Theme.of(context).colorScheme.primary,
           },
           {
@@ -425,7 +583,7 @@ class _DashboardHomeState extends State<DashboardHome>
             'color': Colors.blue,
           },
           {
-            'title': 'Centro Comunicazioni',
+            'title': 'communication.title'.tr(),
             'subtitle': 'Messaggi e notifiche',
             'icon': Icons.message,
             'route': '/communication-center',
@@ -457,7 +615,7 @@ class _DashboardHomeState extends State<DashboardHome>
             'color': Theme.of(context).colorScheme.secondary,
           },
           {
-            'title': 'Archivio Ricevute',
+            'title': 'receipt.archive_title'.tr(),
             'subtitle': 'Le tue ricevute',
             'icon': Icons.receipt_long,
             'route': '/receipt-archive',
@@ -475,8 +633,8 @@ class _DashboardHomeState extends State<DashboardHome>
             children: [
               Text(
                 _userRole == 'admin' || _userRole == 'principal_admin'
-                    ? 'Pannello di Controllo Admin'
-                    : 'Accesso Rapido',
+                    ? 'dashboard.admin_panel'.tr()
+                    : 'dashboard.quick_access'.tr(),
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: Theme.of(context).colorScheme.onSurface,
@@ -496,7 +654,7 @@ class _DashboardHomeState extends State<DashboardHome>
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    'AMMINISTRATORE',
+                    'dashboard.administrator_badge'.tr(),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.secondary,
                       fontSize: 10.sp,
@@ -516,8 +674,8 @@ class _DashboardHomeState extends State<DashboardHome>
               mainAxisSpacing: 2.h,
               childAspectRatio:
                   _userRole == 'admin' || _userRole == 'principal_admin'
-                      ? 1.4 // Slightly taller for admin cards
-                      : 1.6,
+                  ? 1.4 // Slightly taller for admin cards
+                  : 1.6,
             ),
             itemCount: quickActions.length,
             itemBuilder: (context, index) {
@@ -553,6 +711,7 @@ class _DashboardHomeState extends State<DashboardHome>
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
                           padding: EdgeInsets.all(2.w),
@@ -569,28 +728,41 @@ class _DashboardHomeState extends State<DashboardHome>
                           ),
                         ),
                         SizedBox(height: 1.5.h),
-                        Text(
-                          action['title'],
-                          style: Theme.of(
-                            context,
-                          ).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.onSurface,
+                        Flexible(
+                          child: FittedBox(
+                            alignment: Alignment.topLeft,
+                            fit: BoxFit.scaleDown,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  action['title'],
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurface,
+                                      ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                SizedBox(height: 0.5.h),
+                                Text(
+                                  action['subtitle'],
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                      ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        SizedBox(height: 0.5.h),
-                        Text(
-                          action['subtitle'],
-                          style: Theme.of(
-                            context,
-                          ).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -607,17 +779,19 @@ class _DashboardHomeState extends State<DashboardHome>
   String _getRoleDisplayName(String role) {
     switch (role) {
       case 'student':
-        return 'Studente';
+        return 'dashboard.role_student'.tr();
       case 'instructor':
-        return 'Istruttore';
+        return 'dashboard.role_instructor'.tr();
       case 'admin':
-        return 'Admin';
+        return 'roles.admin'.tr();
       case 'instructor_admin':
-        return 'Istruttore Admin';
+        return 'dashboard.role_instructor_admin'.tr();
+      case 'instructor_student':
+        return 'Istruttore Allievo';
       case 'principal_admin':
-        return 'Admin Principale';
+        return 'dashboard.role_principal_admin'.tr();
       default:
-        return 'Utente';
+        return 'common.user'.tr();
     }
   }
 
@@ -675,7 +849,7 @@ class _DashboardHomeState extends State<DashboardHome>
                 ),
                 SizedBox(height: 2.h),
                 Text(
-                  'Caricamento dashboard...',
+                  'dashboard.loading'.tr(),
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 16.sp,
@@ -697,52 +871,89 @@ class _DashboardHomeState extends State<DashboardHome>
           backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
           elevation: 0,
           automaticallyImplyLeading: false,
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Benvenuto/a',
+                _userProfile?['full_name'] ?? 'common.user'.tr(),
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-              Text(
-                _userProfile?['full_name'] ?? 'Utente',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
             ],
           ),
           actions: [
-            // Role Badge
-            Container(
-              margin: EdgeInsets.only(right: 8),
-              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.secondary.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(20),
+            // Profile Switcher (only for students and instructor_student)
+            if (_userRole == 'student' ||
+                _userRole == 'instructor_student' ||
+                _userRole == null)
+              ProfileSwitcherWidget(
+                adultProfile: _userProfile,
+                onProfileChanged: () {
+                  if (mounted) setState(() {});
+                },
               ),
-              child: Text(
-                _getRoleDisplayName(_userRole ?? 'student'),
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.secondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+            // Switch to Instructor view button (for instructor_student)
+            if (_userRole == 'instructor_student')
+              Tooltip(
+                message: 'Passa a Vista Istruttore',
+                child: InkWell(
+                  onTap: () => Navigator.pushReplacementNamed(
+                    context,
+                    AppRoutes.instructorMainDashboard,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    margin: const EdgeInsets.only(left: 4, right: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.teal.withValues(alpha: 0.4),
+                        width: 1,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.swap_horiz_rounded,
+                      size: 18,
+                      color: Colors.teal,
+                    ),
+                  ),
                 ),
               ),
-            ),
+            // Role Badge — hidden for instructor_student to save space (shown in body)
+            if (_userRole != 'instructor_student')
+              Container(
+                margin: EdgeInsets.only(right: 8),
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.secondary.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  _getRoleDisplayName(_userRole ?? 'student'),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.secondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             // Sign out button
             IconButton(
               onPressed: () async {
                 try {
-                  await AuthService.instance.signOut();
+                  await AuthService.instance.logout();
                   if (mounted) {
                     Navigator.pushNamedAndRemoveUntil(
                       context,
@@ -752,7 +963,6 @@ class _DashboardHomeState extends State<DashboardHome>
                   }
                 } catch (error) {
                   print('Sign out error: $error');
-                  // Force navigation even if sign out fails
                   if (mounted) {
                     Navigator.pushNamedAndRemoveUntil(
                       context,
@@ -779,21 +989,81 @@ class _DashboardHomeState extends State<DashboardHome>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Welcome header row for instructor_student (full width, no truncation)
+                  if (_userRole == 'instructor_student')
+                    Container(
+                      margin: EdgeInsets.fromLTRB(4.w, 1.5.h, 4.w, 0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'dashboard.welcome'.tr(),
+                                  style: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.7),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                                Text(
+                                  _userProfile?['full_name'] ??
+                                      'common.user'.tr(),
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.secondary.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              _getRoleDisplayName(_userRole ?? 'student'),
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.secondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                   // Error Banner (if any)
                   _buildErrorBanner(),
 
-                  // Notification Banner
-                  if (_showNotificationBanner)
+                  // Notification Banner — only shown when user has a real upcoming booking
+                  if (_showNotificationBanner && _nextBooking != null)
                     Container(
                       margin: EdgeInsets.symmetric(
                         horizontal: 4.w,
                         vertical: 1.h,
                       ),
                       child: NotificationBannerWidget(
-                        message: _getNotificationMessage(),
+                        message: _getUpcomingBookingMessage(),
                         icon: Icons.info_outline,
-                        backgroundColor:
-                            Theme.of(context).colorScheme.secondary,
+                        backgroundColor: Colors.red,
                         onDismiss: () {
                           setState(() {
                             _showNotificationBanner = false;
@@ -820,112 +1090,6 @@ class _DashboardHomeState extends State<DashboardHome>
                   Container(
                     margin: EdgeInsets.symmetric(horizontal: 4.w),
                     child: TeamCertificationsWidget(),
-                  ),
-
-                  // Instructor Access Section
-                  Container(
-                    margin: EdgeInsets.symmetric(
-                      horizontal: 4.w,
-                      vertical: 2.h,
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          Navigator.pushNamed(context, '/instructor-directory');
-                        },
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          padding: EdgeInsets.all(4.w),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Color(0xFFFF0000).withValues(alpha: 0.1),
-                                Color(0xFFFF0000).withValues(alpha: 0.2),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Color(0xFFFF0000).withValues(alpha: 0.3),
-                              width: 1,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Theme.of(
-                                  context,
-                                ).shadowColor.withValues(alpha: 0.15),
-                                blurRadius: 12,
-                                offset: const Offset(4, 4),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: EdgeInsets.all(3.w),
-                                decoration: BoxDecoration(
-                                  color: Color(
-                                    0xFFFF0000,
-                                  ).withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Icon(
-                                  Icons.group,
-                                  color: Color(0xFFFF0000),
-                                  size: 28,
-                                ),
-                              ),
-                              SizedBox(width: 4.w),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'I Nostri Istruttori',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleLarge?.copyWith(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    SizedBox(height: 0.5.h),
-                                    Text(
-                                      'Scopri il team di esperti che ti guiderà nel tuo percorso marziale',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodyMedium?.copyWith(
-                                        color: Colors.grey[300],
-                                        height: 1.3,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: EdgeInsets.all(2.w),
-                                decoration: BoxDecoration(
-                                  color: Color(
-                                    0xFFFF0000,
-                                  ).withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(
-                                  Icons.arrow_forward_ios,
-                                  color: Color(0xFFFF0000),
-                                  size: 18,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
                   ),
 
                   // Bottom padding for navigation bar

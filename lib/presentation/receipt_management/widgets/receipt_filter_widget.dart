@@ -59,7 +59,7 @@ class _ReceiptFilterWidgetState extends State<ReceiptFilterWidget> {
               controller: _searchController,
               onChanged: widget.onSearchChanged,
               decoration: InputDecoration(
-                hintText: 'Cerca ricevute...',
+                hintText: 'receipt_mgmt.search_receipts'.tr(),
                 hintStyle: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                   color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
                 ),

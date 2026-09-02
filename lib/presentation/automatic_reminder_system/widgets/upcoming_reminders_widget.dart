@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
-import 'package:intl/intl.dart';
+
 import '../../../core/app_export.dart';
-import '../../../theme/app_theme.dart';
 import '../../../services/supabase_service.dart';
 
 class UpcomingRemindersWidget extends StatelessWidget {
@@ -23,7 +22,7 @@ class UpcomingRemindersWidget extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Promemoria Programmati',
+            'reminders.scheduled_reminders'.tr(),
             style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.bold,
               color: AppTheme.primaryLight,
@@ -67,7 +66,7 @@ class UpcomingRemindersWidget extends StatelessWidget {
         children: [
           Expanded(
             child: _buildSummaryItem(
-              title: 'Oggi',
+              title: 'registration_card.today'.tr(),
               count: todayReminders,
               icon: Icons.today,
               color: Colors.red,
@@ -80,7 +79,7 @@ class UpcomingRemindersWidget extends StatelessWidget {
           ),
           Expanded(
             child: _buildSummaryItem(
-              title: 'Prossimi 7 giorni',
+              title: 'reminders.next_7_days'.tr(),
               count: weekReminders,
               icon: Icons.schedule,
               color: Colors.blue,
@@ -152,14 +151,14 @@ class UpcomingRemindersWidget extends StatelessWidget {
             ),
             SizedBox(height: 2.h),
             Text(
-              'Nessun promemoria programmato',
+              'reminders.no_scheduled'.tr(),
               style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                 color: Colors.grey[600],
               ),
             ),
             SizedBox(height: 1.h),
             Text(
-              'I promemoria verranno creati automaticamente il 7 di ogni mese',
+              'reminders.auto_create_on_7th'.tr(),
               style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
                 color: Colors.grey[500],
               ),
@@ -211,7 +210,7 @@ class UpcomingRemindersWidget extends StatelessWidget {
       dateLabel = 'Oggi';
       labelColor = Colors.red;
     } else if (reminderDate == today.add(const Duration(days: 1))) {
-      dateLabel = 'Domani';
+      dateLabel = 'reminders.tomorrow'.tr();
       labelColor = Colors.orange;
     } else {
       dateLabel = DateFormat('EEEE, d MMMM', 'it_IT').format(date);
@@ -261,7 +260,7 @@ class UpcomingRemindersWidget extends StatelessWidget {
   Widget _buildReminderCard(
       BuildContext context, Map<String, dynamic> reminder) {
     final userProfile = reminder['user_profiles'];
-    final userName = userProfile?['full_name'] ?? 'Utente sconosciuto';
+    final userName = userProfile?['full_name'] ?? 'reminders.unknown_user'.tr();
     final userEmail = userProfile?['email'] ?? '';
 
     return Container(
@@ -311,7 +310,7 @@ class UpcomingRemindersWidget extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                'Promemoria abbonamento mensile',
+                'reminders.monthly_reminder_message'.tr(),
                 style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
                   color: Colors.blue[700],
                   fontWeight: FontWeight.w500,
@@ -324,33 +323,33 @@ class UpcomingRemindersWidget extends StatelessWidget {
           onSelected: (value) =>
               _handleReminderAction(context, reminder, value),
           itemBuilder: (context) => [
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'send_now',
               child: Row(
                 children: [
                   Icon(Icons.send, color: Colors.green),
                   SizedBox(width: 8),
-                  Text('Invia ora'),
+                  Text('reminders.send_now'.tr()),
                 ],
               ),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'edit',
               child: Row(
                 children: [
                   Icon(Icons.edit, color: Colors.blue),
                   SizedBox(width: 8),
-                  Text('Modifica'),
+                  Text('profile.modify'.tr()),
                 ],
               ),
             ),
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'delete',
               child: Row(
                 children: [
-                  Icon(Icons.delete, color: Colors.red),
-                  SizedBox(width: 8),
-                  Text('Elimina'),
+                  const Icon(Icons.delete, color: Colors.red),
+                  const SizedBox(width: 8),
+                  Text('common.delete'.tr()),
                 ],
               ),
             ),
@@ -376,8 +375,8 @@ class UpcomingRemindersWidget extends StatelessWidget {
               .update({'is_sent': true}).eq('id', reminder['id']);
 
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Promemoria inviato con successo'),
+            SnackBar(
+              content: Text('reminders.send_success'.tr()),
               backgroundColor: Colors.green,
             ),
           );
@@ -385,7 +384,8 @@ class UpcomingRemindersWidget extends StatelessWidget {
         } catch (error) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Errore nell\'invio: $error'),
+              content: Text(
+                  'reminders.send_error'.tr(namedArgs: {'error': '$error'})),
               backgroundColor: Colors.red,
             ),
           );
@@ -396,18 +396,17 @@ class UpcomingRemindersWidget extends StatelessWidget {
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Conferma eliminazione'),
-            content:
-                const Text('Sei sicuro di voler eliminare questo promemoria?'),
+            title: Text('reminders.delete_confirm_title'.tr()),
+            content: Text('reminders.delete_confirm_message'.tr()),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Annulla'),
+                child: Text('common.cancel'.tr()),
               ),
               TextButton(
                 onPressed: () => Navigator.of(context).pop(true),
                 style: TextButton.styleFrom(foregroundColor: Colors.red),
-                child: const Text('Elimina'),
+                child: Text('common.delete'.tr()),
               ),
             ],
           ),
@@ -421,8 +420,8 @@ class UpcomingRemindersWidget extends StatelessWidget {
                 .eq('id', reminder['id']);
 
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Promemoria eliminato'),
+              SnackBar(
+                content: Text('reminders.deleted_success'.tr()),
                 backgroundColor: Colors.orange,
               ),
             );
@@ -430,7 +429,8 @@ class UpcomingRemindersWidget extends StatelessWidget {
           } catch (error) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Errore nell\'eliminazione: $error'),
+                content: Text('reminders.delete_error'
+                    .tr(namedArgs: {'error': '$error'})),
                 backgroundColor: Colors.red,
               ),
             );

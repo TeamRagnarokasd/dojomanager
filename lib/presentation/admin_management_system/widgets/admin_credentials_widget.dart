@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/app_export.dart';
 import '../../../services/supabase_service.dart';
-import '../../../theme/app_theme.dart';
 
 class AdminCredentialsWidget extends StatefulWidget {
   final VoidCallback onRefresh;
@@ -18,7 +18,7 @@ class AdminCredentialsWidget extends StatefulWidget {
 
 class _AdminCredentialsWidgetState extends State<AdminCredentialsWidget> {
   bool _showPassword = false;
-  String _authStatus = 'Loading...';
+  String _authStatus = '';
   Map<String, dynamic>? _principalAdmin;
   bool _isLoading = true;
 
@@ -34,23 +34,20 @@ class _AdminCredentialsWidgetState extends State<AdminCredentialsWidget> {
 
       final client = SupabaseService.instance.client;
 
-      // Get principal admin profile
-      final response =
-          await client
-              .from('user_profiles')
-              .select('*')
-              .eq('role', 'principal_admin')
-              .single();
+      final response = await client
+          .from('user_profiles')
+          .select('*')
+          .eq('role', 'principal_admin')
+          .single();
 
-      // Check current auth status
       final currentUser = client.auth.currentUser;
-      String authStatus = 'Non autenticato';
+      String authStatus = 'admin_management.not_authenticated'.tr();
 
       if (currentUser != null) {
         if (currentUser.id == response['id']) {
-          authStatus = '✅ Autenticato come Admin Principale';
+          authStatus = 'admin_management.auth_as_principal'.tr();
         } else {
-          authStatus = '⚠️ Autenticato con altro account';
+          authStatus = 'admin_management.auth_other_account'.tr();
         }
       }
 
@@ -64,7 +61,7 @@ class _AdminCredentialsWidgetState extends State<AdminCredentialsWidget> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore caricamento: $error'),
+            content: Text('admin_management.credentials_load_error'.tr()),
             backgroundColor: Colors.red,
           ),
         );
@@ -76,9 +73,257 @@ class _AdminCredentialsWidgetState extends State<AdminCredentialsWidget> {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$label copiato negli appunti'),
+        content: Text('admin_management.copied_to_clipboard'
+            .tr(namedArgs: {'label': label})),
         backgroundColor: AppTheme.lightTheme.primaryColor,
         duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showEditCredentialsDialog() {
+    final client = SupabaseService.instance.client;
+    final currentUser = client.auth.currentUser;
+
+    final emailController =
+        TextEditingController(text: currentUser?.email ?? '');
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool showNewPassword = false;
+    bool showConfirmPassword = false;
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.edit, color: AppTheme.primaryColor, size: 22),
+              SizedBox(width: 8.w),
+              Text(
+                'Modifica Credenziali',
+                style: GoogleFonts.inter(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Email di accesso',
+                  style: GoogleFonts.inter(
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                SizedBox(height: 1.h),
+                TextField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  style: GoogleFonts.inter(fontSize: 14.sp),
+                  decoration: InputDecoration(
+                    hintText: 'Nuova email',
+                    prefixIcon: Icon(Icons.email, color: AppTheme.primaryColor),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide:
+                          BorderSide(color: AppTheme.primaryColor, width: 2),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 2.h),
+                Text(
+                  'Nuova password (lascia vuoto per non cambiare)',
+                  style: GoogleFonts.inter(
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                SizedBox(height: 1.h),
+                TextField(
+                  controller: newPasswordController,
+                  obscureText: !showNewPassword,
+                  style: GoogleFonts.inter(fontSize: 14.sp),
+                  decoration: InputDecoration(
+                    hintText: 'Nuova password',
+                    prefixIcon: Icon(Icons.lock, color: AppTheme.primaryColor),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        showNewPassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                        color: Colors.grey,
+                      ),
+                      onPressed: () => setDialogState(
+                          () => showNewPassword = !showNewPassword),
+                    ),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide:
+                          BorderSide(color: AppTheme.primaryColor, width: 2),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 1.5.h),
+                TextField(
+                  controller: confirmPasswordController,
+                  obscureText: !showConfirmPassword,
+                  style: GoogleFonts.inter(fontSize: 14.sp),
+                  decoration: InputDecoration(
+                    hintText: 'Conferma nuova password',
+                    prefixIcon:
+                        Icon(Icons.lock_outline, color: AppTheme.primaryColor),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        showConfirmPassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                        color: Colors.grey,
+                      ),
+                      onPressed: () => setDialogState(
+                          () => showConfirmPassword = !showConfirmPassword),
+                    ),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide:
+                          BorderSide(color: AppTheme.primaryColor, width: 2),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(context),
+              child: Text('common.cancel'.tr(),
+                  style: GoogleFonts.inter(color: Colors.grey[600])),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      final newEmail = emailController.text.trim();
+                      final newPassword = newPasswordController.text;
+                      final confirmPassword = confirmPasswordController.text;
+
+                      if (newEmail.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Inserisci una email valida'),
+                              backgroundColor: Colors.red),
+                        );
+                        return;
+                      }
+
+                      if (newPassword.isNotEmpty &&
+                          newPassword != confirmPassword) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Le password non coincidono'),
+                              backgroundColor: Colors.red),
+                        );
+                        return;
+                      }
+
+                      if (newPassword.isNotEmpty && newPassword.length < 6) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text(
+                                  'La password deve essere di almeno 6 caratteri'),
+                              backgroundColor: Colors.red),
+                        );
+                        return;
+                      }
+
+                      setDialogState(() => isSaving = true);
+
+                      try {
+                        final authClient = SupabaseService.instance.client;
+                        UserAttributes attrs = UserAttributes();
+
+                        if (newEmail != currentUser?.email) {
+                          attrs = UserAttributes(email: newEmail);
+                        }
+
+                        if (newPassword.isNotEmpty) {
+                          attrs = UserAttributes(
+                            email: newEmail != currentUser?.email
+                                ? newEmail
+                                : null,
+                            password: newPassword,
+                          );
+                        }
+
+                        await authClient.auth.updateUser(attrs);
+
+                        // Update email in user_profiles table too
+                        if (newEmail != currentUser?.email) {
+                          await authClient
+                              .from('user_profiles')
+                              .update({'email': newEmail}).eq(
+                                  'role', 'principal_admin');
+                        }
+
+                        if (mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content:
+                                  Text('Credenziali aggiornate con successo'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                          _loadPrincipalAdminData();
+                        }
+                      } catch (e) {
+                        setDialogState(() => isSaving = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  'Errore: ${e.toString().replaceAll('Exception: ', '')}'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+              child: isSaving
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
+                  : Text('Salva',
+                      style: GoogleFonts.inter(color: Colors.white)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -140,7 +385,7 @@ class _AdminCredentialsWidgetState extends State<AdminCredentialsWidget> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Admin Principale',
+                              'roles.principal_admin_short'.tr(),
                               style: GoogleFonts.inter(
                                 fontSize: 18.sp,
                                 fontWeight: FontWeight.bold,
@@ -148,7 +393,8 @@ class _AdminCredentialsWidgetState extends State<AdminCredentialsWidget> {
                               ),
                             ),
                             Text(
-                              'Credenziali di accesso sicure',
+                              'admin_management.principal_admin_credentials'
+                                  .tr(),
                               style: GoogleFonts.inter(
                                 fontSize: 14.sp,
                                 color: Colors.grey[600],
@@ -157,21 +403,38 @@ class _AdminCredentialsWidgetState extends State<AdminCredentialsWidget> {
                           ],
                         ),
                       ),
+                      // Edit button
+                      TextButton.icon(
+                        onPressed: _showEditCredentialsDialog,
+                        icon: Icon(Icons.edit,
+                            color: AppTheme.primaryColor, size: 18),
+                        label: Text(
+                          'Modifica',
+                          style: GoogleFonts.inter(
+                            color: AppTheme.primaryColor,
+                            fontSize: 13.sp,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                   SizedBox(height: 20.h),
 
                   // Credentials Section
                   _buildCredentialField(
-                    'Email',
-                    'lutadordeeliteravenna@gmail.com',
+                    'common.email'.tr(),
+                    _principalAdmin?['email'] ??
+                        SupabaseService
+                            .instance.client.auth.currentUser?.email ??
+                        'N/A',
                     Icons.email,
                   ),
                   SizedBox(height: 16.h),
 
                   _buildCredentialField(
-                    'Password',
-                    _showPassword ? 'Magnus833cc' : '••••••••••',
+                    'common.password'.tr(),
+                    _showPassword ? '••••••••••' : '••••••••••',
                     Icons.lock,
                     isPassword: true,
                   ),
@@ -182,16 +445,14 @@ class _AdminCredentialsWidgetState extends State<AdminCredentialsWidget> {
                     width: double.infinity,
                     padding: EdgeInsets.all(16.sp),
                     decoration: BoxDecoration(
-                      color:
-                          _authStatus.contains('✅')
-                              ? Colors.green.withAlpha(26)
-                              : Colors.orange.withAlpha(26),
+                      color: _authStatus.contains('✅')
+                          ? Colors.green.withAlpha(26)
+                          : Colors.orange.withAlpha(26),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color:
-                            _authStatus.contains('✅')
-                                ? Colors.green
-                                : Colors.orange,
+                        color: _authStatus.contains('✅')
+                            ? Colors.green
+                            : Colors.orange,
                         width: 1,
                       ),
                     ),
@@ -201,10 +462,9 @@ class _AdminCredentialsWidgetState extends State<AdminCredentialsWidget> {
                           _authStatus.contains('✅')
                               ? Icons.check_circle
                               : Icons.warning,
-                          color:
-                              _authStatus.contains('✅')
-                                  ? Colors.green
-                                  : Colors.orange,
+                          color: _authStatus.contains('✅')
+                              ? Colors.green
+                              : Colors.orange,
                           size: 20,
                         ),
                         SizedBox(width: 12.w),
@@ -214,10 +474,9 @@ class _AdminCredentialsWidgetState extends State<AdminCredentialsWidget> {
                             style: GoogleFonts.inter(
                               fontSize: 14.sp,
                               fontWeight: FontWeight.w500,
-                              color:
-                                  _authStatus.contains('✅')
-                                      ? Colors.green[800]
-                                      : Colors.orange[800],
+                              color: _authStatus.contains('✅')
+                                  ? Colors.green[800]
+                                  : Colors.orange[800],
                             ),
                           ),
                         ),
@@ -244,7 +503,7 @@ class _AdminCredentialsWidgetState extends State<AdminCredentialsWidget> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Informazioni Profilo',
+                      'admin_management.profile_info'.tr(),
                       style: GoogleFonts.inter(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.bold,
@@ -253,19 +512,21 @@ class _AdminCredentialsWidgetState extends State<AdminCredentialsWidget> {
                     ),
                     SizedBox(height: 16.h),
                     _buildInfoRow(
-                      'Nome Completo',
+                      'admin_dashboard.full_name_label'.tr(),
                       _principalAdmin!['full_name'] ?? 'N/A',
                     ),
-                    _buildInfoRow('Email', _principalAdmin!['email'] ?? 'N/A'),
-                    _buildInfoRow('Ruolo', 'Admin Principale'),
+                    _buildInfoRow('common.email'.tr(),
+                        _principalAdmin!['email'] ?? 'N/A'),
+                    _buildInfoRow('profile.role'.tr(),
+                        'roles.principal_admin_short'.tr()),
                     _buildInfoRow(
-                      'Stato Account',
+                      'admin_management.account_status'.tr(),
                       _principalAdmin!['is_active'] == true
-                          ? 'Attivo'
-                          : 'Inattivo',
+                          ? 'admin_management.active_status'.tr()
+                          : 'admin_management.inactive_status'.tr(),
                     ),
                     _buildInfoRow(
-                      'Data Creazione',
+                      'admin_management.creation_date'.tr(),
                       _formatDate(_principalAdmin!['created_at']),
                     ),
                   ],
@@ -374,14 +635,12 @@ class _AdminCredentialsWidgetState extends State<AdminCredentialsWidget> {
                   ),
                 ),
               ],
-              IconButton(
-                onPressed:
-                    () => _copyToClipboard(
-                      isPassword && !_showPassword ? 'Magnus833cc' : value,
-                      label,
-                    ),
-                icon: Icon(Icons.copy, color: AppTheme.primaryColor, size: 20),
-              ),
+              if (!isPassword)
+                IconButton(
+                  onPressed: () => _copyToClipboard(value, label),
+                  icon:
+                      Icon(Icons.copy, color: AppTheme.primaryColor, size: 20),
+                ),
             ],
           ),
         ],

@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
-import 'package:intl/intl.dart';
+
 import '../../../core/app_export.dart';
-import '../../../theme/app_theme.dart';
 import '../../../services/supabase_service.dart';
 
 class ReminderHistoryWidget extends StatefulWidget {
@@ -81,7 +80,8 @@ class _ReminderHistoryWidgetState extends State<ReminderHistoryWidget> {
     } catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Errore nel caricamento cronologia: $error'),
+          content: Text('reminders.history_load_error'
+              .tr(namedArgs: {'error': '$error'})),
           backgroundColor: Colors.red,
         ),
       );
@@ -109,7 +109,7 @@ class _ReminderHistoryWidgetState extends State<ReminderHistoryWidget> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Cronologia Promemoria',
+            'reminders.history_title'.tr(),
             style: AppTheme.lightTheme.textTheme.headlineSmall!.copyWith(
               fontWeight: FontWeight.bold,
               color: AppTheme.primaryLight,
@@ -125,7 +125,9 @@ class _ReminderHistoryWidgetState extends State<ReminderHistoryWidget> {
               ),
               SizedBox(width: 2.w),
               Text(
-                'Ultimi ${_reminderHistory.length} promemoria',
+                'common.last_n_items'.tr(namedArgs: {
+                  'count': '${_reminderHistory.length}',
+                }),
                 style: AppTheme.lightTheme.textTheme.bodyMedium!.copyWith(
                   color: Colors.grey[600],
                 ),
@@ -155,7 +157,7 @@ class _ReminderHistoryWidgetState extends State<ReminderHistoryWidget> {
             children: [
               Expanded(
                 child: Text(
-                  'Periodo:',
+                  'reminders.period_label'.tr(),
                   style: AppTheme.lightTheme.textTheme.bodyMedium!.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -164,7 +166,7 @@ class _ReminderHistoryWidgetState extends State<ReminderHistoryWidget> {
               Expanded(
                 flex: 2,
                 child: DropdownButtonFormField<String>(
-                  value: _filterPeriod,
+                  initialValue: _filterPeriod,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -173,14 +175,17 @@ class _ReminderHistoryWidgetState extends State<ReminderHistoryWidget> {
                         EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
                     isDense: true,
                   ),
-                  items: const [
+                  items: [
                     DropdownMenuItem(
-                        value: 'week', child: Text('Ultima settimana')),
+                        value: 'week', child: Text('reminders.last_week'.tr())),
                     DropdownMenuItem(
-                        value: 'month', child: Text('Ultimo mese')),
+                        value: 'month',
+                        child: Text('reminders.last_month'.tr())),
                     DropdownMenuItem(
-                        value: 'quarter', child: Text('Ultimi 3 mesi')),
-                    DropdownMenuItem(value: 'year', child: Text('Ultimo anno')),
+                        value: 'quarter',
+                        child: Text('reminders.last_3_months'.tr())),
+                    DropdownMenuItem(
+                        value: 'year', child: Text('reminders.last_year'.tr())),
                   ],
                   onChanged: (value) {
                     if (value != null) {
@@ -197,7 +202,7 @@ class _ReminderHistoryWidgetState extends State<ReminderHistoryWidget> {
             children: [
               Expanded(
                 child: Text(
-                  'Status:',
+                  'reminders.status_filter_label'.tr(),
                   style: AppTheme.lightTheme.textTheme.bodyMedium!.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -206,7 +211,7 @@ class _ReminderHistoryWidgetState extends State<ReminderHistoryWidget> {
               Expanded(
                 flex: 2,
                 child: DropdownButtonFormField<String>(
-                  value: _filterStatus,
+                  initialValue: _filterStatus,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -215,11 +220,14 @@ class _ReminderHistoryWidgetState extends State<ReminderHistoryWidget> {
                         EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
                     isDense: true,
                   ),
-                  items: const [
-                    DropdownMenuItem(value: 'all', child: Text('Tutti')),
-                    DropdownMenuItem(value: 'sent', child: Text('Inviati')),
+                  items: [
                     DropdownMenuItem(
-                        value: 'pending', child: Text('In attesa')),
+                        value: 'all', child: Text('disciplines.all'.tr())),
+                    DropdownMenuItem(
+                        value: 'sent',
+                        child: Text('reminders.status_sent'.tr())),
+                    DropdownMenuItem(
+                        value: 'pending', child: Text('common.pending'.tr())),
                   ],
                   onChanged: (value) {
                     if (value != null) {
@@ -257,14 +265,14 @@ class _ReminderHistoryWidgetState extends State<ReminderHistoryWidget> {
             ),
             SizedBox(height: 2.h),
             Text(
-              'Nessuna cronologia disponibile',
+              'common.no_history'.tr(),
               style: AppTheme.lightTheme.textTheme.titleMedium!.copyWith(
                 color: Colors.grey[600],
               ),
             ),
             SizedBox(height: 1.h),
             Text(
-              'I promemoria inviati appariranno qui',
+              'reminders.history_empty_subtitle'.tr(),
               style: AppTheme.lightTheme.textTheme.bodySmall!.copyWith(
                 color: Colors.grey[500],
               ),
@@ -363,7 +371,7 @@ class _ReminderHistoryWidgetState extends State<ReminderHistoryWidget> {
 
   Widget _buildReminderItem(Map<String, dynamic> reminder) {
     final userProfile = reminder['user_profiles'];
-    final userName = userProfile?['full_name'] ?? 'Utente sconosciuto';
+    final userName = userProfile?['full_name'] ?? 'reminders.unknown_user'.tr();
     final userEmail = userProfile?['email'] ?? '';
     final isSent = reminder['is_sent'] ?? false;
     final createdAt = DateTime.parse(reminder['created_at']);
@@ -434,7 +442,9 @@ class _ReminderHistoryWidgetState extends State<ReminderHistoryWidget> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      isSent ? 'Inviato' : 'In attesa',
+                      isSent
+                          ? 'reminders.status_sent_single'.tr()
+                          : 'reminders.status_pending'.tr(),
                       style: AppTheme.lightTheme.textTheme.bodySmall!.copyWith(
                         color: isSent ? Colors.green : Colors.orange,
                         fontWeight: FontWeight.w500,

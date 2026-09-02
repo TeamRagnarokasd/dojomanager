@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../core/app_export.dart';
 
 class RoleManagementCardsWidget extends StatefulWidget {
   final List<Map<String, dynamic>> allUsers;
@@ -141,7 +142,7 @@ class _RoleManagementCardsWidgetState extends State<RoleManagementCardsWidget> {
           TextField(
             style: GoogleFonts.inter(color: Colors.white, fontSize: 12.sp),
             decoration: InputDecoration(
-              hintText: 'Search users...',
+              hintText: 'admin_management.search_users'.tr(),
               hintStyle:
                   GoogleFonts.inter(color: Colors.white54, fontSize: 12.sp),
               prefixIcon:

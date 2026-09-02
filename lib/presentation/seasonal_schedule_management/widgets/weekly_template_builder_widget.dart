@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:intl/intl.dart';
 
 class WeeklyTemplateBuilderWidget extends StatefulWidget {
   final Map<String, dynamic>? currentSeason;
@@ -26,6 +26,10 @@ class _WeeklyTemplateBuilderWidgetState
     extends State<WeeklyTemplateBuilderWidget> {
   final SupabaseClient _supabase = Supabase.instance.client;
 
+  // Disciplines loaded dynamically from Supabase
+  List<Map<String, dynamic>> _availableDisciplines = [];
+  bool _loadingDisciplines = true;
+
   final List<String> _daysOfWeek = [
     'monday',
     'tuesday',
@@ -33,34 +37,89 @@ class _WeeklyTemplateBuilderWidgetState
     'thursday',
     'friday',
     'saturday',
-    'sunday'
+    'sunday',
   ];
 
-  final Map<String, String> _dayLabels = {
-    'monday': 'Lunedì',
-    'tuesday': 'Martedì',
-    'wednesday': 'Mercoledì',
-    'thursday': 'Giovedì',
-    'friday': 'Venerdì',
-    'saturday': 'Sabato',
-    'sunday': 'Domenica',
+  Map<String, String> get _dayLabels => {
+    'monday': 'seasonal_schedule.monday'.tr(),
+    'tuesday': 'seasonal_schedule.tuesday'.tr(),
+    'wednesday': 'seasonal_schedule.wednesday'.tr(),
+    'thursday': 'seasonal_schedule.thursday'.tr(),
+    'friday': 'seasonal_schedule.friday'.tr(),
+    'saturday': 'seasonal_schedule.saturday'.tr(),
+    'sunday': 'seasonal_schedule.sunday'.tr(),
   };
 
-  final Map<String, String> _disciplineLabels = {
-    'bjj': 'BJJ',
-    'mma': 'MMA',
-    'sambo': 'SAMBO',
-    'grappling': 'Grappling',
-    'fitness': 'Fitness',
-  };
+  @override
+  void initState() {
+    super.initState();
+    _loadDisciplinesFromSupabase();
+  }
 
-  final Map<String, Color> _disciplineColors = {
-    'bjj': Colors.blue,
-    'mma': Colors.red,
-    'sambo': Colors.green,
-    'grappling': Colors.orange,
-    'fitness': Colors.purple,
-  };
+  Future<void> _loadDisciplinesFromSupabase() async {
+    try {
+      final response = await _supabase
+          .from('custom_disciplines')
+          .select('name, display_name, color_hex')
+          .eq('is_active', true)
+          .order('display_name');
+
+      final List<Map<String, dynamic>> disciplines = (response as List)
+          .map(
+            (d) => {
+              'id': d['name'] as String,
+              'label': (d['display_name'] ?? d['name']) as String,
+              'color_hex': d['color_hex'] as String? ?? '#9E9E9E',
+            },
+          )
+          .toList();
+
+      if (mounted) {
+        setState(() {
+          _availableDisciplines = disciplines;
+          _loadingDisciplines = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _availableDisciplines = [];
+          _loadingDisciplines = false;
+        });
+      }
+    }
+  }
+
+  /// Returns the display label for a discipline id, falling back to the raw id
+  String _getDisciplineLabel(String? disciplineId) {
+    if (disciplineId == null) return '';
+    final match = _availableDisciplines.firstWhere(
+      (d) => d['id'] == disciplineId,
+      orElse: () => <String, dynamic>{},
+    );
+    return (match['label'] as String?) ?? disciplineId;
+  }
+
+  /// Returns the color for a discipline id
+  Color _getDisciplineColor(String? disciplineId) {
+    if (disciplineId == null) return Colors.grey;
+    final match = _availableDisciplines.firstWhere(
+      (d) => d['id'] == disciplineId,
+      orElse: () => <String, dynamic>{},
+    );
+    final hex = match['color_hex'] as String?;
+    if (hex == null) return Colors.grey;
+    return _parseColor(hex);
+  }
+
+  Color _parseColor(String hex) {
+    try {
+      final cleaned = hex.replaceAll('#', '');
+      return Color(int.parse('FF$cleaned', radix: 16));
+    } catch (_) {
+      return Colors.grey;
+    }
+  }
 
   void _showAddTemplateDialog([String? dayOfWeek]) {
     showDialog(
@@ -69,7 +128,7 @@ class _WeeklyTemplateBuilderWidgetState
         currentSeason: widget.currentSeason,
         instructors: widget.instructors,
         dayLabels: _dayLabels,
-        disciplineLabels: _disciplineLabels,
+        availableDisciplines: _availableDisciplines,
         preselectedDay: dayOfWeek,
         onSave: (templateData) async {
           await _saveTemplate(templateData);
@@ -85,7 +144,7 @@ class _WeeklyTemplateBuilderWidgetState
         currentSeason: widget.currentSeason,
         instructors: widget.instructors,
         dayLabels: _dayLabels,
-        disciplineLabels: _disciplineLabels,
+        availableDisciplines: _availableDisciplines,
         existingTemplate: template,
         onSave: (templateData) async {
           await _updateTemplate(template['id'], templateData);
@@ -104,12 +163,14 @@ class _WeeklyTemplateBuilderWidgetState
       widget.onTemplatesUpdated();
       _showSuccessSnackBar('Template orario aggiunto con successo');
     } catch (error) {
-      _showErrorSnackBar('Errore nell\'aggiunta del template');
+      _showErrorSnackBar('seasonal_schedule.template_add_error'.tr());
     }
   }
 
   Future<void> _updateTemplate(
-      String templateId, Map<String, dynamic> templateData) async {
+    String templateId,
+    Map<String, dynamic> templateData,
+  ) async {
     try {
       await _supabase
           .from('weekly_schedule_templates')
@@ -119,7 +180,7 @@ class _WeeklyTemplateBuilderWidgetState
       widget.onTemplatesUpdated();
       _showSuccessSnackBar('Template orario aggiornato');
     } catch (error) {
-      _showErrorSnackBar('Errore nell\'aggiornamento del template');
+      _showErrorSnackBar('seasonal_schedule.template_update_error'.tr());
     }
   }
 
@@ -127,19 +188,19 @@ class _WeeklyTemplateBuilderWidgetState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Conferma Eliminazione'),
-        content: Text('Sei sicuro di voler eliminare questo template orario?'),
+        title: Text('admin_discipline.delete_confirm_title'.tr()),
+        content: Text('seasonal_schedule.delete_template_confirm'.tr()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Annulla'),
+            child: Text('common.cancel'.tr()),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(
               foregroundColor: Theme.of(context).colorScheme.error,
             ),
-            child: Text('Elimina'),
+            child: Text('common.delete'.tr()),
           ),
         ],
       ),
@@ -155,7 +216,7 @@ class _WeeklyTemplateBuilderWidgetState
         widget.onTemplatesUpdated();
         _showSuccessSnackBar('Template eliminato');
       } catch (error) {
-        _showErrorSnackBar('Errore nell\'eliminazione del template');
+        _showErrorSnackBar('seasonal_schedule.template_delete_error'.tr());
       }
     }
   }
@@ -207,19 +268,20 @@ class _WeeklyTemplateBuilderWidgetState
           Icon(
             Icons.schedule,
             size: 64,
-            color:
-                Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3),
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.3),
           ),
           SizedBox(height: 2.h),
           Text(
-            'Nessuna Stagione Configurata',
+            'seasonal_schedule.no_season_title'.tr(),
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
           SizedBox(height: 1.h),
           Text(
-            'Configura prima una stagione per creare gli orari settimanali',
+            'seasonal_schedule.configure_season_first'.tr(),
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -241,10 +303,9 @@ class _WeeklyTemplateBuilderWidgetState
             Container(
               padding: EdgeInsets.all(3.w),
               decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .secondary
-                    .withValues(alpha: 0.1),
+                color: Theme.of(
+                  context,
+                ).colorScheme.secondary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -259,15 +320,15 @@ class _WeeklyTemplateBuilderWidgetState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Schema Orari Settimanali',
+                    'seasonal_schedule.weekly_schema_title'.tr(),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   SizedBox(height: 0.5.h),
                   Text(
-                    'Configura gli orari che si ripeteranno per tutta la stagione',
+                    'seasonal_schedule.weekly_schema_subtitle'.tr(),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
@@ -277,7 +338,9 @@ class _WeeklyTemplateBuilderWidgetState
               ),
             ),
             ElevatedButton(
-              onPressed: () => _showAddTemplateDialog(),
+              onPressed: _loadingDisciplines
+                  ? null
+                  : () => _showAddTemplateDialog(),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.secondary,
                 foregroundColor: Theme.of(context).colorScheme.onSecondary,
@@ -290,7 +353,7 @@ class _WeeklyTemplateBuilderWidgetState
                 children: [
                   Icon(Icons.add, size: 16),
                   SizedBox(width: 1.w),
-                  Text('Aggiungi'),
+                  Text('seasonal_schedule.add'.tr()),
                 ],
               ),
             ),
@@ -305,14 +368,14 @@ class _WeeklyTemplateBuilderWidgetState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Panoramica Settimanale',
+          'seasonal_schedule.weekly_overview'.tr(),
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
+            color: Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         SizedBox(height: 2.h),
-        Container(
+        SizedBox(
           height: 20.h,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
@@ -343,25 +406,21 @@ class _WeeklyTemplateBuilderWidgetState
             padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
             decoration: BoxDecoration(
               color: templates.isNotEmpty
-                  ? Theme.of(context)
-                      .colorScheme
-                      .secondary
-                      .withValues(alpha: 0.1)
-                  : Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.05),
+                  ? Theme.of(
+                      context,
+                    ).colorScheme.secondary.withValues(alpha: 0.1)
+                  : Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: templates.isNotEmpty
-                    ? Theme.of(context)
-                        .colorScheme
-                        .secondary
-                        .withValues(alpha: 0.3)
-                    : Theme.of(context)
-                        .colorScheme
-                        .outline
-                        .withValues(alpha: 0.3),
+                    ? Theme.of(
+                        context,
+                      ).colorScheme.secondary.withValues(alpha: 0.3)
+                    : Theme.of(
+                        context,
+                      ).colorScheme.outline.withValues(alpha: 0.3),
               ),
             ),
             child: Row(
@@ -403,10 +462,9 @@ class _WeeklyTemplateBuilderWidgetState
                       width: double.infinity,
                       decoration: BoxDecoration(
                         border: Border.all(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .outline
-                              .withValues(alpha: 0.3),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.outline.withValues(alpha: 0.3),
                           style: BorderStyle.solid,
                         ),
                         borderRadius: BorderRadius.circular(8),
@@ -416,18 +474,19 @@ class _WeeklyTemplateBuilderWidgetState
                         children: [
                           Icon(
                             Icons.add_circle_outline,
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                             size: 24,
                           ),
                           SizedBox(height: 1.h),
                           Text(
-                            'Aggiungi\norario',
+                            'seasonal_schedule.add_time_slot'.tr(),
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                               fontSize: 10,
                             ),
                           ),
@@ -449,7 +508,9 @@ class _WeeklyTemplateBuilderWidgetState
   }
 
   Widget _buildMiniTemplateCard(Map<String, dynamic> template) {
-    final discipline = template['discipline'];
+    final discipline = template['discipline'] as String?;
+    final disciplineColor = _getDisciplineColor(discipline);
+    final disciplineLabel = _getDisciplineLabel(discipline);
     final startTime = TimeOfDay.fromDateTime(
       DateFormat('HH:mm:ss').parse(template['start_time']),
     );
@@ -465,21 +526,17 @@ class _WeeklyTemplateBuilderWidgetState
         child: Container(
           padding: EdgeInsets.all(2.w),
           decoration: BoxDecoration(
-            color: (_disciplineColors[discipline] ?? Colors.grey)
-                .withValues(alpha: 0.1),
+            color: disciplineColor.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(
-              color: (_disciplineColors[discipline] ?? Colors.grey)
-                  .withValues(alpha: 0.3),
-            ),
+            border: Border.all(color: disciplineColor.withValues(alpha: 0.3)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _disciplineLabels[discipline] ?? discipline,
+                disciplineLabel,
                 style: TextStyle(
-                  color: _disciplineColors[discipline] ?? Colors.grey,
+                  color: disciplineColor,
                   fontWeight: FontWeight.w600,
                   fontSize: 10,
                 ),
@@ -510,14 +567,14 @@ class _WeeklyTemplateBuilderWidgetState
         Text(
           'Tutti i Template (${widget.weeklyTemplates.length})',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
+            color: Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         SizedBox(height: 2.h),
         ListView.builder(
           shrinkWrap: true,
-          physics: NeverScrollableScrollPhysics(),
+          physics: const NeverScrollableScrollPhysics(),
           itemCount: widget.weeklyTemplates.length,
           itemBuilder: (context, index) {
             final template = widget.weeklyTemplates[index];
@@ -543,14 +600,14 @@ class _WeeklyTemplateBuilderWidgetState
             ),
             SizedBox(height: 2.h),
             Text(
-              'Nessun Template Configurato',
+              'seasonal_schedule.no_templates_title'.tr(),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
             ),
             SizedBox(height: 1.h),
             Text(
-              'Aggiungi i primi template orari per iniziare a creare il palinsesto automatico',
+              'seasonal_schedule.no_templates_subtitle'.tr(),
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -559,8 +616,8 @@ class _WeeklyTemplateBuilderWidgetState
             SizedBox(height: 3.h),
             ElevatedButton.icon(
               onPressed: () => _showAddTemplateDialog(),
-              icon: Icon(Icons.add),
-              label: Text('Aggiungi Primo Template'),
+              icon: const Icon(Icons.add),
+              label: Text('seasonal_schedule.add_first_template'.tr()),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.secondary,
                 foregroundColor: Theme.of(context).colorScheme.onSecondary,
@@ -573,7 +630,9 @@ class _WeeklyTemplateBuilderWidgetState
   }
 
   Widget _buildTemplateCard(Map<String, dynamic> template) {
-    final discipline = template['discipline'];
+    final discipline = template['discipline'] as String?;
+    final disciplineColor = _getDisciplineColor(discipline);
+    final disciplineLabel = _getDisciplineLabel(discipline);
     final dayOfWeek = template['day_of_week'];
     final startTime = TimeOfDay.fromDateTime(
       DateFormat('HH:mm:ss').parse(template['start_time']),
@@ -596,7 +655,7 @@ class _WeeklyTemplateBuilderWidgetState
               width: 4,
               height: 8.h,
               decoration: BoxDecoration(
-                color: _disciplineColors[discipline] ?? Colors.grey,
+                color: disciplineColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -615,14 +674,13 @@ class _WeeklyTemplateBuilderWidgetState
                           vertical: 0.5.h,
                         ),
                         decoration: BoxDecoration(
-                          color: (_disciplineColors[discipline] ?? Colors.grey)
-                              .withValues(alpha: 0.1),
+                          color: disciplineColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          _disciplineLabels[discipline] ?? discipline,
+                          disciplineLabel,
                           style: TextStyle(
-                            color: _disciplineColors[discipline] ?? Colors.grey,
+                            color: disciplineColor,
                             fontWeight: FontWeight.w600,
                             fontSize: 10,
                           ),
@@ -666,7 +724,8 @@ class _WeeklyTemplateBuilderWidgetState
                       ),
                       SizedBox(width: 1.w),
                       Text(
-                        instructor?['full_name'] ?? 'Nessun istruttore',
+                        instructor?['full_name'] ??
+                            'seasonal_schedule.no_instructor_assigned'.tr(),
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 12,
@@ -684,7 +743,8 @@ class _WeeklyTemplateBuilderWidgetState
                       ),
                       SizedBox(width: 1.w),
                       Text(
-                        template['location'] ?? 'Nessuna location',
+                        template['location'] ??
+                            'seasonal_schedule.no_location'.tr(),
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 12,
@@ -717,9 +777,9 @@ class _WeeklyTemplateBuilderWidgetState
                   value: 'edit',
                   child: Row(
                     children: [
-                      Icon(Icons.edit, size: 16),
+                      const Icon(Icons.edit, size: 16),
                       SizedBox(width: 2.w),
-                      Text('Modifica'),
+                      Text('profile.modify'.tr()),
                     ],
                   ),
                 ),
@@ -734,7 +794,7 @@ class _WeeklyTemplateBuilderWidgetState
                       ),
                       SizedBox(width: 2.w),
                       Text(
-                        'Elimina',
+                        'common.delete'.tr(),
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.error,
                         ),
@@ -756,7 +816,7 @@ class _TemplateEditorDialog extends StatefulWidget {
   final Map<String, dynamic>? currentSeason;
   final List<Map<String, dynamic>> instructors;
   final Map<String, String> dayLabels;
-  final Map<String, String> disciplineLabels;
+  final List<Map<String, dynamic>> availableDisciplines;
   final String? preselectedDay;
   final Map<String, dynamic>? existingTemplate;
   final Function(Map<String, dynamic>) onSave;
@@ -766,7 +826,7 @@ class _TemplateEditorDialog extends StatefulWidget {
     this.currentSeason,
     required this.instructors,
     required this.dayLabels,
-    required this.disciplineLabels,
+    required this.availableDisciplines,
     this.preselectedDay,
     this.existingTemplate,
     required this.onSave,
@@ -784,8 +844,8 @@ class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
   String? _selectedDay;
   String? _selectedDiscipline;
   String? _selectedInstructorId;
-  TimeOfDay _startTime = TimeOfDay(hour: 18, minute: 0);
-  TimeOfDay _endTime = TimeOfDay(hour: 19, minute: 30);
+  TimeOfDay _startTime = const TimeOfDay(hour: 18, minute: 0);
+  TimeOfDay _endTime = const TimeOfDay(hour: 19, minute: 30);
 
   @override
   void initState() {
@@ -830,7 +890,7 @@ class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
         _locationController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Compila tutti i campi obbligatori'),
+          content: Text('seasonal_schedule.required_fields'.tr()),
           backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
@@ -861,8 +921,8 @@ class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       title: Text(
         widget.existingTemplate != null
-            ? 'Modifica Template'
-            : 'Nuovo Template Orario',
+            ? 'seasonal_schedule.edit_template'.tr()
+            : 'seasonal_schedule.new_time_template'.tr(),
         style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
       ),
       content: SingleChildScrollView(
@@ -873,11 +933,12 @@ class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
             children: [
               // Day selection
               DropdownButtonFormField<String>(
-                value: _selectedDay,
+                initialValue: _selectedDay,
                 decoration: InputDecoration(
                   labelText: 'Giorno della Settimana *',
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
                 items: widget.dayLabels.entries.map((entry) {
                   return DropdownMenuItem(
@@ -889,22 +950,102 @@ class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
               ),
               SizedBox(height: 2.h),
 
-              // Discipline selection
+              // Discipline selection — fully dynamic from Supabase
+              widget.availableDisciplines.isEmpty
+                  ? InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Disciplina *',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 2.w),
+                          Text(
+                            'Caricamento discipline...',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : DropdownButtonFormField<String>(
+                      initialValue:
+                          _selectedDiscipline != null &&
+                              widget.availableDisciplines.any(
+                                (d) => d['id'] == _selectedDiscipline,
+                              )
+                          ? _selectedDiscipline
+                          : null,
+                      decoration: InputDecoration(
+                        labelText: 'Disciplina *',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      hint: const Text('Seleziona disciplina'),
+                      items: widget.availableDisciplines.map((discipline) {
+                        return DropdownMenuItem<String>(
+                          value: discipline['id'] as String,
+                          child: Text(discipline['label'] as String),
+                        );
+                      }).toList(),
+                      onChanged: (value) =>
+                          setState(() => _selectedDiscipline = value),
+                    ),
+              SizedBox(height: 2.h),
+
+              // Instructor selection
               DropdownButtonFormField<String>(
-                value: _selectedDiscipline,
+                initialValue: _selectedInstructorId,
                 decoration: InputDecoration(
-                  labelText: 'Disciplina *',
+                  labelText: 'seasonal_schedule.instructor'.tr(),
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
-                items: widget.disciplineLabels.entries.map((entry) {
-                  return DropdownMenuItem(
-                    value: entry.key,
-                    child: Text(entry.value),
-                  );
-                }).toList(),
+                hint: Text('seasonal_schedule.select_instructor'.tr()),
+                items: [
+                  DropdownMenuItem<String>(
+                    value: null,
+                    child: Text(
+                      'seasonal_schedule.no_instructor_assigned'.tr(),
+                    ),
+                  ),
+                  ...widget.instructors.map((instructor) {
+                    return DropdownMenuItem<String>(
+                      value: instructor['user_id'] as String?,
+                      child: Text(
+                        instructor['user_profiles']?['full_name'] ??
+                            instructor['full_name'] ??
+                            'Istruttore',
+                      ),
+                    );
+                  }),
+                ],
                 onChanged: (value) =>
-                    setState(() => _selectedDiscipline = value),
+                    setState(() => _selectedInstructorId = value),
+              ),
+              SizedBox(height: 2.h),
+
+              // Location
+              TextFormField(
+                controller: _locationController,
+                decoration: InputDecoration(
+                  labelText: 'seasonal_schedule.location'.tr() + ' *',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
               ),
               SizedBox(height: 2.h),
 
@@ -918,43 +1059,20 @@ class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
                           context: context,
                           initialTime: _startTime,
                         );
-                        if (time != null) {
-                          setState(() => _startTime = time);
-                        }
+                        if (time != null) setState(() => _startTime = time);
                       },
-                      child: Container(
-                        padding: EdgeInsets.all(3.w),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                              color: Theme.of(context).colorScheme.outline),
-                          borderRadius: BorderRadius.circular(8),
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'seasonal_schedule.start_time'.tr(),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Ora Inizio *',
-                              style: TextStyle(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                                fontSize: 12,
-                              ),
-                            ),
-                            SizedBox(height: 0.5.h),
-                            Text(
-                              _startTime.format(context),
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurface,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
+                        child: Text(_startTime.format(context)),
                       ),
                     ),
                   ),
-                  SizedBox(width: 4.w),
+                  SizedBox(width: 3.w),
                   Expanded(
                     child: InkWell(
                       onTap: () async {
@@ -962,39 +1080,16 @@ class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
                           context: context,
                           initialTime: _endTime,
                         );
-                        if (time != null) {
-                          setState(() => _endTime = time);
-                        }
+                        if (time != null) setState(() => _endTime = time);
                       },
-                      child: Container(
-                        padding: EdgeInsets.all(3.w),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                              color: Theme.of(context).colorScheme.outline),
-                          borderRadius: BorderRadius.circular(8),
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'seasonal_schedule.end_time'.tr(),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Ora Fine *',
-                              style: TextStyle(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                                fontSize: 12,
-                              ),
-                            ),
-                            SizedBox(height: 0.5.h),
-                            Text(
-                              _endTime.format(context),
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurface,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
+                        child: Text(_endTime.format(context)),
                       ),
                     ),
                   ),
@@ -1002,52 +1097,15 @@ class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
               ),
               SizedBox(height: 2.h),
 
-              // Instructor selection
-              DropdownButtonFormField<String>(
-                value: _selectedInstructorId,
-                decoration: InputDecoration(
-                  labelText: 'Istruttore',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                ),
-                items: [
-                  DropdownMenuItem<String>(
-                    value: null,
-                    child: Text('Nessun istruttore assegnato'),
-                  ),
-                  ...widget.instructors.map((instructor) {
-                    return DropdownMenuItem<String>(
-                      value: instructor['id'],
-                      child: Text(instructor['full_name']),
-                    );
-                  }).toList(),
-                ],
-                onChanged: (value) =>
-                    setState(() => _selectedInstructorId = value),
-              ),
-              SizedBox(height: 2.h),
-
-              // Location
-              TextFormField(
-                controller: _locationController,
-                decoration: InputDecoration(
-                  labelText: 'Location *',
-                  hintText: 'es. Palestra Principale',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                ),
-              ),
-              SizedBox(height: 2.h),
-
-              // Max capacity
+              // Capacity
               TextFormField(
                 controller: _capacityController,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: 'Capienza Massima',
-                  hintText: '20',
+                  labelText: 'seasonal_schedule.max_capacity'.tr(),
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
               ),
               SizedBox(height: 2.h),
@@ -1055,12 +1113,12 @@ class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
               // Notes
               TextFormField(
                 controller: _notesController,
-                maxLines: 2,
+                maxLines: 3,
                 decoration: InputDecoration(
-                  labelText: 'Note',
-                  hintText: 'Note aggiuntive per la lezione',
+                  labelText: 'seasonal_schedule.notes'.tr(),
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
               ),
             ],
@@ -1070,7 +1128,7 @@ class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: Text('Annulla'),
+          child: Text('common.cancel'.tr()),
         ),
         ElevatedButton(
           onPressed: _saveTemplate,
@@ -1078,7 +1136,7 @@ class _TemplateEditorDialogState extends State<_TemplateEditorDialog> {
             backgroundColor: Theme.of(context).colorScheme.secondary,
             foregroundColor: Theme.of(context).colorScheme.onSecondary,
           ),
-          child: Text(widget.existingTemplate != null ? 'Aggiorna' : 'Salva'),
+          child: Text('common.save'.tr()),
         ),
       ],
     );

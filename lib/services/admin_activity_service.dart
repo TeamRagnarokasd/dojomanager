@@ -11,54 +11,28 @@ class AdminActivityService {
 
   /// Fetch recent activity data from Supabase database
   Future<List<Map<String, dynamic>>> getRecentActivity({int limit = 10}) async {
-    try {
-      final client = SupabaseService.instance.client;
+    final client = SupabaseService.instance.client;
+    List<Map<String, dynamic>> activities = [];
 
-      // Get recent admin activities - without joins to avoid auth.users permission issues
+    // Query each source independently so one failure doesn't block others
+    try {
       final adminActivities = await client
           .from('admin_activity_log')
           .select('*')
           .order('created_at', ascending: false)
           .limit(limit);
 
-      // Get recent pending registrations - without joins to avoid auth.users permission issues
-      final pendingRegistrations = await client
-          .from('pending_registrations')
-          .select('*')
-          .order('created_at', ascending: false)
-          .limit(5);
-
-      // Get recent user registrations (approved in last 24h)
-      final recentUsers = await client
-          .from('user_profiles')
-          .select('*')
-          .eq('is_active', true)
-          .not('approved_at', 'is', null)
-          .gte(
-            'approved_at',
-            DateTime.now().subtract(Duration(days: 1)).toIso8601String(),
-          )
-          .order('approved_at', ascending: false)
-          .limit(3);
-
-      List<Map<String, dynamic>> activities = [];
-
-      // Process admin activities
       for (var activity in adminActivities) {
-        // Fetch admin name separately if admin_id exists
         String actorName = 'Sistema';
         if (activity['admin_id'] != null) {
           try {
-            final adminProfile =
-                await client
-                    .from('user_profiles')
-                    .select('full_name')
-                    .eq('id', activity['admin_id'])
-                    .maybeSingle();
+            final adminProfile = await client
+                .from('user_profiles')
+                .select('full_name')
+                .eq('id', activity['admin_id'])
+                .maybeSingle();
             actorName = adminProfile?['full_name'] ?? 'Admin';
-          } catch (e) {
-            print('Could not fetch admin name: $e');
-          }
+          } catch (_) {}
         }
 
         activities.add({
@@ -73,8 +47,17 @@ class AdminActivityService {
           'metadata': activity['metadata'],
         });
       }
+    } catch (e) {
+      debugPrint('Error fetching admin activity log: $e');
+    }
 
-      // Process pending registrations
+    try {
+      final pendingRegistrations = await client
+          .from('pending_registrations')
+          .select('*')
+          .order('created_at', ascending: false)
+          .limit(5);
+
       for (var registration in pendingRegistrations) {
         if (registration['status'] == 'pending') {
           activities.add({
@@ -91,8 +74,23 @@ class AdminActivityService {
           });
         }
       }
+    } catch (e) {
+      debugPrint('Error fetching pending registrations: $e');
+    }
 
-      // Process recent approved users
+    try {
+      final recentUsers = await client
+          .from('user_profiles')
+          .select('*')
+          .eq('is_active', true)
+          .not('approved_at', 'is', null)
+          .gte(
+            'approved_at',
+            DateTime.now().subtract(Duration(days: 1)).toIso8601String(),
+          )
+          .order('approved_at', ascending: false)
+          .limit(3);
+
       for (var user in recentUsers) {
         activities.add({
           'id': user['id'],
@@ -107,57 +105,60 @@ class AdminActivityService {
           'metadata': {'email': user['email']},
         });
       }
+    } catch (e) {
+      debugPrint('Error fetching recent users: $e');
+    }
 
-      // Sort all activities by timestamp (newest first)
-      activities.sort(
-        (a, b) =>
-            (b['timestamp'] as DateTime).compareTo(a['timestamp'] as DateTime),
-      );
-
-      // Return limited results
-      return activities.take(limit).toList();
-    } catch (error) {
-      print('Error fetching admin activity: $error');
-      // Return fallback mock data on error
+    if (activities.isEmpty) {
       return _getFallbackActivities();
     }
+
+    activities.sort(
+      (a, b) =>
+          (b['timestamp'] as DateTime).compareTo(a['timestamp'] as DateTime),
+    );
+
+    return activities.take(limit).toList();
   }
 
   /// Get activity statistics for dashboard
   Future<Map<String, int>> getActivityStats() async {
+    final client = SupabaseService.instance.client;
+    final today = DateTime.now();
+    final todayStart = DateTime(today.year, today.month, today.day);
+    final weekStart = today.subtract(Duration(days: 7));
+
+    int todayCount = 0;
+    int weekCount = 0;
+    int pendingCount = 0;
+
     try {
-      final client = SupabaseService.instance.client;
-
-      final today = DateTime.now();
-      final todayStart = DateTime(today.year, today.month, today.day);
-      final weekStart = today.subtract(Duration(days: 7));
-
-      // Get today's activities count
       final todayActivities = await client
           .from('admin_activity_log')
           .select('id')
           .gte('created_at', todayStart.toIso8601String());
-      final todayCount = (todayActivities as List).length;
+      todayCount = (todayActivities as List).length;
 
-      // Get week's activities count
       final weekActivities = await client
           .from('admin_activity_log')
           .select('id')
           .gte('created_at', weekStart.toIso8601String());
-      final weekCount = (weekActivities as List).length;
+      weekCount = (weekActivities as List).length;
+    } catch (e) {
+      debugPrint('Error fetching activity log stats: $e');
+    }
 
-      // Get pending registrations count
+    try {
       final pendingList = await client
           .from('pending_registrations')
           .select('id')
           .eq('status', 'pending');
-      final pendingCount = (pendingList as List).length;
-
-      return {'today': todayCount, 'week': weekCount, 'pending': pendingCount};
-    } catch (error) {
-      print('Error fetching activity stats: $error');
-      return {'today': 0, 'week': 0, 'pending': 0};
+      pendingCount = (pendingList as List).length;
+    } catch (e) {
+      debugPrint('Error fetching pending registrations count: $e');
     }
+
+    return {'today': todayCount, 'week': weekCount, 'pending': pendingCount};
   }
 
   // Helper methods for UI mapping

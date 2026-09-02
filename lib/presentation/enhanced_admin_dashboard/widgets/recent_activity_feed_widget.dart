@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:sizer/sizer.dart';
 import '../../../services/admin_activity_service.dart';
 
@@ -47,7 +48,7 @@ class _RecentActivityFeedWidgetState extends State<RecentActivityFeedWidget> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore nel caricamento attività recenti'),
+            content: Text('admin_instructor.recent_activity_error'.tr()),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -70,7 +71,7 @@ class _RecentActivityFeedWidgetState extends State<RecentActivityFeedWidget> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Attività Recenti',
+                    'dashboard.recent_activity'.tr(),
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurface,
                           fontWeight: FontWeight.w600,
@@ -147,7 +148,7 @@ class _RecentActivityFeedWidgetState extends State<RecentActivityFeedWidget> {
                     ),
                     SizedBox(height: 2.h),
                     Text(
-                      'Caricamento attività da Supabase...',
+                      'common.loading_activity'.tr(),
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -372,7 +373,7 @@ class _RecentActivityFeedWidgetState extends State<RecentActivityFeedWidget> {
                     ),
                     SizedBox(height: 2.h),
                     Text(
-                      'Nessuna attività recente',
+                      'common.no_activity_recent'.tr(),
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             color:
                                 Theme.of(context).colorScheme.onSurfaceVariant,
@@ -380,7 +381,7 @@ class _RecentActivityFeedWidgetState extends State<RecentActivityFeedWidget> {
                     ),
                     SizedBox(height: 1.h),
                     Text(
-                      'Le attività amministrative appariranno qui',
+                      'admin_dashboard.activity_empty_subtitle'.tr(),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color:
                                 Theme.of(context).colorScheme.onSurfaceVariant,
@@ -461,7 +462,7 @@ class _RecentActivityFeedWidgetState extends State<RecentActivityFeedWidget> {
       case 'system':
         return 'Sistema';
       case 'admin':
-        return 'Admin';
+        return 'roles.admin'.tr();
       case 'info':
         return 'Info';
       default:

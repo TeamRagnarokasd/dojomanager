@@ -4,6 +4,7 @@ import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../constants/app_constants.dart';
+import '../../../core/app_export.dart';
 
 class RevenueAnalyticsWidget extends StatefulWidget {
   const RevenueAnalyticsWidget({Key? key}) : super(key: key);
@@ -107,7 +108,7 @@ class _RevenueAnalyticsWidgetState extends State<RevenueAnalyticsWidget> {
         SizedBox(width: 3.w),
         Expanded(
           child: _buildStatCard(
-            'Lezioni Totali',
+            'seasonal_schedule.total_lessons'.tr(),
             '124',
             '+8 vs scorso mese',
             Colors.blue,

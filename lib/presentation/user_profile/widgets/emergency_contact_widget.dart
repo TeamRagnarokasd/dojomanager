@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+import '../../../core/app_export.dart';
 
 class EmergencyContactWidget extends StatefulWidget {
   const EmergencyContactWidget({super.key});
@@ -34,10 +35,10 @@ class _EmergencyContactWidgetState extends State<EmergencyContactWidget> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Contatti di Emergenza',
+                  'profile.emergency_contacts_title'.tr(),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
                 IconButton(
                   onPressed: _showAddContactDialog,
@@ -64,13 +65,13 @@ class _EmergencyContactWidgetState extends State<EmergencyContactWidget> {
                     ),
                     SizedBox(height: 8.h),
                     Text(
-                      'Nessun contatto di emergenza aggiunto',
+                      'profile.no_emergency_contact'.tr(),
                       style: Theme.of(context).textTheme.bodyMedium,
                       textAlign: TextAlign.center,
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'Aggiungi almeno un contatto per la tua sicurezza',
+                      'profile.add_emergency_hint'.tr(),
                       style: Theme.of(context).textTheme.bodySmall,
                       textAlign: TextAlign.center,
                     ),
@@ -103,10 +104,10 @@ class _EmergencyContactWidgetState extends State<EmergencyContactWidget> {
                   SizedBox(width: 8.w),
                   Expanded(
                     child: Text(
-                      'I contatti di emergenza verranno contattati in caso di incidenti durante l\'allenamento.',
+                      'profile.emergency_disclaimer'.tr(),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFFFF0000),
-                      ),
+                            color: const Color(0xFFFF0000),
+                          ),
                     ),
                   ),
                 ],
@@ -160,8 +161,8 @@ class _EmergencyContactWidgetState extends State<EmergencyContactWidget> {
                 Text(
                   contact['relationship']!,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFFFF0000),
-                  ),
+                        color: const Color(0xFFFF0000),
+                      ),
                 ),
                 Text(
                   contact['phone']!,
@@ -206,105 +207,105 @@ class _EmergencyContactWidgetState extends State<EmergencyContactWidget> {
 
   void _showContactDialog({required bool isEditing, int? contactIndex}) {
     final nameController = TextEditingController(
-      text:
-          isEditing && contactIndex != null
-              ? _emergencyContacts[contactIndex]['name']
-              : '',
+      text: isEditing && contactIndex != null
+          ? _emergencyContacts[contactIndex]['name']
+          : '',
     );
     final relationshipController = TextEditingController(
-      text:
-          isEditing && contactIndex != null
-              ? _emergencyContacts[contactIndex]['relationship']
-              : '',
+      text: isEditing && contactIndex != null
+          ? _emergencyContacts[contactIndex]['relationship']
+          : '',
     );
     final phoneController = TextEditingController(
-      text:
-          isEditing && contactIndex != null
-              ? _emergencyContacts[contactIndex]['phone']
-              : '',
+      text: isEditing && contactIndex != null
+          ? _emergencyContacts[contactIndex]['phone']
+          : '',
     );
 
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(isEditing ? 'Modifica Contatto' : 'Nuovo Contatto'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: InputDecoration(
-                    labelText: 'Nome completo',
-                    prefixIcon: Icon(Icons.person_outline),
-                  ),
-                ),
-                SizedBox(height: 16.h),
-                TextField(
-                  controller: relationshipController,
-                  decoration: InputDecoration(
-                    labelText: 'Parentela/Relazione',
-                    prefixIcon: Icon(Icons.family_restroom),
-                  ),
-                ),
-                SizedBox(height: 16.h),
-                TextField(
-                  controller: phoneController,
-                  decoration: InputDecoration(
-                    labelText: 'Numero di telefono',
-                    prefixIcon: Icon(Icons.phone_outlined),
-                  ),
-                  keyboardType: TextInputType.phone,
-                ),
-              ],
+      builder: (context) => AlertDialog(
+        title: Text(
+          isEditing
+              ? 'profile.edit_emergency_contact'.tr()
+              : 'profile.add_emergency_contact'.tr(),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: InputDecoration(
+                labelText: 'profile.full_name_label'.tr(),
+                prefixIcon: Icon(Icons.person_outline),
+              ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Annulla'),
+            SizedBox(height: 16.h),
+            TextField(
+              controller: relationshipController,
+              decoration: InputDecoration(
+                labelText: 'profile.relation'.tr(),
+                prefixIcon: Icon(Icons.family_restroom),
               ),
-              ElevatedButton(
-                onPressed: () {
-                  if (nameController.text.isNotEmpty &&
-                      relationshipController.text.isNotEmpty &&
-                      phoneController.text.isNotEmpty) {
-                    final contact = {
-                      'name': nameController.text,
-                      'relationship': relationshipController.text,
-                      'phone': phoneController.text,
-                    };
-
-                    setState(() {
-                      if (isEditing && contactIndex != null) {
-                        _emergencyContacts[contactIndex] = contact;
-                      } else {
-                        _emergencyContacts.add(contact);
-                      }
-                    });
-
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          isEditing
-                              ? 'Contatto modificato con successo'
-                              : 'Contatto aggiunto con successo',
-                        ),
-                        backgroundColor: const Color(0xFFFF0000),
-                      ),
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF0000),
-                ),
-                child: Text(
-                  isEditing ? 'Modifica' : 'Aggiungi',
-                  style: TextStyle(color: Colors.white),
-                ),
+            ),
+            SizedBox(height: 16.h),
+            TextField(
+              controller: phoneController,
+              decoration: InputDecoration(
+                labelText: 'profile.phone_number_label'.tr(),
+                prefixIcon: Icon(Icons.phone_outlined),
               ),
-            ],
+              keyboardType: TextInputType.phone,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('common.cancel'.tr()),
           ),
+          ElevatedButton(
+            onPressed: () {
+              if (nameController.text.isNotEmpty &&
+                  relationshipController.text.isNotEmpty &&
+                  phoneController.text.isNotEmpty) {
+                final contact = {
+                  'name': nameController.text,
+                  'relationship': relationshipController.text,
+                  'phone': phoneController.text,
+                };
+
+                setState(() {
+                  if (isEditing && contactIndex != null) {
+                    _emergencyContacts[contactIndex] = contact;
+                  } else {
+                    _emergencyContacts.add(contact);
+                  }
+                });
+
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      isEditing
+                          ? 'profile.contact_edited_success'.tr()
+                          : 'profile.contact_added_success'.tr(),
+                    ),
+                    backgroundColor: const Color(0xFFFF0000),
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF0000),
+            ),
+            child: Text(
+              isEditing ? 'profile.modify'.tr() : 'common.add'.tr(),
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -312,7 +313,7 @@ class _EmergencyContactWidgetState extends State<EmergencyContactWidget> {
     // Implement phone call functionality
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Chiamata a $phone'),
+        content: Text('profile.calling_phone'.tr(namedArgs: {'phone': phone})),
         backgroundColor: const Color(0xFFFF0000),
       ),
     );
@@ -321,35 +322,35 @@ class _EmergencyContactWidgetState extends State<EmergencyContactWidget> {
   void _deleteContact(int index) {
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('Elimina Contatto'),
-            content: Text(
-              'Sei sicuro di voler eliminare questo contatto di emergenza?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Annulla'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    _emergencyContacts.removeAt(index);
-                  });
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Contatto eliminato'),
-                      backgroundColor: const Color(0xFFFF0000),
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                child: Text('Elimina', style: TextStyle(color: Colors.white)),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: Text('profile.delete_contact_title'.tr()),
+        content: Text(
+          'profile.delete_contact_confirm'.tr(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('common.cancel'.tr()),
           ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _emergencyContacts.removeAt(index);
+              });
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('profile.contact_deleted'.tr()),
+                  backgroundColor: const Color(0xFFFF0000),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: Text('common.delete'.tr(),
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
     );
   }
 }

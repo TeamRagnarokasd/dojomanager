@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
-import '../../theme/app_theme.dart';
+
+import '../../core/app_export.dart';
 import '../../services/supabase_service.dart';
-import 'package:intl/intl.dart';
 
 class CommunicationCenter extends StatefulWidget {
   const CommunicationCenter({super.key});
@@ -34,15 +34,15 @@ class _CommunicationCenterState extends State<CommunicationCenter>
   final List<Map<String, dynamic>> _scheduledMessages = [];
 
   // Weekday options for Italian
-  final Map<String, String> _weekdayOptions = {
-    'monday': 'Lunedì',
-    'tuesday': 'Martedì',
-    'wednesday': 'Mercoledì',
-    'thursday': 'Giovedì',
-    'friday': 'Venerdì',
-    'saturday': 'Sabato',
-    'sunday': 'Domenica',
-  };
+  Map<String, String> get _weekdayOptions => {
+        'monday': 'seasonal_schedule.monday'.tr(),
+        'tuesday': 'seasonal_schedule.tuesday'.tr(),
+        'wednesday': 'seasonal_schedule.wednesday'.tr(),
+        'thursday': 'seasonal_schedule.thursday'.tr(),
+        'friday': 'seasonal_schedule.friday'.tr(),
+        'saturday': 'seasonal_schedule.saturday'.tr(),
+        'sunday': 'seasonal_schedule.sunday'.tr(),
+      };
 
   @override
   void initState() {
@@ -118,7 +118,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
     if (_subjectController.text.trim().isEmpty ||
         _contentController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Inserisci oggetto e messaggio')),
+        SnackBar(content: Text('communication.enter_subject_message'.tr())),
       );
       return;
     }
@@ -127,9 +127,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
     if (_isRecurring) {
       if (_recurrenceType == 'weekly' && _selectedWeekdays.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text(
-                  'Seleziona almeno un giorno per la ripetizione settimanale')),
+          SnackBar(content: Text('communication.select_weekday'.tr())),
         );
         return;
       }
@@ -184,8 +182,8 @@ class _CommunicationCenterState extends State<CommunicationCenter>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_isRecurring
-              ? 'Messaggio ricorrente programmato con successo!'
-              : 'Messaggio inviato con successo!'),
+              ? 'communication.recurring_scheduled'.tr()
+              : 'communication.sent_success'.tr()),
         ),
       );
 
@@ -193,7 +191,9 @@ class _CommunicationCenterState extends State<CommunicationCenter>
       _tabController.animateTo(0);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Errore durante l\'invio: $e')),
+        SnackBar(
+            content: Text(
+                'communication.send_error'.tr(namedArgs: {'error': '$e'}))),
       );
     } finally {
       setState(() => _isSending = false);
@@ -280,7 +280,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
         onPressed: () => Navigator.pop(context),
       ),
       title: Text(
-        'Centro Comunicazioni',
+        'communication.title'.tr(),
         style: GoogleFonts.inter(
           fontSize: 18.sp,
           fontWeight: FontWeight.w600,
@@ -314,17 +314,18 @@ class _CommunicationCenterState extends State<CommunicationCenter>
         children: [
           Row(
             children: [
-              _buildStatCard(
-                  'Messaggi Inviati', '${_messages.length}', Icons.send),
+              _buildStatCard('communication.messages_sent'.tr(),
+                  '${_messages.length}', Icons.send),
               SizedBox(width: 12.w),
-              _buildStatCard('Tasso Apertura', '89.2%', Icons.mark_email_read),
+              _buildStatCard('communication.open_rate'.tr(), '89.2%',
+                  Icons.mark_email_read),
             ],
           ),
           SizedBox(height: 12.h),
           Row(
             children: [
-              _buildStatCard('Programmati', '${_scheduledMessages.length}',
-                  Icons.schedule),
+              _buildStatCard('communication.scheduled'.tr(),
+                  '${_scheduledMessages.length}', Icons.schedule),
               SizedBox(width: 12.w),
               _buildStatCard(
                   'Template', '${_templates.length}', Icons.text_snippet),
@@ -400,11 +401,11 @@ class _CommunicationCenterState extends State<CommunicationCenter>
           fontSize: 12.sp,
           fontWeight: FontWeight.w600,
         ),
-        tabs: const [
-          Tab(text: 'Messaggi'),
-          Tab(text: 'Componi'),
-          Tab(text: 'Template'),
-          Tab(text: 'Programmati'),
+        tabs: [
+          Tab(text: 'communication.tab_messages'.tr()),
+          Tab(text: 'communication.tab_compose'.tr()),
+          Tab(text: 'communication.tab_templates'.tr()),
+          Tab(text: 'communication.scheduled'.tr()),
         ],
       ),
     );
@@ -418,7 +419,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
           _buildSearchBar(),
           Expanded(
             child: _messages.isEmpty
-                ? _buildEmptyState('Nessun messaggio inviato')
+                ? _buildEmptyState('communication.no_messages'.tr())
                 : RefreshIndicator(
                     onRefresh: _loadCommunicationData,
                     child: ListView.builder(
@@ -476,7 +477,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
             children: [
               Expanded(
                 child: Text(
-                  'Ripetizione Messaggio',
+                  'communication.message_recurrence'.tr(),
                   style: GoogleFonts.inter(
                     fontSize: 16.sp,
                     fontWeight: FontWeight.w600,
@@ -495,7 +496,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
                     }
                   });
                 },
-                activeColor: AppTheme.secondaryLight,
+                activeThumbColor: AppTheme.secondaryLight,
               ),
             ],
           ),
@@ -504,7 +505,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
 
             // Recurrence type selection
             Text(
-              'Tipo di Ripetizione',
+              'communication.recurrence_type'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 14.sp,
                 fontWeight: FontWeight.w500,
@@ -516,11 +517,13 @@ class _CommunicationCenterState extends State<CommunicationCenter>
             Row(
               children: [
                 Expanded(
-                  child: _buildRecurrenceTypeChip('Settimanale', 'weekly'),
+                  child: _buildRecurrenceTypeChip(
+                      'communication.weekly'.tr(), 'weekly'),
                 ),
                 SizedBox(width: 12.w),
                 Expanded(
-                  child: _buildRecurrenceTypeChip('Mensile', 'monthly'),
+                  child: _buildRecurrenceTypeChip(
+                      'communication.monthly'.tr(), 'monthly'),
                 ),
               ],
             ),
@@ -530,7 +533,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
             // Weekly options
             if (_recurrenceType == 'weekly') ...[
               Text(
-                'Seleziona i Giorni',
+                'communication.select_days'.tr(),
                 style: GoogleFonts.inter(
                   fontSize: 14.sp,
                   fontWeight: FontWeight.w500,
@@ -577,7 +580,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
             // Monthly options
             if (_recurrenceType == 'monthly') ...[
               Text(
-                'Giorno del Mese',
+                'communication.day_of_month'.tr(),
                 style: GoogleFonts.inter(
                   fontSize: 14.sp,
                   fontWeight: FontWeight.w500,
@@ -586,7 +589,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
               ),
               SizedBox(height: 8.h),
               DropdownButtonFormField<int>(
-                value: _selectedDayOfMonth,
+                initialValue: _selectedDayOfMonth,
                 style: GoogleFonts.inter(color: Colors.white),
                 dropdownColor: AppTheme.backgroundDark,
                 decoration: InputDecoration(
@@ -601,7 +604,8 @@ class _CommunicationCenterState extends State<CommunicationCenter>
                   final day = index + 1;
                   return DropdownMenuItem(
                     value: day,
-                    child: Text('Giorno $day'),
+                    child: Text(
+                        'communication.day_n'.tr(namedArgs: {'day': '$day'})),
                   );
                 }),
                 onChanged: (value) {
@@ -685,14 +689,14 @@ class _CommunicationCenterState extends State<CommunicationCenter>
     } else if (_recurrenceType == 'monthly') {
       return 'Il messaggio sarà inviato il giorno $_selectedDayOfMonth di ogni mese';
     }
-    return 'Seleziona le opzioni di ripetizione sopra';
+    return 'communication.select_recurrence_options'.tr();
   }
 
   Widget _buildTemplatesTab() {
     return Container(
       color: AppTheme.backgroundDark,
       child: _templates.isEmpty
-          ? _buildEmptyState('Nessun template disponibile')
+          ? _buildEmptyState('communication.no_templates'.tr())
           : ListView.builder(
               padding: EdgeInsets.all(16.sp),
               itemCount: _templates.length,
@@ -708,7 +712,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
     return Container(
       color: AppTheme.backgroundDark,
       child: _scheduledMessages.isEmpty
-          ? _buildEmptyState('Nessun messaggio programmato')
+          ? _buildEmptyState('communication.no_scheduled'.tr())
           : ListView.builder(
               padding: EdgeInsets.all(16.sp),
               itemCount: _scheduledMessages.length,
@@ -728,7 +732,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
         controller: _searchController,
         style: GoogleFonts.inter(color: Colors.white),
         decoration: InputDecoration(
-          hintText: 'Cerca messaggi...',
+          hintText: 'communication.search_hint'.tr(),
           hintStyle: GoogleFonts.inter(color: Colors.white60),
           prefixIcon: const Icon(
             Icons.search,
@@ -753,7 +757,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Destinatari',
+          'communication.recipients'.tr(),
           style: GoogleFonts.inter(
             fontSize: 16.sp,
             fontWeight: FontWeight.w600,
@@ -765,12 +769,15 @@ class _CommunicationCenterState extends State<CommunicationCenter>
           spacing: 8.w,
           runSpacing: 8.h,
           children: [
-            _buildRecipientChip('Tutti', 'all'),
-            _buildRecipientChip('Studenti', 'students'),
-            _buildRecipientChip('Istruttori', 'instructors'),
-            _buildRecipientChip('Amministratori', 'admins'),
-            _buildRecipientChip('Abbonamenti Attivi', 'active_subscriptions'),
-            _buildRecipientChip('Abbonamenti Scaduti', 'expired_subscriptions'),
+            _buildRecipientChip('disciplines.all'.tr(), 'all'),
+            _buildRecipientChip('communication.students'.tr(), 'students'),
+            _buildRecipientChip(
+                'communication.instructors'.tr(), 'instructors'),
+            _buildRecipientChip('communication.administrators'.tr(), 'admins'),
+            _buildRecipientChip('communication.active_subscriptions'.tr(),
+                'active_subscriptions'),
+            _buildRecipientChip('communication.expired_subscriptions'.tr(),
+                'expired_subscriptions'),
           ],
         ),
       ],
@@ -806,7 +813,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Template Messaggio',
+          'communication.message_template'.tr(),
           style: GoogleFonts.inter(
             fontSize: 16.sp,
             fontWeight: FontWeight.w600,
@@ -815,7 +822,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
         ),
         SizedBox(height: 8.h),
         DropdownButtonFormField<String>(
-          value: _messageTemplate,
+          initialValue: _messageTemplate,
           style: GoogleFonts.inter(color: Colors.white),
           dropdownColor: AppTheme.primaryColor,
           decoration: InputDecoration(
@@ -828,15 +835,20 @@ class _CommunicationCenterState extends State<CommunicationCenter>
           ),
           items: [
             DropdownMenuItem(
-                value: 'custom', child: Text('Messaggio Personalizzato')),
+                value: 'custom',
+                child: Text('communication.custom_message'.tr())),
             DropdownMenuItem(
-                value: 'class_cancelled', child: Text('Lezione Cancellata')),
+                value: 'class_cancelled',
+                child: Text('communication.class_cancelled'.tr())),
             DropdownMenuItem(
-                value: 'payment_reminder', child: Text('Promemoria Pagamento')),
+                value: 'payment_reminder',
+                child: Text('communication.payment_reminder'.tr())),
             DropdownMenuItem(
-                value: 'event_announcement', child: Text('Annuncio Evento')),
+                value: 'event_announcement',
+                child: Text('communication.event_announcement'.tr())),
             DropdownMenuItem(
-                value: 'welcome', child: Text('Messaggio di Benvenuto')),
+                value: 'welcome',
+                child: Text('communication.welcome_message'.tr())),
           ],
           onChanged: (value) {
             setState(() => _messageTemplate = value!);
@@ -850,24 +862,20 @@ class _CommunicationCenterState extends State<CommunicationCenter>
   void _applyTemplate(String template) {
     switch (template) {
       case 'class_cancelled':
-        _subjectController.text = 'Lezione Cancellata';
-        _contentController.text =
-            'La lezione di oggi è stata cancellata. Sarà recuperata il [data]. Ci scusiamo per l\'inconveniente.';
+        _subjectController.text = 'communication.subject_class_cancelled'.tr();
+        _contentController.text = 'communication.body_class_cancelled'.tr();
         break;
       case 'payment_reminder':
-        _subjectController.text = 'Promemoria Pagamento';
-        _contentController.text =
-            'Il tuo abbonamento scadrà tra 3 giorni. Rinnova ora per continuare ad allenarti senza interruzioni.';
+        _subjectController.text = 'communication.subject_payment_reminder'.tr();
+        _contentController.text = 'communication.body_payment_reminder'.tr();
         break;
       case 'event_announcement':
-        _subjectController.text = 'Nuovo Evento';
-        _contentController.text =
-            'È stato organizzato un evento speciale. Partecipa e divertiti con noi!';
+        _subjectController.text = 'communication.subject_event'.tr();
+        _contentController.text = 'communication.body_event'.tr();
         break;
       case 'welcome':
-        _subjectController.text = 'Benvenuto nel Team Ragnarok';
-        _contentController.text =
-            'Benvenuto nella famiglia del Team Ragnarok! Siamo felici di averti con noi.';
+        _subjectController.text = 'communication.subject_welcome'.tr();
+        _contentController.text = 'communication.body_welcome'.tr();
         break;
     }
   }
@@ -877,7 +885,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Oggetto',
+          'communication.subject_label'.tr(),
           style: GoogleFonts.inter(
             fontSize: 16.sp,
             fontWeight: FontWeight.w600,
@@ -889,7 +897,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
           controller: _subjectController,
           style: GoogleFonts.inter(color: Colors.white),
           decoration: InputDecoration(
-            hintText: 'Inserisci oggetto...',
+            hintText: 'communication.subject_hint'.tr(),
             hintStyle: GoogleFonts.inter(color: Colors.white60),
             filled: true,
             fillColor: AppTheme.primaryColor,
@@ -901,7 +909,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
         ),
         SizedBox(height: 16.h),
         Text(
-          'Messaggio',
+          'communication.message_label'.tr(),
           style: GoogleFonts.inter(
             fontSize: 16.sp,
             fontWeight: FontWeight.w600,
@@ -917,7 +925,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
             expands: true,
             style: GoogleFonts.inter(color: Colors.white),
             decoration: InputDecoration(
-              hintText: 'Scrivi il tuo messaggio...',
+              hintText: 'communication.message_hint'.tr(),
               hintStyle: GoogleFonts.inter(color: Colors.white60),
               filled: true,
               fillColor: AppTheme.primaryColor,
@@ -943,9 +951,9 @@ class _CommunicationCenterState extends State<CommunicationCenter>
                 : () {
                     // TODO: Implement schedule message
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
+                      SnackBar(
                           content:
-                              Text('Funzionalità di programmazione in arrivo')),
+                              Text('communication.schedule_coming_soon'.tr())),
                     );
                   },
             icon: const Icon(
@@ -953,7 +961,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
               color: Colors.white,
             ),
             label: Text(
-              'Programma',
+              'communication.schedule_button'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 14.sp,
                 fontWeight: FontWeight.w600,
@@ -989,7 +997,9 @@ class _CommunicationCenterState extends State<CommunicationCenter>
                     color: AppTheme.primaryColor,
                   ),
             label: Text(
-              _isSending ? 'Invio...' : 'Invia Ora',
+              _isSending
+                  ? 'communication.sending'.tr()
+                  : 'communication.send_now'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 14.sp,
                 fontWeight: FontWeight.w600,
@@ -1025,7 +1035,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
             children: [
               Expanded(
                 child: Text(
-                  message['subject'] ?? 'Nessun oggetto',
+                  message['subject'] ?? 'communication.no_subject'.tr(),
                   style: GoogleFonts.inter(
                     fontSize: 14.sp,
                     fontWeight: FontWeight.w600,
@@ -1040,7 +1050,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
                   borderRadius: BorderRadius.circular(8.sp),
                 ),
                 child: Text(
-                  message['status'] ?? 'Inviato',
+                  message['status'] ?? 'communication.sent_status'.tr(),
                   style: GoogleFonts.inter(
                     fontSize: 10.sp,
                     fontWeight: FontWeight.w500,
@@ -1052,7 +1062,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
           ),
           SizedBox(height: 8.h),
           Text(
-            message['preview'] ?? 'Anteprima messaggio...',
+            message['preview'] ?? 'communication.message_preview'.tr(),
             style: GoogleFonts.inter(
               fontSize: 12.sp,
               color: Colors.white70,
@@ -1108,7 +1118,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
             children: [
               Expanded(
                 child: Text(
-                  template['name'] ?? 'Template senza nome',
+                  template['name'] ?? 'communication.template_no_name'.tr(),
                   style: GoogleFonts.inter(
                     fontSize: 14.sp,
                     fontWeight: FontWeight.w600,
@@ -1130,7 +1140,8 @@ class _CommunicationCenterState extends State<CommunicationCenter>
           ),
           SizedBox(height: 8.h),
           Text(
-            template['description'] ?? 'Descrizione template...',
+            template['description'] ??
+                'communication.template_description'.tr(),
             style: GoogleFonts.inter(
               fontSize: 12.sp,
               color: Colors.white70,
@@ -1159,7 +1170,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
             children: [
               Expanded(
                 child: Text(
-                  message['subject'] ?? 'Nessun oggetto',
+                  message['subject'] ?? 'communication.no_subject'.tr(),
                   style: GoogleFonts.inter(
                     fontSize: 14.sp,
                     fontWeight: FontWeight.w600,
@@ -1175,12 +1186,12 @@ class _CommunicationCenterState extends State<CommunicationCenter>
                 color: AppTheme.primaryColor,
                 itemBuilder: (context) => [
                   PopupMenuItem(
-                    child: Text('Modifica',
+                    child: Text('profile.modify'.tr(),
                         style: GoogleFonts.inter(color: Colors.white)),
                     value: 'edit',
                   ),
                   PopupMenuItem(
-                    child: Text('Elimina',
+                    child: Text('common.delete'.tr(),
                         style:
                             GoogleFonts.inter(color: AppTheme.secondaryLight)),
                     value: 'delete',
@@ -1194,7 +1205,7 @@ class _CommunicationCenterState extends State<CommunicationCenter>
           ),
           SizedBox(height: 8.h),
           Text(
-            message['preview'] ?? 'Anteprima messaggio...',
+            message['preview'] ?? 'communication.message_preview'.tr(),
             style: GoogleFonts.inter(
               fontSize: 12.sp,
               color: Colors.white70,

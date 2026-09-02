@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sizer/sizer.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_export.dart';
 import '../../services/supabase_service.dart';
@@ -22,7 +23,6 @@ class MedicalCertificateUpload extends StatefulWidget {
 
 class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
     with TickerProviderStateMixin {
-  final PageController _pageController = PageController();
   late TabController _tabController;
   final UserProfileService _userProfileService = UserProfileService();
 
@@ -43,24 +43,18 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _tabController.addListener(_onTabChanged);
+    _tabController.addListener(_handleTabChange);
   }
 
   @override
   void dispose() {
-    _pageController.dispose();
+    _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     super.dispose();
   }
 
-  void _onTabChanged() {
-    if (_tabController.indexIsChanging) {
-      _pageController.animateToPage(
-        _tabController.index,
-        duration: Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
+  void _handleTabChange() {
+    if (mounted) setState(() {});
   }
 
   void _onImageCaptured(XFile image) {
@@ -70,12 +64,13 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
       _currentStep = 1;
     });
 
-    // Move to next tab
-    _tabController.animateTo(1);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _tabController.animateTo(1);
+    });
 
     Fluttertoast.showToast(
-      msg: "Documento acquisito con successo",
-      toastLength: Toast.LENGTH_SHORT,
+      msg: 'medical_certificate.document_selected_hint'.tr(),
+      toastLength: Toast.LENGTH_LONG,
       gravity: ToastGravity.BOTTOM,
     );
   }
@@ -87,8 +82,9 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
       _currentStep = 0;
     });
 
-    // Move back to first tab
-    _tabController.animateTo(0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _tabController.animateTo(0);
+    });
   }
 
   void _onImageUpdated(XFile updatedImage) {
@@ -117,82 +113,157 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
 
   Future<void> _uploadCertificate() async {
     if (!_isFormValid()) {
-      setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Completare tutti i campi richiesti'),
+        SnackBar(
+          content: Text('medical_certificate.complete_fields'.tr()),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _isUploading = true;
+      _uploadProgress = 0.1;
+      _uploadStatusMessage = 'medical_upload_ui.preparing_file'.tr();
+    });
 
     try {
-      String? uploadedUrl;
+      final userId = SupabaseService.instance.getCurrentUserId();
+      if (userId == null) {
+        throw Exception('Utente non autenticato. Effettua il login.');
+      }
 
-      // Upload file if available
+      String? uploadedUrl;
+      String? storagePath;
+
       if (_capturedImage != null) {
-        final userId = SupabaseService.instance.getCurrentUserId();
-        if (userId == null) {
-          throw Exception('Utente non autenticato');
+        setState(() {
+          _uploadProgress = 0.2;
+          _uploadStatusMessage = 'medical_upload_ui.reading_image'.tr();
+        });
+
+        final imageBytes = await _capturedImage!.readAsBytes();
+        debugPrint('Image bytes read: ${imageBytes.length} bytes');
+
+        if (imageBytes.isEmpty) {
+          throw Exception(
+            'Il file immagine è vuoto. Seleziona nuovamente il documento.',
+          );
         }
 
         final fileName =
-            'medical_cert_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+            'medical_cert_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        storagePath = '$userId/$fileName';
 
-        await SupabaseService.instance.client.storage
-            .from('medical-certificates')
-            .uploadBinary(fileName, await _capturedImage!.readAsBytes());
+        setState(() {
+          _uploadProgress = 0.4;
+          _uploadStatusMessage = 'medical_upload_ui.uploading'.tr();
+        });
 
-        uploadedUrl = SupabaseService.instance.client.storage
-            .from('medical-certificates')
-            .getPublicUrl(fileName);
+        try {
+          await SupabaseService.instance.client.storage
+              .from('medical-certificates')
+              .uploadBinary(
+                storagePath,
+                imageBytes,
+                fileOptions: const FileOptions(
+                  contentType: 'image/jpeg',
+                  upsert: true,
+                ),
+              );
+        } catch (storageError) {
+          debugPrint('Storage upload error: $storageError');
+          final errStr = storageError.toString().toLowerCase();
+          if (errStr.contains('bucket') || errStr.contains('not found')) {
+            throw Exception(
+              'Bucket di storage non configurato. Contatta l\'amministratore.',
+            );
+          }
+          if (errStr.contains('policy') ||
+              errStr.contains('permission') ||
+              errStr.contains('403') ||
+              errStr.contains('rls')) {
+            throw Exception(
+              'Permesso negato per il caricamento. Contatta l\'amministratore.',
+            );
+          }
+          rethrow;
+        }
+
+        setState(() {
+          _uploadProgress = 0.7;
+          _uploadStatusMessage = 'medical_upload_ui.generating_url'.tr();
+        });
+
+        try {
+          uploadedUrl = await SupabaseService.instance.client.storage
+              .from('medical-certificates')
+              .createSignedUrl(storagePath, 60 * 60 * 24 * 365 * 10);
+        } catch (e) {
+          debugPrint('Signed URL error (using path): $e');
+          uploadedUrl = storagePath;
+        }
       }
 
-      // Update user profile with complete certificate details
-      final userId = SupabaseService.instance.getCurrentUserId();
-      if (userId != null) {
-        final result =
-            await UserProfileService().updateMedicalCertificateComplete(
-          userId: userId,
-          certificateUrl: uploadedUrl ?? '',
-          startDate: _certificateDetails['startDate'] as DateTime?,
-          expiryDate: _certificateDetails['endDate'] as DateTime?,
-          doctorName: _certificateDetails['doctorName'] as String?,
-          medicalCenter: _certificateDetails['medicalCenter'] as String?,
-          certificateType: _certificateDetails['certificateType'] as String?,
-          certificateStatus: 'pending',
-        );
+      setState(() {
+        _uploadProgress = 0.85;
+        _uploadStatusMessage = 'medical_upload_ui.saving_details'.tr();
+      });
 
-        if (result['success'] == true) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Certificato medico caricato con successo!'),
-                backgroundColor: Colors.green,
-              ),
-            );
-            Navigator.pop(context);
-          }
-        } else {
-          throw Exception(result['error'] ?? 'Errore durante il salvataggio');
+      final result =
+          await UserProfileService().updateMedicalCertificateComplete(
+        userId: userId,
+        certificateUrl: uploadedUrl ?? storagePath ?? '',
+        startDate: _certificateDetails['startDate'] as DateTime?,
+        expiryDate: _certificateDetails['endDate'] as DateTime?,
+        doctorName: _certificateDetails['doctorName'] as String?,
+        medicalCenter: _certificateDetails['medicalCenter'] as String?,
+        certificateType: _certificateDetails['certificateType'] as String?,
+        certificateStatus: 'pending',
+      );
+
+      setState(() {
+        _uploadProgress = 1.0;
+        _uploadStatusMessage = 'medical_upload_ui.completed'.tr();
+      });
+
+      if (result['success'] == true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('medical_certificate.upload_success'.tr()),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context);
         }
+      } else {
+        throw Exception(
+            result['error'] ?? 'medical_certificate.save_error'.tr());
       }
     } catch (e) {
       debugPrint('Upload error: $e');
       if (mounted) {
+        final errorMsg = e.toString().replaceFirst('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore durante il caricamento: $e'),
+            content: Text(
+                'errors.load_data_error'.tr(namedArgs: {'detail': errorMsg})),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _isUploading = false;
+          _uploadProgress = 0.0;
+          _uploadStatusMessage = null;
+        });
       }
     }
   }
@@ -242,7 +313,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
             SizedBox(width: 2.w),
             Expanded(
               child: Text(
-                'Certificato Caricato',
+                'medical_upload_ui.certificate_uploaded_title'.tr(),
                 style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                   color: AppTheme.lightTheme.colorScheme.tertiary,
                   fontWeight: FontWeight.w600,
@@ -257,7 +328,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
           children: [
             Text(
               uploadResult['message'] ??
-                  'Il certificato medico è stato caricato con successo.',
+                  'medical_upload_ui.certificate_uploaded_body'.tr(),
               style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                 color: AppTheme.lightTheme.colorScheme.onSurface,
               ),
@@ -288,7 +359,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
                       SizedBox(width: 2.w),
                       Expanded(
                         child: Text(
-                          'Stato: In attesa di approvazione',
+                          'medical_upload_ui.pending_approval'.tr(),
                           style: AppTheme.lightTheme.textTheme.labelLarge
                               ?.copyWith(
                             color: AppTheme.lightTheme.colorScheme.onSurface,
@@ -300,7 +371,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
                   ),
                   SizedBox(height: 1.h),
                   Text(
-                    'Il tuo certificato è stato caricato ed è ora in attesa di approvazione da parte dell\'amministrazione.',
+                    'medical_upload_ui.pending_approval_detail'.tr(),
                     style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
                       color: AppTheme.lightTheme.colorScheme.primary,
                     ),
@@ -308,7 +379,10 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
                   if (_certificateDetails['expirationDate'] != null) ...[
                     SizedBox(height: 1.h),
                     Text(
-                      'Scadenza: ${_formatDate(_certificateDetails['expirationDate'])}',
+                      'medical_upload_ui.expiry_label'.tr(namedArgs: {
+                        'date':
+                            _formatDate(_certificateDetails['expirationDate']),
+                      }),
                       style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
                         color: AppTheme.lightTheme.colorScheme.onSurface,
                       ),
@@ -328,7 +402,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
                 SizedBox(width: 2.w),
                 Expanded(
                   child: Text(
-                    'Riceverai una notifica quando il certificato sarà approvato',
+                    'medical_upload_ui.approval_notification'.tr(),
                     style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
                       color: AppTheme.lightTheme.colorScheme.secondary,
                     ),
@@ -345,7 +419,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
               Navigator.of(context).pop(); // Go back to profile
             },
             child: Text(
-              'Torna al Profilo',
+              'medical_upload_ui.back_to_profile'.tr(),
               style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
                 color: AppTheme.lightTheme.colorScheme.outline,
               ),
@@ -360,7 +434,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
               backgroundColor: AppTheme.lightTheme.colorScheme.primary,
             ),
             child: Text(
-              'Carica Altro',
+              'medical_upload_ui.upload_another'.tr(),
               style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
                 color: AppTheme.lightTheme.colorScheme.onPrimary,
               ),
@@ -381,7 +455,9 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
       _uploadStatusMessage = null;
     });
 
-    _tabController.animateTo(0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _tabController.animateTo(0);
+    });
   }
 
   String _formatDate(DateTime? date) {
@@ -396,13 +472,13 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
         builder: (context) => AlertDialog(
           backgroundColor: AppTheme.lightTheme.colorScheme.surface,
           title: Text(
-            'Modifiche non salvate',
+            'medical_upload_ui.unsaved_changes_title'.tr(),
             style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
               color: AppTheme.lightTheme.colorScheme.onSurface,
             ),
           ),
           content: Text(
-            'Hai modifiche non salvate. Vuoi uscire senza salvare?',
+            'medical_upload_ui.unsaved_changes_body'.tr(),
             style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
               color: AppTheme.lightTheme.colorScheme.onSurface,
             ),
@@ -411,7 +487,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
               child: Text(
-                'Annulla',
+                'common.cancel'.tr(),
                 style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
                   color: AppTheme.lightTheme.colorScheme.outline,
                 ),
@@ -458,7 +534,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
       backgroundColor: AppTheme.lightTheme.colorScheme.primary,
       foregroundColor: AppTheme.lightTheme.colorScheme.onPrimary,
       title: Text(
-        'Carica Certificato Medico',
+        'medical_certificate.title'.tr(),
         style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
           color: AppTheme.lightTheme.colorScheme.onPrimary,
           fontWeight: FontWeight.w600,
@@ -562,7 +638,8 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
                   size: 16,
                 ),
                 SizedBox(width: 1.w),
-                Text('Scatta', style: TextStyle(fontSize: 12.sp)),
+                Text('medical_certificate.tab_capture'.tr(),
+                    style: TextStyle(fontSize: 12.sp)),
               ],
             ),
           ),
@@ -578,7 +655,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
                   size: 16,
                 ),
                 SizedBox(width: 1.w),
-                Text('Anteprima', style: TextStyle(fontSize: 12.sp)),
+                Text('receipt.preview'.tr(), style: TextStyle(fontSize: 12.sp)),
               ],
             ),
           ),
@@ -594,7 +671,8 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
                   size: 16,
                 ),
                 SizedBox(width: 1.w),
-                Text('Dettagli', style: TextStyle(fontSize: 12.sp)),
+                Text('medical_certificate.tab_details'.tr(),
+                    style: TextStyle(fontSize: 12.sp)),
               ],
             ),
           ),
@@ -682,32 +760,70 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
         ),
       ),
       child: SafeArea(
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            if (_currentStep > 0)
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _resetForm,
-                  child: Text('Ricomincia'),
+            if (_capturedImage == null)
+              Padding(
+                padding: EdgeInsets.only(bottom: 1.h),
+                child: Text(
+                  'medical_certificate.select_photo_from_capture'.tr(),
+                  textAlign: TextAlign.center,
+                  style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                    color: AppTheme.lightTheme.colorScheme.error,
+                  ),
+                ),
+              )
+            else if (_certificateDetails['isValid'] != true)
+              Padding(
+                padding: EdgeInsets.only(bottom: 1.h),
+                child: Text(
+                  _getMissingFieldsMessage(),
+                  textAlign: TextAlign.center,
+                  style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                    color: AppTheme.lightTheme.colorScheme.error,
+                  ),
                 ),
               ),
-            if (_currentStep > 0) SizedBox(width: 4.w),
-            Expanded(
-              flex: 2,
-              child: ElevatedButton.icon(
-                onPressed: _canUpload() ? _uploadCertificate : null,
-                icon: CustomIconWidget(
-                  iconName: 'cloud_upload',
-                  color: _canUpload()
-                      ? AppTheme.lightTheme.colorScheme.onPrimary
-                      : AppTheme.lightTheme.colorScheme.outline,
-                  size: 20,
+            Row(
+              children: [
+                if (_currentStep > 0)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _resetForm,
+                      child: Text('medical_certificate.restart'.tr()),
+                    ),
+                  ),
+                if (_currentStep > 0) SizedBox(width: 4.w),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: _canUpload() ? _uploadCertificate : null,
+                    icon: _isLoading
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppTheme.lightTheme.colorScheme.onPrimary,
+                            ),
+                          )
+                        : CustomIconWidget(
+                            iconName: 'cloud_upload',
+                            color: _canUpload()
+                                ? AppTheme.lightTheme.colorScheme.onPrimary
+                                : AppTheme.lightTheme.colorScheme.outline,
+                            size: 20,
+                          ),
+                    label: Text(_isLoading
+                        ? 'common.loading'.tr()
+                        : 'profile.upload_certificate'.tr()),
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(vertical: 2.h),
+                    ),
+                  ),
                 ),
-                label: Text('Carica Certificato'),
-                style: ElevatedButton.styleFrom(
-                  padding: EdgeInsets.symmetric(vertical: 2.h),
-                ),
-              ),
+              ],
             ),
           ],
         ),
@@ -715,10 +831,22 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
     );
   }
 
+  String _getMissingFieldsMessage() {
+    final missingFields = _certificateDetails['missingFields'] as List<String>?;
+    if (missingFields != null && missingFields.isNotEmpty) {
+      return 'medical_upload_ui.missing_fields'
+          .tr(namedArgs: {'fields': missingFields.join(', ')});
+    }
+    return 'medical_upload_ui.complete_details_tab'.tr();
+  }
+
   bool _canUpload() {
     return _capturedImage != null &&
         _certificateDetails['isValid'] == true &&
-        !_isUploading;
+        _certificateDetails['startDate'] != null &&
+        _certificateDetails['endDate'] != null &&
+        !_isUploading &&
+        !_isLoading;
   }
 
   void _showPendingUploads() {
@@ -748,7 +876,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
                 ),
                 SizedBox(width: 2.w),
                 Text(
-                  'Caricamenti in Sospeso',
+                  'medical_upload_ui.pending_uploads'.tr(),
                   style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
                     color: AppTheme.lightTheme.colorScheme.onSurface,
                   ),
@@ -778,7 +906,9 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
                         ),
                       ),
                       subtitle: Text(
-                        'Creato: ${_formatDate(upload['createdAt'])}',
+                        'medical_upload_ui.created_label'.tr(namedArgs: {
+                          'date': _formatDate(upload['createdAt']),
+                        }),
                         style:
                             AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
                           color:
@@ -815,7 +945,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.lightTheme.colorScheme.surface,
         title: Text(
-          'Aiuto',
+          'medical_upload_ui.help_title'.tr(),
           style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
             color: AppTheme.lightTheme.colorScheme.onSurface,
           ),
@@ -826,7 +956,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Come caricare il certificato medico:',
+                'medical_upload_ui.help_how_to'.tr(),
                 style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: AppTheme.lightTheme.colorScheme.onSurface,
@@ -835,17 +965,17 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
               SizedBox(height: 2.h),
               _buildHelpStep(
                 '1',
-                'Scatta una foto del certificato o selezionalo dalla galleria',
+                'medical_upload_ui.help_step_capture'.tr(),
               ),
               _buildHelpStep(
                 '2',
-                'Controlla l\'anteprima e ritaglia se necessario',
+                'medical_upload_ui.help_step_preview'.tr(),
               ),
-              _buildHelpStep('3', 'Compila i dettagli del certificato'),
-              _buildHelpStep('4', 'Carica il documento'),
+              _buildHelpStep('3', 'medical_upload_ui.help_step_details'.tr()),
+              _buildHelpStep('4', 'medical_upload_ui.help_step_upload'.tr()),
               SizedBox(height: 2.h),
               Text(
-                'Requisiti:',
+                'medical_upload_ui.help_requirements'.tr(),
                 style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: AppTheme.lightTheme.colorScheme.onSurface,
@@ -875,7 +1005,7 @@ class _MedicalCertificateUploadState extends State<MedicalCertificateUpload>
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: Text(
-              'Chiudi',
+              'class_schedule.close_modal'.tr(),
               style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
                 color: AppTheme.lightTheme.colorScheme.primary,
               ),

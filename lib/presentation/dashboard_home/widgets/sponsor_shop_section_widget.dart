@@ -3,8 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/app_export.dart';
 import '../../../services/sponsor_service.dart';
-import '../../../widgets/custom_image_widget.dart';
 
 class SponsorShopSectionWidget extends StatefulWidget {
   const SponsorShopSectionWidget({Key? key}) : super(key: key);
@@ -55,11 +55,11 @@ class _SponsorShopSectionWidgetState extends State<SponsorShopSectionWidget> {
           mode: LaunchMode.externalApplication,
         );
       } else {
-        _showErrorSnackBar('Impossibile aprire il link');
+        _showErrorSnackBar('common.link_open_error'.tr());
       }
     } catch (error) {
       print('Error launching URL: $error');
-      _showErrorSnackBar('Errore nell\'apertura del link');
+      _showErrorSnackBar('common.link_open_failed'.tr());
     }
   }
 
@@ -86,7 +86,7 @@ class _SponsorShopSectionWidgetState extends State<SponsorShopSectionWidget> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Sponsor & Shop',
+              'dashboard.sponsor_shop'.tr(),
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: Theme.of(context).colorScheme.onSurface,
@@ -117,7 +117,7 @@ class _SponsorShopSectionWidgetState extends State<SponsorShopSectionWidget> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Sponsor & Shop',
+                'dashboard.sponsor_shop'.tr(),
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                       color: Theme.of(context).colorScheme.onSurface,
@@ -135,7 +135,7 @@ class _SponsorShopSectionWidgetState extends State<SponsorShopSectionWidget> {
           ),
           SizedBox(height: 1.h),
           Text(
-            'Scopri i nostri partner e sponsor ufficiali',
+            'dashboard.sponsor_subtitle'.tr(),
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -265,7 +265,7 @@ class _SponsorShopSectionWidgetState extends State<SponsorShopSectionWidget> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'Visita Shop',
+                          'dashboard.visit_shop'.tr(),
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.onPrimary,
                             fontSize: 14.sp,
@@ -315,7 +315,6 @@ class _SponsorShopSectionWidgetState extends State<SponsorShopSectionWidget> {
         onTap: () => _launchUrl(sponsor['external_url']),
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: EdgeInsets.all(3.w),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
@@ -332,42 +331,64 @@ class _SponsorShopSectionWidgetState extends State<SponsorShopSectionWidget> {
               ),
             ],
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Expanded(
-                flex: 3,
-                child: CustomImageWidget(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Image fills entire container
+                CustomImageWidget(
                   imageUrl: sponsor['image_url'] ?? '',
-                  fit: BoxFit.contain,
+                  fit: BoxFit.cover, // CHANGED: cover instead of contain
                   width: double.infinity,
+                  height: double.infinity,
                 ),
-              ),
-              SizedBox(height: 1.h),
-              Expanded(
-                flex: 1,
-                child: Column(
-                  children: [
-                    Text(
-                      sponsor['name'] ?? 'Sponsor',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                // Gradient overlay for text readability
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.7),
+                      ],
                     ),
-                    SizedBox(height: 0.5.h),
-                    Icon(
-                      Icons.open_in_new,
-                      color: Theme.of(context).colorScheme.secondary,
-                      size: 16,
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+                // Sponsor name and icon at bottom
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: EdgeInsets.all(2.w),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          sponsor['name'] ?? 'Sponsor',
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        SizedBox(height: 0.5.h),
+                        Icon(
+                          Icons.open_in_new,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

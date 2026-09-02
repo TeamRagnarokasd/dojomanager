@@ -182,8 +182,7 @@ class _ClassBookingState extends State<ClassBooking>
   }
 
   Widget _buildBookingButton() {
-    final bool canBook =
-        _selectedStudentId != null &&
+    final bool canBook = _selectedStudentId != null &&
         _selectedPaymentMethod != null &&
         !_isBookingProcessing;
 
@@ -212,40 +211,39 @@ class _ClassBookingState extends State<ClassBooking>
             ),
             elevation: canBook ? 4 : 0,
           ),
-          child:
-              _isBookingProcessing
-                  ? Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 4.w,
-                        height: 4.w,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
-                          ),
+          child: _isBookingProcessing
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 4.w,
+                      height: 4.w,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.white,
                         ),
                       ),
-                      SizedBox(width: 3.w),
-                      Text(
-                        'Elaborazione...',
-                        style: GoogleFonts.inter(
-                          color: Colors.white,
-                          fontSize: 14.sp,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  )
-                  : Text(
-                    'Conferma Prenotazione - €${_classData['price'].toStringAsFixed(2)}',
-                    style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w600,
                     ),
+                    SizedBox(width: 3.w),
+                    Text(
+                      'Elaborazione...',
+                      style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                )
+              : Text(
+                  'Conferma Prenotazione - €${_classData['price'].toStringAsFixed(2)}',
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
                   ),
+                ),
         ),
       ),
     );

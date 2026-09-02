@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
 
-import '../../../theme/app_theme.dart';
+import '../../../core/app_export.dart';
 
 class FilterChipsWidget extends StatelessWidget {
   final String selectedRoleFilter;
@@ -56,7 +56,7 @@ class FilterChipsWidget extends StatelessWidget {
             child: Row(
               children: [
                 _buildFilterChip(
-                  'Tutti',
+                  'disciplines.all'.tr(),
                   'all',
                   selectedRoleFilter,
                   Colors.grey,
@@ -64,7 +64,7 @@ class FilterChipsWidget extends StatelessWidget {
                 ),
                 SizedBox(width: 8.w),
                 _buildFilterChip(
-                  'Studenti',
+                  'admin_management.students_filter'.tr(),
                   'student',
                   selectedRoleFilter,
                   Colors.green,
@@ -72,7 +72,7 @@ class FilterChipsWidget extends StatelessWidget {
                 ),
                 SizedBox(width: 8.w),
                 _buildFilterChip(
-                  'Istruttori',
+                  'admin_management.instructors_filter'.tr(),
                   'instructor',
                   selectedRoleFilter,
                   Colors.blue,
@@ -107,7 +107,7 @@ class FilterChipsWidget extends StatelessWidget {
             child: Row(
               children: [
                 _buildFilterChip(
-                  'Tutti',
+                  'disciplines.all'.tr(),
                   'all',
                   selectedStatusFilter,
                   Colors.grey,
@@ -150,7 +150,7 @@ class FilterChipsWidget extends StatelessWidget {
             child: Row(
               children: [
                 _buildFilterChip(
-                  'Tutti',
+                  'disciplines.all'.tr(),
                   'all',
                   selectedActivityFilter,
                   Colors.grey,

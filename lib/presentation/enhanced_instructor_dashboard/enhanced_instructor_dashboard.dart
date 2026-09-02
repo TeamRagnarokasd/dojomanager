@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/app_export.dart';
-import '../../routes/app_routes.dart';
 import '../../services/enhanced_instructor_dashboard_service.dart';
 import '../../services/supabase_service.dart';
 import './widgets/class_history_section_widget.dart';
@@ -62,7 +61,11 @@ class _EnhancedInstructorDashboardState
       await _loadDashboardData(userId);
     } catch (e) {
       print('Instructor dashboard initialization error: $e');
-      _showErrorSnackBar('Errore caricamento dashboard: ${e.toString()}');
+      _showErrorSnackBar(
+        'instructor_dashboard.load_error'.tr(
+          namedArgs: {'detail': e.toString()},
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -96,7 +99,7 @@ class _EnhancedInstructorDashboardState
       }
     } catch (e) {
       print('Error loading dashboard data: $e');
-      throw Exception('Caricamento dati fallito');
+      throw Exception('instructor_dashboard.data_load_failed'.tr());
     }
   }
 
@@ -111,7 +114,7 @@ class _EnhancedInstructorDashboardState
       }
     } catch (error) {
       print('Refresh error: $error');
-      _showErrorSnackBar('Errore aggiornamento dati');
+      _showErrorSnackBar('instructor_dashboard.refresh_error'.tr());
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -187,7 +190,7 @@ class _EnhancedInstructorDashboardState
             ),
             const SizedBox(height: 24),
             Text(
-              'Azioni Rapide',
+              'instructor_dashboard.quick_actions'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
@@ -196,19 +199,33 @@ class _EnhancedInstructorDashboardState
             ),
             const SizedBox(height: 24),
             _buildQuickActionItem(
-                'Visualizza Programma Classi', Icons.calendar_today, isDark),
-            _buildQuickActionItem('Gestisci Studenti', Icons.group, isDark),
+                'view_schedule',
+                'instructor_dashboard.view_schedule'.tr(),
+                Icons.calendar_today,
+                isDark),
             _buildQuickActionItem(
-                'Registra Presenze', Icons.check_circle_outline, isDark),
+                'manage_students',
+                'instructor_dashboard.manage_students'.tr(),
+                Icons.group,
+                isDark),
             _buildQuickActionItem(
-                'Invia Comunicazione', Icons.message_outlined, isDark),
+                'record_attendance',
+                'instructor_dashboard.record_attendance'.tr(),
+                Icons.check_circle_outline,
+                isDark),
+            _buildQuickActionItem(
+                'send_communication',
+                'instructor_dashboard.send_communication'.tr(),
+                Icons.message_outlined,
+                isDark),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildQuickActionItem(String title, IconData icon, bool isDark) {
+  Widget _buildQuickActionItem(
+      String actionId, String title, IconData icon, bool isDark) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
@@ -236,7 +253,7 @@ class _EnhancedInstructorDashboardState
         ),
         onTap: () {
           Navigator.pop(context);
-          _handleQuickAction(title);
+          _handleQuickAction(actionId);
         },
       ),
     );
@@ -244,16 +261,15 @@ class _EnhancedInstructorDashboardState
 
   void _handleQuickAction(String action) {
     switch (action) {
-      case 'Visualizza Programma Classi':
+      case 'view_schedule':
         Navigator.pushNamed(context, AppRoutes.classSchedule);
         break;
-      case 'Gestisci Studenti':
+      case 'manage_students':
         Navigator.pushNamed(context, AppRoutes.instructorDirectory);
         break;
-      case 'Registra Presenze':
-        // Navigate to attendance tracking if available
+      case 'record_attendance':
         break;
-      case 'Invia Comunicazione':
+      case 'send_communication':
         break;
     }
   }
@@ -368,26 +384,26 @@ class _EnhancedInstructorDashboardState
             fontSize: 12,
             fontWeight: FontWeight.w400,
           ),
-          items: const [
+          items: [
             BottomNavigationBarItem(
               icon: Icon(Icons.dashboard_outlined),
               activeIcon: Icon(Icons.dashboard),
-              label: 'Dashboard',
+              label: 'nav.dashboard'.tr(),
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.calendar_today_outlined),
               activeIcon: Icon(Icons.calendar_today),
-              label: 'Classi',
+              label: 'nav.classes'.tr(),
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.people_outline),
               activeIcon: Icon(Icons.people),
-              label: 'Studenti',
+              label: 'admin_management.students_filter'.tr(),
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline),
               activeIcon: Icon(Icons.person),
-              label: 'Profilo',
+              label: 'nav.profile'.tr(),
             ),
           ],
         ),

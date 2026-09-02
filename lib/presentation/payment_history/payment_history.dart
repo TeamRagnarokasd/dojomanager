@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io' if (dart.library.io) 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -6,13 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 import 'package:universal_html/html.dart' as html;
 
 import '../../core/app_export.dart';
+import '../../services/italian_receipt_service.dart';
 import '../../services/payment_service.dart';
-import '../../widgets/custom_icon_widget.dart';
+import '../../services/supabase_service.dart';
 import '../../widgets/main_navigation_wrapper.dart';
 import './widgets/empty_payment_state.dart';
 import './widgets/monthly_group_header.dart';
@@ -39,7 +40,7 @@ class _PaymentHistoryState extends State<PaymentHistory>
 
   bool _isLoading = false;
   bool _isOfflineMode = false;
-  String _selectedFilter = 'Tutti';
+  String _selectedFilter = 'all';
   String _searchQuery = '';
   final Map<String, bool> _expandedMonths = {};
   Map<String, dynamic>? _selectedPlan;
@@ -48,11 +49,34 @@ class _PaymentHistoryState extends State<PaymentHistory>
   Map<String, dynamic> _subscriptionData = {};
   List<Map<String, dynamic>> _paymentTransactions = [];
 
-  final List<String> _filterOptions = [
-    'Tutti',
+  static const List<String> _filterKeys = [
+    'all',
     'Abbonamento',
     'Classe Singola',
   ];
+
+  List<String> get _filterOptions =>
+      _filterKeys.map((key) => _paymentFilterLabel(key)).toList();
+
+  String _paymentFilterLabel(String key) {
+    switch (key) {
+      case 'all':
+        return 'disciplines.all'.tr();
+      case 'Abbonamento':
+        return 'payment.filter_subscription'.tr();
+      case 'Classe Singola':
+        return 'payment.filter_single_class'.tr();
+      default:
+        return key;
+    }
+  }
+
+  String _filterKeyFromLabel(String label) {
+    for (final key in _filterKeys) {
+      if (_paymentFilterLabel(key) == label) return key;
+    }
+    return label;
+  }
 
   // 🎨 FIX 2: Replace ugly text PDF with beautiful graphic PDF
   Map<String, bool> _isLoadingPDF = {};
@@ -60,7 +84,12 @@ class _PaymentHistoryState extends State<PaymentHistory>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this, initialIndex: 1);
+    _tabController = TabController(length: 3, vsync: this, initialIndex: 0);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {});
+      }
+    });
     WidgetsBinding.instance.addObserver(this);
     _loadPaymentData();
   }
@@ -77,7 +106,10 @@ class _PaymentHistoryState extends State<PaymentHistory>
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed) {
+      // 🔥 CRITICAL FIX: Force complete data refresh when app resumes
       _checkPaymentConfirmation();
+      // 🔥 CRITICAL FIX 2: Also reload payment data to sync with database
+      _loadPaymentData();
     }
   }
 
@@ -94,9 +126,11 @@ class _PaymentHistoryState extends State<PaymentHistory>
         final planId = prefs.getString('pendingPlanId');
         final planTitle = prefs.getString('pendingPlanTitle');
         final planAmount = prefs.getDouble('pendingPlanAmount');
-        final paymentMethod = prefs.getString('pendingPaymentMethod');
+        final paymentMethod =
+            prefs.getString('pendingPaymentMethod') ?? 'sumup';
 
-        if (planId != null && mounted) {
+        // 🎯 FIX: Show dialog for both SumUp (with planId) and Satispay (without planId)
+        if (mounted) {
           // Show confirmation dialog
           showDialog(
             context: context,
@@ -109,7 +143,7 @@ class _PaymentHistoryState extends State<PaymentHistory>
                 'payment_method': paymentMethod,
               },
               onConfirmed: () {
-                // Refresh payment data
+                // 🔥 TRIGGER AGGIORNAMENTO: Refresh payment data immediately after confirmation
                 _loadPaymentData();
               },
             ),
@@ -118,6 +152,7 @@ class _PaymentHistoryState extends State<PaymentHistory>
       }
     } catch (e) {
       // Silent fail - don't disrupt user experience
+      print('ERROR checking payment confirmation: $e');
     }
   }
 
@@ -168,16 +203,18 @@ class _PaymentHistoryState extends State<PaymentHistory>
 
   List<Map<String, dynamic>> _getFilteredTransactions() {
     var filtered = _paymentTransactions.where((transaction) {
-      final matchesFilter = _selectedFilter == 'Tutti' ||
+      final matchesFilter =
+          _selectedFilter == 'all' ||
           (transaction['type'] as String) == _selectedFilter;
 
-      final matchesSearch = _searchQuery.isEmpty ||
+      final matchesSearch =
+          _searchQuery.isEmpty ||
           (transaction['description'] as String).toLowerCase().contains(
-                _searchQuery.toLowerCase(),
-              ) ||
+            _searchQuery.toLowerCase(),
+          ) ||
           (transaction['amount'] as String).toLowerCase().contains(
-                _searchQuery.toLowerCase(),
-              );
+            _searchQuery.toLowerCase(),
+          );
 
       return matchesFilter && matchesSearch;
     }).toList();
@@ -223,53 +260,74 @@ class _PaymentHistoryState extends State<PaymentHistory>
   }
 
   Future<void> _loadPaymentData() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // Load real data from Supabase
-      final subscriptionStatus = await PaymentService.getSubscriptionStatus();
+      final dashboardData = await PaymentService.getSubscriptionDashboardData();
       final transactions = await PaymentService.getPaymentTransactions();
 
+      if (!mounted) return;
       setState(() {
-        _subscriptionData = subscriptionStatus;
+        _subscriptionData = dashboardData;
         _paymentTransactions = transactions;
         _isLoading = false;
         _isOfflineMode = false;
       });
 
       _initializeExpandedMonths();
+
+      print('DEBUG: Dashboard data refreshed from database');
+      print(
+        'DEBUG: Annual Registration Status: ${dashboardData['annualRegistrationStatus']}',
+      );
+      print('DEBUG: Current Plan: ${dashboardData['currentPlanName']}');
+      print(
+        'DEBUG: Has Annual Registration: ${dashboardData['hasAnnualRegistration']}',
+      );
+      print(
+        'DEBUG: Active Subscription: ${dashboardData['hasActiveSubscription']}',
+      );
     } catch (e) {
+      print('ERROR loading payment data: $e');
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _isOfflineMode = true;
-        // Keep existing subscription data structure for offline mode
         _subscriptionData = {
-          "planName": "Piano Premium Mensile",
-          "renewalDate": "15/09/2024",
-          "autoPayment": true,
-          "status": "active",
+          "currentPlanName": "Nessun abbonamento attivo",
+          "planName": "",
+          "renewalDate": "",
+          "autoPayment": false,
+          "status": "inactive",
+          "annualRegistrationStatus": "Da acquistare",
+          "annualRegistrationExpiry": "",
+          "hasAnnualRegistration": false,
+          "hasActiveSubscription": false,
         };
-        _paymentTransactions = []; // Empty transactions in offline mode
+        _paymentTransactions = [];
       });
     }
   }
 
   Future<void> _refreshPaymentData() async {
     HapticFeedback.lightImpact();
+
+    // 🔥 TRIGGER AGGIORNAMENTO: Force data reload from database
     await _loadPaymentData();
 
     Fluttertoast.showToast(
-      msg: "Cronologia pagamenti aggiornata",
+      msg: 'payment.refreshed'.tr(),
       toastLength: Toast.LENGTH_SHORT,
       gravity: ToastGravity.BOTTOM,
     );
   }
 
-  void _onFilterChanged(String filter) {
+  void _onFilterChanged(String filterLabel) {
     setState(() {
-      _selectedFilter = filter;
+      _selectedFilter = _filterKeyFromLabel(filterLabel);
     });
   }
 
@@ -308,9 +366,7 @@ class _PaymentHistoryState extends State<PaymentHistory>
     return Container(
       height: 70.h,
       decoration: BoxDecoration(
-        color: Theme.of(
-          context,
-        ).scaffoldBackgroundColor, // Use scaffold background for consistency
+        color: Theme.of(context).scaffoldBackgroundColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
@@ -328,9 +384,7 @@ class _PaymentHistoryState extends State<PaymentHistory>
           ),
           Expanded(
             child: Container(
-              color: Theme.of(
-                context,
-              ).scaffoldBackgroundColor, // Ensure consistent background
+              color: Theme.of(context).scaffoldBackgroundColor,
               padding: EdgeInsets.all(6.w),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -339,10 +393,9 @@ class _PaymentHistoryState extends State<PaymentHistory>
                     children: [
                       Expanded(
                         child: Text(
-                          'Dettagli Transazione',
-                          style: Theme.of(
-                            context,
-                          ).textTheme.headlineSmall?.copyWith(
+                          'payment.transaction_details'.tr(),
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
                                 fontWeight: FontWeight.w600,
                                 color: Theme.of(context).colorScheme.onSurface,
                               ),
@@ -358,23 +411,7 @@ class _PaymentHistoryState extends State<PaymentHistory>
                       ),
                     ],
                   ),
-                  SizedBox(height: 4.h),
-                  _buildDetailRow(
-                    'Descrizione',
-                    transaction['description'] as String,
-                  ),
-                  _buildDetailRow('Importo', transaction['amount'] as String),
-                  _buildDetailRow('Data', transaction['date'] as String),
-                  _buildDetailRow('Stato', transaction['status'] as String),
-                  _buildDetailRow(
-                    'Metodo di Pagamento',
-                    transaction['paymentMethod'] as String,
-                  ),
-                  _buildDetailRow(
-                    'ID Ricevuta',
-                    transaction['receiptId'] as String,
-                  ),
-                  SizedBox(height: 4.h),
+                  SizedBox(height: 2.h),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
@@ -385,10 +422,9 @@ class _PaymentHistoryState extends State<PaymentHistory>
                         size: 20,
                       ),
                       label: Text(
-                        'Scarica Ricevuta PDF',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.titleMedium?.copyWith(
+                        'payment.download_receipt_pdf'.tr(),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
                               color: Theme.of(context).colorScheme.onPrimary,
                               fontWeight: FontWeight.w600,
                             ),
@@ -396,10 +432,36 @@ class _PaymentHistoryState extends State<PaymentHistory>
                       style: ElevatedButton.styleFrom(
                         padding: EdgeInsets.symmetric(vertical: 2.h),
                         backgroundColor: Theme.of(context).colorScheme.primary,
-                        foregroundColor:
-                            Theme.of(context).colorScheme.onPrimary,
+                        foregroundColor: Theme.of(
+                          context,
+                        ).colorScheme.onPrimary,
                       ),
                     ),
+                  ),
+                  SizedBox(height: 3.h),
+                  _buildDetailRow(
+                    'common.description'.tr(),
+                    transaction['description'] as String,
+                  ),
+                  _buildDetailRow(
+                    'payment.amount'.tr(),
+                    transaction['amount'] as String,
+                  ),
+                  _buildDetailRow(
+                    'class_schedule.date'.tr(),
+                    transaction['date'] as String,
+                  ),
+                  _buildDetailRow(
+                    'payment.status'.tr(),
+                    transaction['status'] as String,
+                  ),
+                  _buildDetailRow(
+                    'payment.payment_method'.tr(),
+                    transaction['paymentMethod'] as String,
+                  ),
+                  _buildDetailRow(
+                    'payment.receipt_id'.tr(),
+                    transaction['receiptId'] as String,
                   ),
                 ],
               ),
@@ -424,18 +486,18 @@ class _PaymentHistoryState extends State<PaymentHistory>
             child: Text(
               label,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
           Expanded(
             child: Text(
               value,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
             ),
           ),
         ],
@@ -443,90 +505,264 @@ class _PaymentHistoryState extends State<PaymentHistory>
     );
   }
 
-  Future<void> _downloadReceipt(Map<String, dynamic> transaction) async {
-    try {
-      final receiptContent = _generateReceiptContent(transaction);
-      final filename = 'ricevuta_${transaction['receiptId']}.txt';
+  /// 🎯 FIX 3: Transform payment_confirmation data into receipt format
+  Future<Map<String, dynamic>> _transformPaymentToReceipt(
+    Map<String, dynamic> payment,
+  ) async {
+    // Get current user profile for customer info
+    final userId = payment['user_id'];
+    final userProfile = await SupabaseService.instance.client
+        .from('user_profiles')
+        .select('full_name, codice_fiscale, address_line, city, province, cap')
+        .eq('id', userId)
+        .single();
 
-      if (kIsWeb) {
-        final bytes = utf8.encode(receiptContent);
-        final blob = html.Blob([bytes]);
-        final url = html.Url.createObjectUrlFromBlob(blob);
-        final anchor = html.AnchorElement(href: url)
-          ..setAttribute("download", filename)
-          ..click();
-        html.Url.revokeObjectUrl(url);
-      } else {
-        final directory = await getApplicationDocumentsDirectory();
-        final file = File('${directory.path}/$filename');
-        await file.writeAsString(receiptContent);
-      }
+    // Build customer address
+    final addressParts = <String>[];
+    if (userProfile['address_line'] != null) {
+      addressParts.add(userProfile['address_line']);
+    }
+    if (userProfile['city'] != null) {
+      addressParts.add(userProfile['city']);
+    }
+    if (userProfile['province'] != null) {
+      addressParts.add(userProfile['province']);
+    }
+    if (userProfile['cap'] != null) {
+      addressParts.add(userProfile['cap']);
+    }
 
-      Fluttertoast.showToast(
-        msg: "Ricevuta scaricata con successo",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-      );
+    return {
+      'id': payment['id'],
+      'receipt_number':
+          payment['external_payment_id'] ??
+          'PAY-${payment['id'].substring(0, 8)}',
+      'issue_date':
+          payment['confirmed_at']?.split('T')[0] ??
+          DateTime.now().toIso8601String().split('T')[0],
+      'customer_name': userProfile['full_name'] ?? 'payment.customer'.tr(),
+      'customer_tax_code': userProfile['codice_fiscale'],
+      'customer_address': addressParts.isNotEmpty
+          ? addressParts.join(', ')
+          : null,
+      'description': 'payment.subscription_payment_desc'.tr(
+        namedArgs: {'method': _getPaymentMethodText(payment['payment_method'])},
+      ),
+      'amount': payment['amount'],
+      'quantity': 1,
+      'unit_price': payment['amount'],
+      'payment_method': payment['payment_method'],
+      'status': 'issued',
+      'vat_rate': '0',
+      'vat_amount': 0.0,
+      'discount_percentage': 0.0,
+      'created_at': payment['confirmed_at'],
+      'created_by': userId,
+    };
+  }
 
-      Navigator.pop(context);
-    } catch (e) {
-      Fluttertoast.showToast(
-        msg: "Errore durante il download della ricevuta",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-      );
+  String _getPaymentMethodText(String method) {
+    switch (method.toLowerCase()) {
+      case 'sumup':
+        return 'payment.sumup'.tr();
+      case 'satispay':
+        return 'payment.satispay'.tr();
+      case 'cash':
+        return 'payment.cash'.tr();
+      case 'bank_transfer':
+        return 'payment.bank_transfer_full'.tr();
+      case 'credit_card':
+        return 'payment.credit_card'.tr();
+      default:
+        return method;
     }
   }
 
-  String _generateReceiptContent(Map<String, dynamic> transaction) {
-    return '''
-DOJO MANAGER - RICEVUTA PAGAMENTO
-================================
+  Future<void> _downloadReceipt(Map<String, dynamic> transaction) async {
+    // 🎯 FIX: Use EXACT SAME PDF generator as Admin Panel
+    String? receiptIdKey = transaction['receiptId']?.toString();
 
-ID Ricevuta: ${transaction['receiptId']}
-Data: ${transaction['date']}
-Stato: ${transaction['status']}
+    try {
+      setState(() {
+        _isLoadingPDF[receiptIdKey ?? transaction['id']] = true;
+      });
 
-DETTAGLI TRANSAZIONE
--------------------
-Descrizione: ${transaction['description']}
-Importo: ${transaction['amount']}
-Metodo di Pagamento: ${transaction['paymentMethod']}
+      // 🔥 STEP 1: Get the receipt ID - if from payment_confirmation, create receipt first
+      String? receiptId = transaction['receiptId'] as String?;
 
-INFORMAZIONI SCUOLA
-------------------
-DojoManager Martial Arts School
-Via Roma 123, Milano
-P.IVA: 12345678901
-Tel: +39 02 1234567
-Email: info@dojomanager.it
+      // Handle case where receiptId might be a placeholder (e.g., "PAY-xxxxx")
+      if (receiptId == null ||
+          receiptId.isEmpty ||
+          receiptId.startsWith('PAY-')) {
+        // If this is from payment_confirmation source, try to create/get receipt
+        if (transaction['source'] == 'payment_confirmation') {
+          try {
+            final paymentId = transaction['id'] as String?;
+            if (paymentId == null || paymentId.isEmpty) {
+              throw Exception('payment.invalid_transaction_id'.tr());
+            }
 
-Grazie per aver scelto DojoManager!
-''';
+            receiptId = await PaymentService.getReceiptIdForPayment(paymentId);
+
+            if (receiptId == null || receiptId.isEmpty) {
+              throw Exception('payment.receipt_create_failed'.tr());
+            }
+          } catch (e) {
+            throw Exception(
+              'payment.receipt_create_error'.tr(
+                namedArgs: {'detail': e.toString()},
+              ),
+            );
+          }
+        } else {
+          throw Exception('payment.receipt_id_not_found'.tr());
+        }
+      }
+
+      // If receiptId was a placeholder, we should have created one by now
+      if (receiptId.isEmpty) {
+        throw Exception('payment.invalid_receipt_id'.tr());
+      }
+
+      // 🔥 STEP 2: Get receipt with organization info from ItalianReceiptService
+      Map<String, dynamic>? receiptData;
+      try {
+        receiptData = await ItalianReceiptService().getReceiptById(receiptId);
+      } catch (e) {
+        throw Exception(
+          'payment.receipt_fetch_error'.tr(namedArgs: {'detail': e.toString()}),
+        );
+      }
+
+      if (receiptData == null) {
+        throw Exception('payment.receipt_not_found_db'.tr());
+      }
+
+      // 🔥 STEP 3: Generate BEAUTIFUL PDF using ItalianReceiptService
+      pw.Document pdfDocument;
+      try {
+        pdfDocument = await ItalianReceiptService().generateBeautifulReceiptPDF(
+          receiptData,
+        );
+      } catch (e) {
+        throw Exception(
+          'payment.pdf_generate_error'.tr(namedArgs: {'detail': e.toString()}),
+        );
+      }
+
+      // 🔥 STEP 4: Save/Download the PDF
+      Uint8List pdfBytes;
+      try {
+        pdfBytes = await pdfDocument.save();
+      } catch (e) {
+        throw Exception(
+          'payment.pdf_save_error'.tr(namedArgs: {'detail': e.toString()}),
+        );
+      }
+
+      final receiptNumber =
+          receiptData['receipt_number']?.toString() ??
+          receiptData['id']?.toString().substring(0, 8) ??
+          'ricevuta';
+      final filename = 'ricevuta_$receiptNumber.pdf';
+
+      try {
+        if (kIsWeb) {
+          // Web: Enhanced download trigger with better browser support
+          final blob = html.Blob([pdfBytes], 'application/pdf');
+          final url = html.Url.createObjectUrlFromBlob(blob);
+          final anchor = html.document.createElement('a') as html.AnchorElement
+            ..href = url
+            ..style.display = 'none'
+            ..download = filename;
+
+          // Append to body, click, and remove (ensures click event fires correctly)
+          html.document.body?.append(anchor);
+          anchor.click();
+          anchor.remove();
+
+          // Clean up blob URL after a short delay to ensure download completes
+          Future.delayed(const Duration(milliseconds: 100), () {
+            html.Url.revokeObjectUrl(url);
+          });
+        } else {
+          // Mobile: Save to device
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/$filename');
+          await file.writeAsBytes(pdfBytes);
+        }
+
+        Fluttertoast.showToast(
+          msg: 'payment.pdf_downloaded'.tr(),
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.green,
+          textColor: Colors.white,
+        );
+      } catch (e) {
+        throw Exception(
+          'payment.download_file_error'.tr(namedArgs: {'detail': e.toString()}),
+        );
+      }
+
+      Navigator.pop(context);
+    } catch (e) {
+      // Provide user-friendly error messages
+      String errorMessage = 'payment.download_error'.tr();
+
+      if (e.toString().contains('non trovato') ||
+          e.toString().contains('not found')) {
+        errorMessage = 'payment.receipt_not_found_support'.tr();
+      } else if (e.toString().contains('creare') ||
+          e.toString().contains('create')) {
+        errorMessage = 'payment.receipt_create_failed'.tr();
+      } else if (e.toString().contains('generazione') ||
+          e.toString().contains('generat')) {
+        errorMessage = 'payment.pdf_generate_error'.tr(
+          namedArgs: {'detail': ''},
+        );
+      } else {
+        errorMessage = '$errorMessage: ${e.toString()}';
+      }
+
+      Fluttertoast.showToast(
+        msg: errorMessage,
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: Colors.red,
+        textColor: Colors.white,
+      );
+    } finally {
+      setState(() {
+        _isLoadingPDF.remove(receiptIdKey);
+        _isLoadingPDF.remove(transaction['id']);
+      });
+    }
   }
 
   Future<void> _shareReceipt(Map<String, dynamic> transaction) async {
     try {
-      final receiptContent = _generateReceiptContent(transaction);
+      // Remove this line - _generateReceiptContent method doesn't exist
+      // Instead, just copy the receipt ID or basic transaction info
+      final receiptInfo = 'payment.receipt_clipboard'.tr(
+        namedArgs: {
+          'id': '${transaction['receiptId']}',
+          'description': '${transaction['description']}',
+          'amount': '${transaction['amount']}',
+          'date': '${transaction['date']}',
+          'status': '${transaction['status']}',
+        },
+      );
 
-      if (kIsWeb) {
-        await Clipboard.setData(ClipboardData(text: receiptContent));
-        Fluttertoast.showToast(
-          msg: "Ricevuta copiata negli appunti",
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.BOTTOM,
-        );
-      } else {
-        await Clipboard.setData(ClipboardData(text: receiptContent));
-        Fluttertoast.showToast(
-          msg: "Ricevuta copiata negli appunti",
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.BOTTOM,
-        );
-      }
+      await Clipboard.setData(ClipboardData(text: receiptInfo));
+      Fluttertoast.showToast(
+        msg: 'payment.copied_to_clipboard'.tr(),
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+      );
     } catch (e) {
       Fluttertoast.showToast(
-        msg: "Errore durante la condivisione",
+        msg: 'payment.share_error'.tr(),
         toastLength: Toast.LENGTH_SHORT,
         gravity: ToastGravity.BOTTOM,
       );
@@ -538,40 +774,42 @@ Grazie per aver scelto DojoManager!
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          'Contatta Supporto',
+          'payment.contact_support'.tr(),
           style: Theme.of(
             context,
           ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
         content: Text(
-          'Vuoi contattare il supporto per la transazione ${transaction['receiptId']}?',
+          'payment.contact_support_confirm'.tr(
+            namedArgs: {'id': '${transaction['receiptId']}'},
+          ),
           style: Theme.of(context).textTheme.bodyMedium,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
-              'Annulla',
+              'common.cancel'.tr(),
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               Fluttertoast.showToast(
-                msg: "Richiesta di supporto inviata",
+                msg: 'payment.support_request_sent'.tr(),
                 toastLength: Toast.LENGTH_SHORT,
                 gravity: ToastGravity.BOTTOM,
               );
             },
             child: Text(
-              'Contatta',
+              'payment.contact'.tr(),
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                color: Theme.of(context).colorScheme.onPrimary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -585,9 +823,7 @@ Grazie per aver scelto DojoManager!
     });
 
     Fluttertoast.showToast(
-      msg: enabled
-          ? "Pagamento automatico attivato"
-          : "Pagamento automatico disattivato",
+      msg: enabled ? 'payment.auto_pay_on'.tr() : 'payment.auto_pay_off'.tr(),
       toastLength: Toast.LENGTH_SHORT,
       gravity: ToastGravity.BOTTOM,
     );
@@ -598,23 +834,23 @@ Grazie per aver scelto DojoManager!
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          'Pagamento Manuale',
+          'payment.manual_payment'.tr(),
           style: Theme.of(
             context,
           ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
         content: Text(
-          'Vuoi procedere con un pagamento manuale per saldare eventuali importi in sospeso?',
+          'payment.manual_payment_confirm'.tr(),
           style: Theme.of(context).textTheme.bodyMedium,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
-              'Annulla',
+              'common.cancel'.tr(),
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           ElevatedButton(
@@ -623,11 +859,11 @@ Grazie per aver scelto DojoManager!
               Navigator.pushNamed(context, '/dashboard-home');
             },
             child: Text(
-              'Procedi',
+              'payment.proceed'.tr(),
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                color: Theme.of(context).colorScheme.onPrimary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -742,12 +978,14 @@ Grazie per aver scelto DojoManager!
                       margin: EdgeInsets.all(4.w),
                       padding: EdgeInsets.all(4.w),
                       decoration: BoxDecoration(
-                        color: Color(_selectedPlan!['color'] as int)
-                            .withValues(alpha: 0.1),
+                        color: Color(
+                          _selectedPlan!['color'] as int,
+                        ).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Color(_selectedPlan!['color'] as int)
-                              .withValues(alpha: 0.3),
+                          color: Color(
+                            _selectedPlan!['color'] as int,
+                          ).withValues(alpha: 0.3),
                           width: 1,
                         ),
                       ),
@@ -764,26 +1002,24 @@ Grazie per aver scelto DojoManager!
                               SizedBox(width: 2.w),
                               Expanded(
                                 child: Text(
-                                  'Piano Selezionato',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium
+                                  'payment.selected_plan'.tr(),
+                                  style: Theme.of(context).textTheme.titleMedium
                                       ?.copyWith(
                                         fontWeight: FontWeight.w700,
                                         color: Color(
-                                            _selectedPlan!['color'] as int),
+                                          _selectedPlan!['color'] as int,
+                                        ),
                                       ),
                                 ),
                               ),
                               Text(
                                 '€${_selectedPlan!['price']}/${_selectedPlan!['frequency']}',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
+                                style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(
                                       fontWeight: FontWeight.w700,
-                                      color:
-                                          Color(_selectedPlan!['color'] as int),
+                                      color: Color(
+                                        _selectedPlan!['color'] as int,
+                                      ),
                                     ),
                               ),
                             ],
@@ -791,13 +1027,12 @@ Grazie per aver scelto DojoManager!
                           SizedBox(height: 1.h),
                           Text(
                             _selectedPlan!['title'] as String,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyLarge
+                            style: Theme.of(context).textTheme.bodyLarge
                                 ?.copyWith(
                                   fontWeight: FontWeight.w600,
-                                  color:
-                                      Theme.of(context).colorScheme.onSurface,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface,
                                 ),
                           ),
                         ],
@@ -821,33 +1056,36 @@ Grazie per aver scelto DojoManager!
 
     if (_isLoading) {
       return Container(
-        color: Theme.of(
-          context,
-        ).scaffoldBackgroundColor,
-        child: Column(
-          children: [
-            SubscriptionStatusCard(
-              subscriptionData: _subscriptionData,
-              onAutoPaymentToggle: _onAutoPaymentToggle,
-            ),
-            PaymentFilterChips(
-              filterOptions: _filterOptions,
-              selectedFilter: _selectedFilter,
-              onFilterChanged: _onFilterChanged,
-            ),
-            PaymentSearchBar(
-              onSearchChanged: _onSearchChanged,
-              onClear: _onSearchClear,
-            ),
-            Expanded(
-              child: Container(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                child: ListView.builder(
-                  itemCount: 6,
-                  itemBuilder: (context, index) => _buildSkeletonCard(),
-                ),
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Column(
+                children: [
+                  SubscriptionStatusCard(
+                    subscriptionData: _subscriptionData,
+                    onAutoPaymentToggle: _onAutoPaymentToggle,
+                  ),
+                  PaymentFilterChips(
+                    filterOptions: _filterOptions,
+                    selectedFilter: _paymentFilterLabel(_selectedFilter),
+                    onFilterChanged: _onFilterChanged,
+                  ),
+                  PaymentSearchBar(
+                    onSearchChanged: _onSearchChanged,
+                    onClear: _onSearchClear,
+                  ),
+                ],
               ),
             ),
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => _buildSkeletonCard(),
+                childCount: 6,
+              ),
+            ),
+            SliverToBoxAdapter(child: SizedBox(height: 10.h)),
           ],
         ),
       );
@@ -855,25 +1093,30 @@ Grazie per aver scelto DojoManager!
 
     if (filteredTransactions.isEmpty) {
       return Container(
-        color: Theme.of(
-          context,
-        ).scaffoldBackgroundColor,
-        child: Column(
-          children: [
-            SubscriptionStatusCard(
-              subscriptionData: _subscriptionData,
-              onAutoPaymentToggle: _onAutoPaymentToggle,
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Column(
+                children: [
+                  SubscriptionStatusCard(
+                    subscriptionData: _subscriptionData,
+                    onAutoPaymentToggle: _onAutoPaymentToggle,
+                  ),
+                  PaymentFilterChips(
+                    filterOptions: _filterOptions,
+                    selectedFilter: _paymentFilterLabel(_selectedFilter),
+                    onFilterChanged: _onFilterChanged,
+                  ),
+                  PaymentSearchBar(
+                    onSearchChanged: _onSearchChanged,
+                    onClear: _onSearchClear,
+                  ),
+                ],
+              ),
             ),
-            PaymentFilterChips(
-              filterOptions: _filterOptions,
-              selectedFilter: _selectedFilter,
-              onFilterChanged: _onFilterChanged,
-            ),
-            PaymentSearchBar(
-              onSearchChanged: _onSearchChanged,
-              onClear: _onSearchClear,
-            ),
-            Expanded(
+            SliverFillRemaining(
               child: Container(
                 color: Theme.of(context).scaffoldBackgroundColor,
                 child: EmptyPaymentState(
@@ -890,15 +1133,14 @@ Grazie per aver scelto DojoManager!
     final months = _getUniqueMonths();
 
     return Container(
-      color: Theme.of(
-        context,
-      ).scaffoldBackgroundColor,
+      color: Theme.of(context).scaffoldBackgroundColor,
       child: RefreshIndicator(
         key: _refreshIndicatorKey,
         onRefresh: _refreshPaymentData,
         color: Theme.of(context).colorScheme.secondary,
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverToBoxAdapter(
               child: Container(
@@ -911,7 +1153,7 @@ Grazie per aver scelto DojoManager!
                     ),
                     PaymentFilterChips(
                       filterOptions: _filterOptions,
-                      selectedFilter: _selectedFilter,
+                      selectedFilter: _paymentFilterLabel(_selectedFilter),
                       onFilterChanged: _onFilterChanged,
                     ),
                     PaymentSearchBar(
@@ -945,10 +1187,8 @@ Grazie per aver scelto DojoManager!
                             SizedBox(width: 2.w),
                             Expanded(
                               child: Text(
-                                'Modalità offline - Connessione richiesta per i dati di pagamento',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
+                                'payment.offline_mode'.tr(),
+                                style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(color: const Color(0xFFF39C12)),
                               ),
                             ),
@@ -1022,19 +1262,17 @@ Grazie per aver scelto DojoManager!
     return MainNavigationWrapper(
       currentIndex: 2,
       child: Scaffold(
-        backgroundColor: Theme.of(
-          context,
-        ).scaffoldBackgroundColor,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-          backgroundColor: Theme.of(
-            context,
-          ).scaffoldBackgroundColor,
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           title: Text(
-            'Cronologia Pagamenti',
+            _tabController.index == 1
+                ? 'payment.title_history'.tr()
+                : 'nav.payments'.tr(),
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
           automaticallyImplyLeading: false,
           actions: [
@@ -1050,20 +1288,19 @@ Grazie per aver scelto DojoManager!
           bottom: TabBar(
             controller: _tabController,
             labelColor: Theme.of(context).colorScheme.onSurface,
-            unselectedLabelColor:
-                Theme.of(context).colorScheme.onSurfaceVariant,
+            unselectedLabelColor: Theme.of(
+              context,
+            ).colorScheme.onSurfaceVariant,
             indicatorColor: Theme.of(context).colorScheme.secondary,
-            tabs: const [
-              Tab(text: 'Paga'),
-              Tab(text: 'Cronologia'),
-              Tab(text: 'Abbonamenti'),
+            tabs: [
+              Tab(text: 'receipt.pay_tab'.tr()),
+              Tab(text: 'payment.title_history'.tr()),
+              Tab(text: 'receipt.subscriptions_tab'.tr()),
             ],
           ),
         ),
         body: Container(
-          color: Theme.of(
-            context,
-          ).scaffoldBackgroundColor,
+          color: Theme.of(context).scaffoldBackgroundColor,
           child: TabBarView(
             controller: _tabController,
             children: [

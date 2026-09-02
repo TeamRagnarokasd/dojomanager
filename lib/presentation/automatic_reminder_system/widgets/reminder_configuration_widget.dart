@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+
 import '../../../core/app_export.dart';
-import '../../../theme/app_theme.dart';
 
 class ReminderConfigurationWidget extends StatefulWidget {
   final VoidCallback onConfigurationChanged;
@@ -55,15 +55,16 @@ class _ReminderConfigurationWidgetState
       widget.onConfigurationChanged();
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Configurazione salvata con successo'),
+        SnackBar(
+          content: Text('reminders.config_saved'.tr()),
           backgroundColor: Colors.green,
         ),
       );
     } catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Errore nel salvare la configurazione: $error'),
+          content: Text(
+              'reminders.config_save_error'.tr(namedArgs: {'error': '$error'})),
           backgroundColor: Colors.red,
         ),
       );
@@ -86,7 +87,7 @@ class _ReminderConfigurationWidgetState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Configurazione Promemoria',
+            'reminders.config_title'.tr(),
             style: AppTheme.lightTheme.textTheme.headlineSmall!.copyWith(
               fontWeight: FontWeight.bold,
               color: AppTheme.primaryLight,
@@ -124,18 +125,17 @@ class _ReminderConfigurationWidgetState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Programmazione Promemoria',
+            'reminders.scheduling_title'.tr(),
             style: AppTheme.lightTheme.textTheme.titleMedium!.copyWith(
               fontWeight: FontWeight.bold,
             ),
           ),
           SizedBox(height: 2.h),
           SwitchListTile(
-            title: const Text('Promemoria Mensili Automatici'),
-            subtitle: const Text(
-                'Invia promemoria ogni mese agli utenti con abbonamenti in scadenza'),
+            title: Text('reminders.monthly_auto_title'.tr()),
+            subtitle: Text('reminders.monthly_auto_subtitle'.tr()),
             value: _monthlyRemindersEnabled,
-            activeColor: AppTheme.primaryLight,
+            activeThumbColor: AppTheme.primaryLight,
             onChanged: (value) {
               setState(() => _monthlyRemindersEnabled = value);
               _markAsChanged();
@@ -203,10 +203,10 @@ class _ReminderConfigurationWidgetState
           ),
           SizedBox(height: 2.h),
           SwitchListTile(
-            title: const Text('Notifiche Push'),
-            subtitle: const Text('Notifiche nell\'app mobile'),
+            title: Text('reminders.push_notifications'.tr()),
+            subtitle: Text('reminders.push_subtitle'.tr()),
             value: _pushNotificationsEnabled,
-            activeColor: AppTheme.primaryLight,
+            activeThumbColor: AppTheme.primaryLight,
             onChanged: (value) {
               setState(() => _pushNotificationsEnabled = value);
               _markAsChanged();
@@ -214,10 +214,10 @@ class _ReminderConfigurationWidgetState
           ),
           const Divider(),
           SwitchListTile(
-            title: const Text('Notifiche Email'),
-            subtitle: const Text('Invia promemoria via email'),
+            title: Text('reminders.email_notifications'.tr()),
+            subtitle: Text('reminders.email_subtitle'.tr()),
             value: _emailNotificationsEnabled,
-            activeColor: AppTheme.primaryLight,
+            activeThumbColor: AppTheme.primaryLight,
             onChanged: (value) {
               setState(() => _emailNotificationsEnabled = value);
               _markAsChanged();
@@ -225,10 +225,10 @@ class _ReminderConfigurationWidgetState
           ),
           const Divider(),
           SwitchListTile(
-            title: const Text('SMS'),
-            subtitle: const Text('Invia promemoria via SMS (servizio premium)'),
+            title: Text('reminders.sms'.tr()),
+            subtitle: Text('reminders.sms_subtitle'.tr()),
             value: _smsNotificationsEnabled,
-            activeColor: AppTheme.primaryLight,
+            activeThumbColor: AppTheme.primaryLight,
             onChanged: (value) {
               setState(() => _smsNotificationsEnabled = value);
               _markAsChanged();
@@ -258,7 +258,7 @@ class _ReminderConfigurationWidgetState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Impostazioni Avanzate',
+            'reminders.advanced_settings'.tr(),
             style: AppTheme.lightTheme.textTheme.titleMedium!.copyWith(
               fontWeight: FontWeight.bold,
             ),
@@ -281,7 +281,8 @@ class _ReminderConfigurationWidgetState
                       Expanded(
                         child: Text(
                           'Regole di Scadenza Team Ragnarok',
-                          style: AppTheme.lightTheme.textTheme.titleSmall!.copyWith(
+                          style: AppTheme.lightTheme.textTheme.titleSmall!
+                              .copyWith(
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -328,7 +329,7 @@ class _ReminderConfigurationWidgetState
                 ),
               )
             : Text(
-                'Salva Configurazione',
+                'reminders.config_saved'.tr(),
                 style: AppTheme.lightTheme.textTheme.titleMedium!.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,

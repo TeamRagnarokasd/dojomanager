@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/app_export.dart';
-import '../../routes/app_routes.dart';
 import '../../services/instructor_management_service.dart';
 import '../../widgets/custom_error_widget.dart';
 import './widgets/add_instructor_widget.dart';
@@ -118,7 +117,7 @@ class _InstructorManagementSystemState extends State<InstructorManagementSystem>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Gestione Istruttori',
+              'instructor_management.title'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,

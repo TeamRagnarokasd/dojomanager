@@ -5,16 +5,16 @@ import '../../../core/app_export.dart';
 
 class CustomerFilterWidget extends StatefulWidget {
   final String customerFilter;
-  final String selectedPeriod;
-  final List<String> periodOptions;
+  final String selectedPeriodKey;
+  final List<String> periodKeys;
   final Function(String) onCustomerFilterChanged;
   final Function(String) onPeriodChanged;
 
   const CustomerFilterWidget({
     Key? key,
     required this.customerFilter,
-    required this.selectedPeriod,
-    required this.periodOptions,
+    required this.selectedPeriodKey,
+    required this.periodKeys,
     required this.onCustomerFilterChanged,
     required this.onPeriodChanged,
   }) : super(key: key);
@@ -25,6 +25,23 @@ class CustomerFilterWidget extends StatefulWidget {
 
 class _CustomerFilterWidgetState extends State<CustomerFilterWidget> {
   final TextEditingController _customerController = TextEditingController();
+
+  String _periodLabel(String key) {
+    switch (key) {
+      case 'this_month':
+        return 'receipt.period_this_month'.tr();
+      case 'last_3_months':
+        return 'receipt.period_last_3_months'.tr();
+      case 'last_6_months':
+        return 'receipt.period_last_6_months'.tr();
+      case 'this_year':
+        return 'receipt.period_this_year'.tr();
+      case 'all':
+        return 'receipt.period_all'.tr();
+      default:
+        return key;
+    }
+  }
 
   @override
   void initState() {
@@ -46,9 +63,8 @@ class _CustomerFilterWidgetState extends State<CustomerFilterWidget> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Customer search
           Text(
-            'Filtra per Cliente',
+            'receipt.filter_by_customer'.tr(),
             style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w600,
             ),
@@ -67,7 +83,7 @@ class _CustomerFilterWidgetState extends State<CustomerFilterWidget> {
               controller: _customerController,
               onChanged: widget.onCustomerFilterChanged,
               decoration: InputDecoration(
-                hintText: 'Cerca per nome cliente...',
+                hintText: 'receipt_mgmt.search_customer'.tr(),
                 hintStyle: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                   color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
                 ),
@@ -99,18 +115,14 @@ class _CustomerFilterWidgetState extends State<CustomerFilterWidget> {
               style: AppTheme.lightTheme.textTheme.bodyMedium,
             ),
           ),
-
           SizedBox(height: 3.h),
-
-          // Period selection
           Text(
-            'Periodo',
+            'receipt.period_label'.tr(),
             style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w600,
             ),
           ),
           SizedBox(height: 1.h),
-
           Container(
             width: double.infinity,
             padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
@@ -124,7 +136,7 @@ class _CustomerFilterWidgetState extends State<CustomerFilterWidget> {
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
-                value: widget.selectedPeriod,
+                value: widget.selectedPeriodKey,
                 isExpanded: true,
                 icon: CustomIconWidget(
                   iconName: 'arrow_drop_down',
@@ -132,14 +144,14 @@ class _CustomerFilterWidgetState extends State<CustomerFilterWidget> {
                   size: 24,
                 ),
                 style: AppTheme.lightTheme.textTheme.bodyMedium,
-                items: widget.periodOptions.map((period) {
+                items: widget.periodKeys.map((periodKey) {
                   return DropdownMenuItem<String>(
-                    value: period,
+                    value: periodKey,
                     child: Row(
                       children: [
                         CustomIconWidget(
-                          iconName: _getPeriodIcon(period),
-                          color: period == widget.selectedPeriod
+                          iconName: _getPeriodIcon(periodKey),
+                          color: periodKey == widget.selectedPeriodKey
                               ? AppTheme.lightTheme.colorScheme.primary
                               : AppTheme
                                   .lightTheme.colorScheme.onSurfaceVariant,
@@ -147,13 +159,13 @@ class _CustomerFilterWidgetState extends State<CustomerFilterWidget> {
                         ),
                         SizedBox(width: 3.w),
                         Text(
-                          period,
+                          _periodLabel(periodKey),
                           style: AppTheme.lightTheme.textTheme.bodyMedium
                               ?.copyWith(
-                            color: period == widget.selectedPeriod
+                            color: periodKey == widget.selectedPeriodKey
                                 ? AppTheme.lightTheme.colorScheme.primary
                                 : AppTheme.lightTheme.colorScheme.onSurface,
-                            fontWeight: period == widget.selectedPeriod
+                            fontWeight: periodKey == widget.selectedPeriodKey
                                 ? FontWeight.w600
                                 : FontWeight.w500,
                           ),
@@ -170,24 +182,22 @@ class _CustomerFilterWidgetState extends State<CustomerFilterWidget> {
               ),
             ),
           ),
-
-          // Period chips for quick access
           SizedBox(height: 2.h),
           SizedBox(
             height: 4.h,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: widget.periodOptions.length,
+              itemCount: widget.periodKeys.length,
               itemBuilder: (context, index) {
-                final period = widget.periodOptions[index];
-                final isSelected = period == widget.selectedPeriod;
+                final periodKey = widget.periodKeys[index];
+                final isSelected = periodKey == widget.selectedPeriodKey;
 
                 return Container(
                   margin: EdgeInsets.only(right: 2.w),
                   child: FilterChip(
                     selected: isSelected,
                     label: Text(
-                      period,
+                      _periodLabel(periodKey),
                       style: AppTheme.lightTheme.textTheme.labelSmall?.copyWith(
                         color: isSelected
                             ? AppTheme.lightTheme.colorScheme.onPrimary
@@ -198,7 +208,7 @@ class _CustomerFilterWidgetState extends State<CustomerFilterWidget> {
                     ),
                     onSelected: (selected) {
                       if (selected) {
-                        widget.onPeriodChanged(period);
+                        widget.onPeriodChanged(periodKey);
                       }
                     },
                     backgroundColor: AppTheme.lightTheme.colorScheme.surface,
@@ -226,17 +236,17 @@ class _CustomerFilterWidgetState extends State<CustomerFilterWidget> {
     );
   }
 
-  String _getPeriodIcon(String period) {
-    switch (period) {
-      case 'Questo Mese':
+  String _getPeriodIcon(String periodKey) {
+    switch (periodKey) {
+      case 'this_month':
         return 'calendar_month';
-      case 'Ultimi 3 Mesi':
+      case 'last_3_months':
         return 'date_range';
-      case 'Ultimi 6 Mesi':
+      case 'last_6_months':
         return 'calendar_view_month';
-      case 'Quest\'Anno':
+      case 'this_year':
         return 'calendar_view_year';
-      case 'Tutto':
+      case 'all':
         return 'all_inclusive';
       default:
         return 'date_range';

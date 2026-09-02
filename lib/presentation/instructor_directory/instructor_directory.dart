@@ -5,10 +5,8 @@ import 'package:sizer/sizer.dart';
 import '../../constants/app_constants.dart';
 import '../../core/app_export.dart';
 import '../../services/instructor_service.dart';
-import './widgets/discipline_filter_widget.dart';
 import './widgets/instructor_card_widget.dart';
 import './widgets/instructor_profile_widget.dart';
-import './widgets/instructor_search_widget.dart';
 
 class InstructorDirectory extends StatefulWidget {
   const InstructorDirectory({super.key});
@@ -34,7 +32,9 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _initializeData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeData();
+    });
   }
 
   @override
@@ -51,8 +51,9 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
       final isAdmin = await InstructorService.isCurrentUserAdmin();
 
       // Load instructors
-      final instructors =
-          await InstructorService.getInstructors(activeOnly: showActiveOnly);
+      final instructors = await InstructorService.getInstructors(
+        activeOnly: showActiveOnly,
+      );
 
       setState(() {
         _isAdmin = isAdmin;
@@ -65,7 +66,11 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore nel caricamento degli istruttori: $e'),
+            content: Text(
+              'instructor_directory.load_error'.tr(
+                namedArgs: {'detail': e.toString()},
+              ),
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -81,9 +86,11 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
           final query = searchQuery.toLowerCase();
           if (!(instructor.fullName?.toLowerCase().contains(query) == true ||
               instructor.disciplines.any(
-                  (discipline) => discipline.toLowerCase().contains(query)) ||
-              instructor.specializations
-                  .any((spec) => spec.toLowerCase().contains(query)))) {
+                (discipline) => discipline.toLowerCase().contains(query),
+              ) ||
+              instructor.specializations.any(
+                (spec) => spec.toLowerCase().contains(query),
+              ))) {
             return false;
           }
         }
@@ -91,7 +98,8 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
         // Discipline filter
         if (selectedDisciplines.isNotEmpty) {
           if (!selectedDisciplines.any(
-              (discipline) => instructor.disciplines.contains(discipline))) {
+            (discipline) => instructor.disciplines.contains(discipline),
+          )) {
             return false;
           }
         }
@@ -112,7 +120,7 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
       backgroundColor: Colors.black,
       appBar: AppBar(
         title: Text(
-          'Team Ragnarok Instructors',
+          'instructor_directory.team_title'.tr(),
           style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
             color: Colors.white,
             fontWeight: FontWeight.w600,
@@ -142,8 +150,10 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
                             size: 18,
                           ),
                           SizedBox(width: 2.w),
-                          Text('Aggiungi Istruttore',
-                              style: TextStyle(color: Colors.white)),
+                          Text(
+                            'instructor_directory.add_instructor'.tr(),
+                            style: const TextStyle(color: Colors.white),
+                          ),
                         ],
                       ),
                     ),
@@ -157,8 +167,10 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
                             size: 18,
                           ),
                           SizedBox(width: 2.w),
-                          Text('Gestisci Discipline',
-                              style: TextStyle(color: Colors.white)),
+                          Text(
+                            'instructor_directory.manage_disciplines'.tr(),
+                            style: const TextStyle(color: Colors.white),
+                          ),
                         ],
                       ),
                     ),
@@ -172,8 +184,10 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
                             size: 18,
                           ),
                           SizedBox(width: 2.w),
-                          Text('Aggiorna',
-                              style: TextStyle(color: Colors.white)),
+                          Text(
+                            'instructor_directory.refresh'.tr(),
+                            style: const TextStyle(color: Colors.white),
+                          ),
                         ],
                       ),
                     ),
@@ -192,9 +206,9 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
               ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(text: 'Lista Istruttori'),
-            Tab(text: 'Per Disciplina'),
+          tabs: [
+            Tab(text: 'instructor_directory.tab_list'.tr()),
+            Tab(text: 'instructor_directory.tab_by_discipline'.tr()),
           ],
           indicatorColor: const Color(0xFFFF0000),
           labelColor: Colors.white,
@@ -215,10 +229,7 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
             ? _buildLoadingState()
             : TabBarView(
                 controller: _tabController,
-                children: [
-                  _buildInstructorsList(),
-                  _buildDisciplineView(),
-                ],
+                children: [_buildInstructorsList(), _buildDisciplineView()],
               ),
       ),
     );
@@ -234,7 +245,7 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
           ),
           SizedBox(height: 2.h),
           Text(
-            'Caricamento istruttori...',
+            'instructor_directory.loading'.tr(),
             style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
               color: Colors.white,
             ),
@@ -247,86 +258,6 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
   Widget _buildInstructorsList() {
     return Column(
       children: [
-        // Search and filters
-        Container(
-          padding: EdgeInsets.all(4.w),
-          decoration: BoxDecoration(
-            color: Colors.grey[900],
-            border: Border(
-              bottom: BorderSide(color: Colors.grey[800]!, width: 1),
-            ),
-          ),
-          child: Column(
-            children: [
-              InstructorSearchWidget(
-                searchQuery: searchQuery,
-                onSearchChanged: (query) {
-                  setState(() => searchQuery = query);
-                  _applyFilters();
-                },
-              ),
-              SizedBox(height: 2.h),
-              Row(
-                children: [
-                  Expanded(
-                    child: DisciplineFilterWidget(
-                      disciplines: AppConstants.disciplines,
-                      selectedDisciplines: selectedDisciplines,
-                      onSelectionChanged: (disciplines) {
-                        setState(() => selectedDisciplines = disciplines);
-                        _applyFilters();
-                      },
-                    ),
-                  ),
-                  SizedBox(width: 3.w),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() => showActiveOnly = !showActiveOnly);
-                      _initializeData(); // Reload data with new filter
-                    },
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: 3.w, vertical: 1.5.w),
-                      decoration: BoxDecoration(
-                        color: showActiveOnly
-                            ? const Color(0xFFFF0000)
-                            : Colors.grey[800],
-                        borderRadius: BorderRadius.circular(25),
-                        border: showActiveOnly
-                            ? null
-                            : Border.all(color: Colors.grey[700]!),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (showActiveOnly) ...[
-                            CustomIconWidget(
-                              iconName: 'check',
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                            SizedBox(width: 1.w),
-                          ],
-                          Text(
-                            'Solo Attivi',
-                            style: AppTheme.lightTheme.textTheme.bodyMedium
-                                ?.copyWith(
-                              color: showActiveOnly
-                                  ? Colors.white
-                                  : Colors.grey[300],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-
         // Instructors grid
         Expanded(
           child: _filteredInstructors.isEmpty
@@ -339,7 +270,7 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
                       crossAxisCount: 2,
                       crossAxisSpacing: 3.w,
                       mainAxisSpacing: 3.w,
-                      childAspectRatio: 0.75,
+                      childAspectRatio: 0.65,
                     ),
                     itemCount: _filteredInstructors.length,
                     itemBuilder: (context, index) {
@@ -363,19 +294,34 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
   Widget _buildDisciplineView() {
     final disciplineGroups = <String, List<InstructorProfile>>{};
 
-    // Group instructors by primary discipline
+    // Group instructors by ALL their disciplines (not just primary)
     for (final instructor in _filteredInstructors) {
-      final discipline = instructor.primaryDiscipline;
-      disciplineGroups.putIfAbsent(discipline, () => []).add(instructor);
+      for (final discipline in instructor.disciplines) {
+        final normalizedDiscipline = discipline.toLowerCase();
+        disciplineGroups
+            .putIfAbsent(normalizedDiscipline, () => [])
+            .add(instructor);
+      }
+    }
+
+    // Build the list of unique disciplines from loaded instructors (dynamic, no hardcoding)
+    final allDisciplines = <String>{};
+    for (final instructor in _instructors) {
+      allDisciplines.addAll(instructor.disciplines);
+    }
+    final sortedDisciplines = allDisciplines.toList()..sort();
+
+    if (sortedDisciplines.isEmpty) {
+      return _buildEmptyState();
     }
 
     return RefreshIndicator(
       onRefresh: _initializeData,
       child: ListView.builder(
         padding: EdgeInsets.all(4.w),
-        itemCount: AppConstants.disciplines.length,
+        itemCount: sortedDisciplines.length,
         itemBuilder: (context, index) {
-          final discipline = AppConstants.disciplines[index];
+          final discipline = sortedDisciplines[index];
           final disciplineInstructors =
               disciplineGroups[discipline.toLowerCase()] ?? [];
 
@@ -386,7 +332,9 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
   }
 
   Widget _buildDisciplineSection(
-      String discipline, List<InstructorProfile> disciplineInstructors) {
+    String discipline,
+    List<InstructorProfile> disciplineInstructors,
+  ) {
     return Container(
       margin: EdgeInsets.only(bottom: 4.h),
       child: Column(
@@ -425,7 +373,11 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    '${disciplineInstructors.length} istruttori',
+                    'instructor_directory.instructors_count'.tr(
+                      namedArgs: {
+                        'count': disciplineInstructors.length.toString(),
+                      },
+                    ),
                     style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
@@ -448,7 +400,9 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
               ),
               child: Center(
                 child: Text(
-                  'Nessun istruttore disponibile per $discipline',
+                  'instructor_directory.no_instructor_for'.tr(
+                    namedArgs: {'discipline': discipline},
+                  ),
                   style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                     color: Colors.grey[400],
                   ),
@@ -463,7 +417,7 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
                 crossAxisCount: 2,
                 crossAxisSpacing: 3.w,
                 mainAxisSpacing: 3.w,
-                childAspectRatio: 0.75,
+                childAspectRatio: 0.65,
               ),
               itemCount: disciplineInstructors.length,
               itemBuilder: (context, index) {
@@ -472,8 +426,9 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
                   instructor: instructor,
                   onTap: () => _showInstructorProfile(instructor),
                   canEdit: _isAdmin,
-                  onEdit:
-                      _isAdmin ? () => _editInstructor(instructor.id) : null,
+                  onEdit: _isAdmin
+                      ? () => _editInstructor(instructor.id)
+                      : null,
                 );
               },
             ),
@@ -487,14 +442,10 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.person_search,
-            size: 80,
-            color: Colors.grey[600],
-          ),
+          Icon(Icons.person_search, size: 80, color: Colors.grey[600]),
           SizedBox(height: 2.h),
           Text(
-            'Nessun istruttore trovato',
+            'instructor_directory.empty_title'.tr(),
             style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.w600,
@@ -503,8 +454,8 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
           SizedBox(height: 1.h),
           Text(
             searchQuery.isNotEmpty
-                ? 'Prova a modificare la ricerca'
-                : 'Nessun istruttore disponibile al momento',
+                ? 'instructor_directory.empty_search'.tr()
+                : 'instructor_directory.empty_default'.tr(),
             textAlign: TextAlign.center,
             style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
               color: Colors.grey[400],
@@ -520,7 +471,7 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
                 size: 18,
               ),
               label: Text(
-                'Aggiungi Primo Istruttore',
+                'instructor_directory.add_first'.tr(),
                 style: TextStyle(color: Colors.white),
               ),
               style: ElevatedButton.styleFrom(
@@ -560,7 +511,7 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Modifica istruttore - Funzionalità in arrivo'),
+        content: Text('instructor_directory.edit_coming_soon'.tr()),
         backgroundColor: AppTheme.primaryLight,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -586,7 +537,7 @@ class _InstructorDirectoryState extends State<InstructorDirectory>
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Aggiunta istruttore - Funzionalità in arrivo'),
+        content: Text('instructor_directory.add_coming_soon'.tr()),
         backgroundColor: AppTheme.successLight,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

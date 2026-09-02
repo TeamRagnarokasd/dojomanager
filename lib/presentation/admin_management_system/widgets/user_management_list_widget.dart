@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:sizer/sizer.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
-import '../../../theme/app_theme.dart';
 import '../../../services/supabase_service.dart';
 
 class UserManagementListWidget extends StatefulWidget {
@@ -173,6 +172,115 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
     }
   }
 
+  Future<void> _togglePasspartout(String userId, bool currentValue) async {
+    if (!widget.isPrincipalAdmin) {
+      Fluttertoast.showToast(
+        msg: "Solo l'admin principale può gestire il passpartout",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+      );
+      return;
+    }
+
+    try {
+      final client = SupabaseService.instance.client;
+      final newValue = !currentValue;
+
+      await client
+          .from('user_profiles')
+          .update({'booking_passpartout': newValue}).eq('id', userId);
+
+      await client.from('admin_activity_log').insert({
+        'admin_id': client.auth.currentUser?.id,
+        'action_type': 'PASSPARTOUT_UPDATE',
+        'description':
+            'Passpartout prenotazione ${newValue ? 'abilitato' : 'disabilitato'} per utente',
+        'target_user_id': userId,
+        'metadata': {
+          'passpartout_enabled': newValue,
+          'updated_at': DateTime.now().toIso8601String()
+        }
+      });
+
+      Fluttertoast.showToast(
+        msg: newValue
+            ? "🗝️ Passpartout abilitato: l'utente può prenotare senza abbonamento"
+            : "🔒 Passpartout disabilitato",
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.BOTTOM,
+      );
+
+      await _loadUsers();
+    } catch (e) {
+      debugPrint('Error toggling passpartout: $e');
+      Fluttertoast.showToast(
+        msg: "Errore nell'aggiornamento del passpartout",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+      );
+    }
+  }
+
+  void _showPasspartoutDialog(Map<String, dynamic> user) {
+    final hasPasspartout = user['booking_passpartout'] == true;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              Icons.key,
+              color: hasPasspartout ? Colors.amber : Colors.grey,
+            ),
+            SizedBox(width: 8.w),
+            Text(
+              'Passpartout Prenotazione',
+              style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Utente: ${user['full_name'] ?? 'N/A'}',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              hasPasspartout
+                  ? '✅ Il passpartout è attualmente ATTIVO.\n\nL\'utente può prenotare qualsiasi lezione anche senza abbonamento.\n\nVuoi disabilitarlo?'
+                  : '🔒 Il passpartout è attualmente DISATTIVO.\n\nAbilitandolo, l\'utente potrà prenotare qualsiasi lezione anche senza abbonamento acquistato.',
+              style: GoogleFonts.inter(fontSize: 13.sp),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Annulla', style: GoogleFonts.inter()),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              _togglePasspartout(user['id'], hasPasspartout);
+            },
+            icon: Icon(hasPasspartout ? Icons.lock : Icons.key, size: 16),
+            label: Text(
+              hasPasspartout ? 'Disabilita' : 'Abilita',
+              style: GoogleFonts.inter(),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: hasPasspartout ? Colors.red : Colors.amber,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -258,7 +366,7 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
                       size: 14.sp, color: Colors.white),
                   SizedBox(width: 4.w),
                   Text(
-                    'Admin Principale',
+                    'roles.principal_admin_short'.tr(),
                     style: GoogleFonts.inter(
                       fontSize: 12.sp,
                       fontWeight: FontWeight.w600,
@@ -287,7 +395,7 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
                     _applyFilters();
                   },
                   decoration: InputDecoration(
-                    hintText: 'Cerca utenti per nome o email...',
+                    hintText: 'admin_management.search_users_full'.tr(),
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? IconButton(
@@ -330,20 +438,26 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
                       setState(() => _selectedRoleFilter = value ?? 'all');
                       _applyFilters();
                     },
-                    items: const [
+                    items: [
                       DropdownMenuItem(
-                          value: 'all', child: Text('Tutti i ruoli')),
+                          value: 'all',
+                          child: Text('admin_management.all_roles'.tr())),
                       DropdownMenuItem(
-                          value: 'student', child: Text('Studenti')),
+                          value: 'student',
+                          child: Text('admin_management.students_filter'.tr())),
                       DropdownMenuItem(
-                          value: 'instructor', child: Text('Istruttori')),
-                      DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                          value: 'instructor',
+                          child:
+                              Text('admin_management.instructors_filter'.tr())),
+                      DropdownMenuItem(
+                          value: 'admin', child: Text('roles.admin'.tr())),
                       DropdownMenuItem(
                           value: 'instructor_admin',
-                          child: Text('Istruttori Admin')),
+                          child:
+                              Text('admin_management.instructor_admins'.tr())),
                       DropdownMenuItem(
                           value: 'principal_admin',
-                          child: Text('Admin Principale')),
+                          child: Text('roles.principal_admin_short'.tr())),
                     ],
                   ),
                 ),
@@ -375,7 +489,10 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Statistiche Utenti (${_filteredUsers.length}/${_users.length})',
+            'admin_management.user_stats_title'.tr(namedArgs: {
+              'filtered': '${_filteredUsers.length}',
+              'total': '${_users.length}',
+            }),
             style: GoogleFonts.inter(
               fontSize: 16.sp,
               fontWeight: FontWeight.w600,
@@ -447,7 +564,7 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
             ),
             SizedBox(height: 16.h),
             Text(
-              'Nessun utente trovato',
+              'reminders.no_users_found'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 16.sp,
                 fontWeight: FontWeight.w500,
@@ -455,7 +572,7 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
               ),
             ),
             Text(
-              'Modifica i filtri per visualizzare più utenti',
+              'admin_management.modify_filters_hint'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 14.sp,
                 color: AppTheme.textSecondaryLight.withAlpha(179),
@@ -545,7 +662,7 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              'Inattivo',
+                              'admin_management.inactive_status'.tr(),
                               style: GoogleFonts.inter(
                                 fontSize: 10.sp,
                                 fontWeight: FontWeight.w500,
@@ -594,7 +711,7 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
                     onPressed: () => _showRoleChangeDialog(user),
                     icon: const Icon(Icons.edit, size: 16),
                     label: Text(
-                      'Cambia Ruolo',
+                      'admin_management.change_role'.tr(),
                       style: GoogleFonts.inter(fontSize: 12.sp),
                     ),
                     style: ElevatedButton.styleFrom(
@@ -614,7 +731,9 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
                     icon: Icon(isActive ? Icons.block : Icons.check_circle,
                         size: 16),
                     label: Text(
-                      isActive ? 'Disattiva' : 'Attiva',
+                      isActive
+                          ? 'admin_discipline.deactivate'.tr()
+                          : 'common.active'.tr(),
                       style: GoogleFonts.inter(fontSize: 12.sp),
                     ),
                     style: ElevatedButton.styleFrom(
@@ -625,6 +744,27 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                IconButton(
+                  onPressed: () => _showPasspartoutDialog(user),
+                  icon: Icon(
+                    Icons.key,
+                    color: user['booking_passpartout'] == true
+                        ? Colors.amber
+                        : Colors.grey.shade500,
+                  ),
+                  tooltip: user['booking_passpartout'] == true
+                      ? 'Passpartout ATTIVO'
+                      : 'Passpartout disattivo',
+                  style: IconButton.styleFrom(
+                    backgroundColor: user['booking_passpartout'] == true
+                        ? Colors.amber.withAlpha(30)
+                        : Colors.grey.shade200,
+                    foregroundColor: user['booking_passpartout'] == true
+                        ? Colors.amber
+                        : Colors.grey.shade700,
                   ),
                 ),
                 SizedBox(width: 8.w),
@@ -660,7 +800,7 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
             SizedBox(height: 8.h),
             Text('Ruolo attuale: ${_getRoleDisplayName(user['role'])}'),
             SizedBox(height: 16.h),
-            Text('Seleziona nuovo ruolo:'),
+            Text('admin_management.select_new_role'.tr()),
             SizedBox(height: 8.h),
             Wrap(
               spacing: 8.w,
@@ -687,7 +827,7 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Annulla'),
+            child: Text('common.cancel'.tr()),
           ),
         ],
       ),
@@ -699,7 +839,7 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          'Dettagli Utente',
+          'admin_management.user_details'.tr(),
           style: GoogleFonts.inter(fontWeight: FontWeight.bold),
         ),
         content: SingleChildScrollView(
@@ -707,21 +847,26 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildDetailRow('Nome', user['full_name']),
-              _buildDetailRow('Email', user['email']),
-              _buildDetailRow('Telefono', user['phone'] ?? 'Non fornito'),
-              _buildDetailRow('Ruolo', _getRoleDisplayName(user['role'])),
+              _buildDetailRow('profile.first_name'.tr(), user['full_name']),
+              _buildDetailRow('common.email'.tr(), user['email']),
+              _buildDetailRow('profile.phone'.tr(),
+                  user['phone'] ?? 'profile.phone_not_provided'.tr()),
               _buildDetailRow(
-                  'Stato', user['is_active'] ? 'Attivo' : 'Inattivo'),
+                  'profile.role'.tr(), _getRoleDisplayName(user['role'])),
               _buildDetailRow(
-                  'Creato il',
+                  'common.status'.tr(),
+                  user['is_active']
+                      ? 'common.active'.tr()
+                      : 'common.inactive'.tr()),
+              _buildDetailRow(
+                  'admin_management.creation_date'.tr(),
                   user['created_at'] != null
                       ? DateTime.parse(user['created_at'])
                           .toLocal()
                           .toString()
                           .split('.')[0]
                       : 'N/A'),
-              _buildDetailRow('Certificato Medico',
+              _buildDetailRow('profile.medical_certificate'.tr(),
                   user['medical_certificate_status'] ?? 'Pending'),
               if (user['emergency_contact'] != null)
                 _buildDetailRow(
@@ -734,7 +879,7 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Chiudi'),
+            child: Text('common.close'.tr()),
           ),
         ],
       ),
@@ -788,15 +933,15 @@ class _UserManagementListWidgetState extends State<UserManagementListWidget> {
   String _getRoleDisplayName(String? role) {
     switch (role) {
       case 'principal_admin':
-        return 'Admin Principale';
+        return 'dashboard.role_principal_admin'.tr();
       case 'admin':
-        return 'Admin';
+        return 'roles.admin'.tr();
       case 'instructor_admin':
-        return 'Istruttore Admin';
+        return 'dashboard.role_instructor_admin'.tr();
       case 'instructor':
-        return 'Istruttore';
+        return 'dashboard.role_instructor'.tr();
       case 'student':
-        return 'Studente';
+        return 'dashboard.role_student'.tr();
       default:
         return role ?? 'Sconosciuto';
     }

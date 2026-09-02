@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../core/app_export.dart';
 
 class QuickAccessCardsWidget extends StatelessWidget {
   final bool isLoading;
@@ -62,7 +63,7 @@ class QuickAccessCardsWidget extends StatelessWidget {
         // Secondary Access Cards
         _buildSecondaryAccessCard(
           context,
-          title: 'Certificato Medico',
+          title: 'profile.medical_certificate'.tr(),
           subtitle: 'Scade tra 45 giorni',
           icon: Icons.medical_services,
           color: const Color(0xFFF39C12),

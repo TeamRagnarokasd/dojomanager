@@ -1,21 +1,26 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
 class ManagementCardsWidget extends StatelessWidget {
-  const ManagementCardsWidget({Key? key}) : super(key: key);
+  final VoidCallback? onNavigateReturn;
+
+  const ManagementCardsWidget({Key? key, this.onNavigateReturn})
+    : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final List<Map<String, dynamic>> managementOptions = [
       // Row 1: Core Management
       {
-        'title': 'Gestione Sponsor',
-        'subtitle': 'Aziende partner e collaborazioni',
+        'title': 'Sponsor, Collab e Affiliazioni',
+        'subtitle': 'Partner commerciali, collaborazioni e affiliazioni',
         'icon': Icons.business,
         'color': Colors.purple,
         'route': '/admin-sponsor-management',
-        'description': 'Gestisci sponsor e partnership commerciali',
+        'description':
+            'Gestisci sponsor, partnership commerciali e affiliazioni/certificazioni del team',
         'status': 'Funzionale',
         'badgeColor': Colors.blue,
         'category': 'core',
@@ -23,7 +28,7 @@ class ManagementCardsWidget extends StatelessWidget {
 
       // Row 2: Financial Management
       {
-        'title': 'Gestione Ricevute',
+        'title': 'receipt.management_title'.tr(),
         'subtitle': 'Sistema ricevute italiane integrato',
         'icon': Icons.receipt,
         'color': Colors.blue,
@@ -35,7 +40,7 @@ class ManagementCardsWidget extends StatelessWidget {
         'category': 'financial',
       },
       {
-        'title': 'Gestione Istruttori',
+        'title': 'instructor_management.title'.tr(),
         'subtitle': 'Profili, foto e corsi associati',
         'icon': Icons.person_4,
         'color': Colors.deepOrange,
@@ -52,14 +57,14 @@ class ManagementCardsWidget extends StatelessWidget {
         'subtitle': 'Programmazione corsi e calendari',
         'icon': Icons.calendar_today,
         'color': Colors.indigo,
-        'route': '/seasonal-schedule-management',
+        'route': '/seasonal-schedule-creation',
         'description': 'Gestisci programmazione stagionale completa',
         'status': 'Configurato',
         'badgeColor': Colors.indigo,
         'category': 'scheduling',
       },
       {
-        'title': 'Gestione Eventi',
+        'title': 'admin_event.title'.tr(),
         'subtitle': 'Seminari, stage e competizioni',
         'icon': Icons.event_note,
         'color': Colors.blue,
@@ -72,7 +77,7 @@ class ManagementCardsWidget extends StatelessWidget {
 
       // Row 4: Discipline & Admin Management (REMOVED Communication Center)
       {
-        'title': 'Gestione Discipline',
+        'title': 'admin_discipline.title'.tr(),
         'subtitle': 'BJJ, MMA, SAMBO e istruttori',
         'icon': Icons.sports_martial_arts,
         'color': Colors.deepPurple,
@@ -81,6 +86,18 @@ class ManagementCardsWidget extends StatelessWidget {
         'status': 'Configurato',
         'badgeColor': Colors.purple,
         'category': 'disciplines',
+      },
+      // NEW: Gestione Abbonamenti Card
+      {
+        'title': 'Gestione Abbonamenti',
+        'subtitle': 'Piani e abbonamenti personalizzati',
+        'icon': Icons.card_membership,
+        'color': Colors.amber,
+        'route': '/plan-selection',
+        'description': 'Gestisci piani di abbonamento e crea nuovi piani',
+        'status': 'Attivo',
+        'badgeColor': Colors.amber,
+        'category': 'subscriptions',
       },
       // NEW: Profilo Card - Added next to Lista utenti
       {
@@ -105,6 +122,19 @@ class ManagementCardsWidget extends StatelessWidget {
         'description': 'Gestisci amministratori e permessi sistema',
         'status': 'Sicuro',
         'badgeColor': Colors.red,
+        'category': 'admin',
+      },
+      // NEW: Dati Team / ASD Card
+      {
+        'title': 'Dati Team / ASD',
+        'subtitle': 'Nome, indirizzo, C.F., PEC e contatti',
+        'icon': Icons.business_center,
+        'color': Colors.green,
+        'route': '/admin-management-system',
+        'description':
+            'Modifica i dati ufficiali del team: ragione sociale, sede, codice fiscale e PEC per le ricevute',
+        'status': 'Impostazioni',
+        'badgeColor': Colors.green,
         'category': 'admin',
       },
     ];
@@ -159,24 +189,23 @@ class ManagementCardsWidget extends StatelessWidget {
                         children: [
                           Text(
                             'Pannello di Controllo Amministrativo',
-                            style: Theme.of(
-                              context,
-                            ).textTheme.headlineSmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface,
+                                  fontWeight: FontWeight.w700,
+                                ),
                           ),
                           Text(
                             'Tutti i sistemi sono integrati con Supabase e operativi. Navigazione ottimizzata per amministratori.',
-                            style: Theme.of(
-                              context,
-                            ).textTheme.bodySmall?.copyWith(
-                              color:
-                                  Theme.of(
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(
                                     context,
                                   ).colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.w500,
-                            ),
+                                  fontWeight: FontWeight.w500,
+                                ),
                           ),
                         ],
                       ),
@@ -208,12 +237,11 @@ class ManagementCardsWidget extends StatelessWidget {
                       Expanded(
                         child: Text(
                           'Tutti i sistemi sono integrati con Supabase e operativi. Navigazione ottimizzata per amministratori.',
-                          style: Theme.of(
-                            context,
-                          ).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.secondary,
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.secondary,
+                                fontWeight: FontWeight.w500,
+                              ),
                         ),
                       ),
                     ],
@@ -296,7 +324,13 @@ class ManagementCardsWidget extends StatelessWidget {
 
           // Navigate after brief delay for better UX
           Future.delayed(Duration(milliseconds: 400), () {
-            Navigator.pushNamed(context, option['route']);
+            final route = option['route'] as String;
+            final arguments = option['title'] == 'Dati Team / ASD'
+                ? {'initialTab': 'settings'}
+                : null;
+            Navigator.pushNamed(context, route, arguments: arguments).then((_) {
+              onNavigateReturn?.call();
+            });
           });
         },
         borderRadius: BorderRadius.circular(16),

@@ -38,7 +38,7 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
 
   String _selectedType = 'seminario';
   String? _selectedInstructor;
-  String _selectedDiscipline = 'BJJ';
+  String? _selectedDiscipline;
   String _selectedPriority = 'medium';
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _startTime = const TimeOfDay(hour: 14, minute: 0);
@@ -84,7 +84,7 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
 
       _selectedType = event['type'] ?? 'seminario';
       _selectedInstructor = event['instructor'];
-      _selectedDiscipline = event['category'] ?? 'BJJ';
+      _selectedDiscipline = event['category'];
       _selectedPriority = event['priority'] ?? 'medium';
       _selectedDate = event['date'] ?? DateTime.now();
       _imageUrl = event['image'] ?? stockImages[0];
@@ -145,7 +145,7 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
                 Text(
                   widget.existingEvent != null
                       ? 'Modifica Evento'
-                      : 'Nuovo Evento',
+                      : 'admin_event.new_event'.tr(),
                   style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -155,7 +155,7 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
                 TextButton(
                   onPressed: widget.onCancel,
                   child: Text(
-                    'Annulla',
+                    'common.cancel'.tr(),
                     style: TextStyle(color: Colors.grey[400]),
                   ),
                 ),
@@ -165,7 +165,7 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFF0000),
                   ),
-                  child: const Text('Salva'),
+                  child: Text('common.save'.tr()),
                 ),
               ],
             ),
@@ -238,7 +238,7 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
           children: [
             Expanded(
               child: DropdownButtonFormField<String>(
-                value: _selectedType,
+                initialValue: _selectedType,
                 style: TextStyle(color: Colors.white),
                 decoration: InputDecoration(
                   labelText: 'Tipo Evento',
@@ -252,11 +252,15 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
                 ),
                 dropdownColor: Colors.grey[800],
                 items: eventTypes
-                    .map((type) => DropdownMenuItem(
-                          value: type,
-                          child: Text(type.toUpperCase(),
-                              style: TextStyle(color: Colors.white)),
-                        ))
+                    .map(
+                      (type) => DropdownMenuItem(
+                        value: type,
+                        child: Text(
+                          type.toUpperCase(),
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    )
                     .toList(),
                 onChanged: (value) => setState(() => _selectedType = value!),
               ),
@@ -264,8 +268,10 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
             SizedBox(width: 3.w),
             Expanded(
               child: DropdownButtonFormField<String>(
-                value: _selectedDiscipline,
-                style: TextStyle(color: Colors.white),
+                initialValue: widget.disciplines.contains(_selectedDiscipline)
+                    ? _selectedDiscipline
+                    : null,
+                style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
                   labelText: 'Disciplina',
                   labelStyle: TextStyle(color: Colors.grey[400]),
@@ -276,16 +282,24 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
                     borderSide: BorderSide.none,
                   ),
                 ),
+                hint: Text(
+                  'Seleziona disciplina',
+                  style: TextStyle(color: Colors.grey[400]),
+                ),
                 dropdownColor: Colors.grey[800],
                 items: widget.disciplines
-                    .map((discipline) => DropdownMenuItem(
-                          value: discipline,
-                          child: Text(discipline,
-                              style: TextStyle(color: Colors.white)),
-                        ))
+                    .map(
+                      (discipline) => DropdownMenuItem(
+                        value: discipline,
+                        child: Text(
+                          discipline,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    )
                     .toList(),
                 onChanged: (value) =>
-                    setState(() => _selectedDiscipline = value!),
+                    setState(() => _selectedDiscipline = value),
               ),
             ),
           ],
@@ -426,7 +440,7 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Dettagli',
+          'receipt.details_label'.tr(),
           style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
             color: Colors.white,
             fontWeight: FontWeight.w600,
@@ -436,7 +450,7 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
 
         // Instructor dropdown
         DropdownButtonFormField<String>(
-          value: _selectedInstructor,
+          initialValue: _selectedInstructor,
           style: TextStyle(color: Colors.white),
           decoration: InputDecoration(
             labelText: 'Istruttore*',
@@ -450,11 +464,15 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
           ),
           dropdownColor: Colors.grey[800],
           items: widget.availableInstructors
-              .map((instructor) => DropdownMenuItem(
-                    value: instructor.split(' - ')[0],
-                    child:
-                        Text(instructor, style: TextStyle(color: Colors.white)),
-                  ))
+              .map(
+                (instructor) => DropdownMenuItem(
+                  value: instructor.split(' - ')[0],
+                  child: Text(
+                    instructor,
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              )
               .toList(),
           onChanged: (value) => setState(() => _selectedInstructor = value),
           validator: (value) =>
@@ -464,7 +482,7 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
 
         // Venue dropdown
         DropdownButtonFormField<String>(
-          value: venues.contains(_venueController.text)
+          initialValue: venues.contains(_venueController.text)
               ? _venueController.text
               : null,
           style: TextStyle(color: Colors.white),
@@ -480,10 +498,12 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
           ),
           dropdownColor: Colors.grey[800],
           items: venues
-              .map((venue) => DropdownMenuItem(
-                    value: venue,
-                    child: Text(venue, style: TextStyle(color: Colors.white)),
-                  ))
+              .map(
+                (venue) => DropdownMenuItem(
+                  value: venue,
+                  child: Text(venue, style: TextStyle(color: Colors.white)),
+                ),
+              )
               .toList(),
           onChanged: (value) => setState(() => _venueController.text = value!),
           validator: (value) => value == null ? 'Sede obbligatoria' : null,
@@ -538,7 +558,7 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
 
         // Priority dropdown
         DropdownButtonFormField<String>(
-          value: _selectedPriority,
+          initialValue: _selectedPriority,
           style: TextStyle(color: Colors.white),
           decoration: InputDecoration(
             labelText: 'Priorità',
@@ -552,13 +572,15 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
           ),
           dropdownColor: Colors.grey[800],
           items: priorities
-              .map((priority) => DropdownMenuItem(
-                    value: priority,
-                    child: Text(
-                      priority.toUpperCase(),
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ))
+              .map(
+                (priority) => DropdownMenuItem(
+                  value: priority,
+                  child: Text(
+                    priority.toUpperCase(),
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              )
               .toList(),
           onChanged: (value) => setState(() => _selectedPriority = value!),
         ),
@@ -623,10 +645,7 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: CustomImageWidget(
-              imageUrl: _imageUrl,
-              fit: BoxFit.cover,
-            ),
+            child: CustomImageWidget(imageUrl: _imageUrl, fit: BoxFit.cover),
           ),
         ),
         SizedBox(height: 2.h),
@@ -636,29 +655,31 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
           spacing: 2.w,
           runSpacing: 1.h,
           children: stockImages
-              .map((imageUrl) => GestureDetector(
-                    onTap: () => setState(() => _imageUrl = imageUrl),
-                    child: Container(
-                      width: 20.w,
-                      height: 20.w,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: _imageUrl == imageUrl
-                              ? const Color(0xFFFF0000)
-                              : Colors.grey[700]!,
-                          width: _imageUrl == imageUrl ? 2 : 1,
-                        ),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: CustomImageWidget(
-                          imageUrl: imageUrl,
-                          fit: BoxFit.cover,
-                        ),
+              .map(
+                (imageUrl) => GestureDetector(
+                  onTap: () => setState(() => _imageUrl = imageUrl),
+                  child: Container(
+                    width: 20.w,
+                    height: 20.w,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _imageUrl == imageUrl
+                            ? const Color(0xFFFF0000)
+                            : Colors.grey[700]!,
+                        width: _imageUrl == imageUrl ? 2 : 1,
                       ),
                     ),
-                  ))
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: CustomImageWidget(
+                        imageUrl: imageUrl,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                ),
+              )
               .toList(),
         ),
       ],
@@ -722,7 +743,7 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
     if (_selectedInstructor == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Seleziona un istruttore'),
+          content: Text('admin_event.select_instructor'.tr()),
           backgroundColor: AppTheme.errorLight,
         ),
       );
@@ -764,7 +785,7 @@ class _EventCreationFormWidgetState extends State<EventCreationFormWidget> {
       'Settembre',
       'Ottobre',
       'Novembre',
-      'Dicembre'
+      'Dicembre',
     ];
     return '${date.day} ${months[date.month]} ${date.year}';
   }

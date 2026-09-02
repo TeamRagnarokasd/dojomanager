@@ -6,19 +6,38 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class SponsorService {
   static final SupabaseClient _supabase = Supabase.instance.client;
 
-  // Get all active sponsors ordered by display_order
+  // Get all active sponsors ordered by display_order (only category='sponsor')
   static Future<List<Map<String, dynamic>>> getActiveSponsors() async {
     try {
       final response = await _supabase
           .from('sponsors')
           .select('*')
           .eq('status', 'active')
+          .eq('category', 'sponsor')
           .order('display_order', ascending: true)
           .order('created_at', ascending: true);
 
       return List<Map<String, dynamic>>.from(response);
     } catch (error) {
       print('Error fetching sponsors: $error');
+      return [];
+    }
+  }
+
+  // Get all active affiliations ordered by display_order (only category='affiliazione')
+  static Future<List<Map<String, dynamic>>> getActiveAffiliazioni() async {
+    try {
+      final response = await _supabase
+          .from('sponsors')
+          .select('*')
+          .eq('status', 'active')
+          .eq('category', 'affiliazione')
+          .order('display_order', ascending: true)
+          .order('created_at', ascending: true);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (error) {
+      print('Error fetching affiliazioni: $error');
       return [];
     }
   }
@@ -44,8 +63,9 @@ class SponsorService {
     required String name,
     required String externalUrl,
     String? description,
-    String? imageFilePath, // Changed from imageUrl to imageFilePath
+    String? imageFilePath,
     int displayOrder = 0,
+    String category = 'sponsor',
   }) async {
     try {
       final user = _supabase.auth.currentUser;
@@ -75,6 +95,7 @@ class SponsorService {
             'status': 'active',
             'display_order': displayOrder,
             'created_by': user.id,
+            'category': category,
           })
           .select()
           .single();
@@ -91,11 +112,12 @@ class SponsorService {
     required String id,
     String? name,
     String? description,
-    String? imageFilePath, // Changed from imageUrl to imageFilePath
+    String? imageFilePath,
     String? externalUrl,
     String? status,
     int? displayOrder,
-    String? currentImageUrl, // Keep track of current image for deletion
+    String? currentImageUrl,
+    String? category,
   }) async {
     try {
       final updateData = <String, dynamic>{};
@@ -105,6 +127,7 @@ class SponsorService {
       if (externalUrl != null) updateData['external_url'] = externalUrl;
       if (status != null) updateData['status'] = status;
       if (displayOrder != null) updateData['display_order'] = displayOrder;
+      if (category != null) updateData['category'] = category;
 
       // Handle image upload/update
       if (imageFilePath != null) {
@@ -174,14 +197,19 @@ class SponsorService {
 
   // Toggle sponsor status (admin only)
   static Future<bool> toggleSponsorStatus(
-      String id, String currentStatus) async {
+    String id,
+    String currentStatus,
+  ) async {
     try {
       final newStatus = currentStatus == 'active' ? 'inactive' : 'active';
 
-      await _supabase.from('sponsors').update({
-        'status': newStatus,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', id);
+      await _supabase
+          .from('sponsors')
+          .update({
+            'status': newStatus,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', id);
 
       return true;
     } catch (error) {
@@ -198,33 +226,56 @@ class SponsorService {
 
       // Generate unique filename
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileExtension = filePath.split('.').last;
+      final XFile file = XFile(filePath);
+      final String originalName = file.name.toLowerCase();
+      String fileExtension = originalName.contains('.')
+          ? originalName.split('.').last
+          : 'jpg';
+
+      // Normalize extension
+      if (fileExtension == 'jpeg') fileExtension = 'jpg';
+      if (!['jpg', 'png', 'webp'].contains(fileExtension)) {
+        fileExtension = 'jpg';
+      }
+
       final fileName =
           'sponsor_${timestamp}_${user.id.substring(0, 8)}.$fileExtension';
+
+      // Determine MIME type from extension
+      final Map<String, String> mimeTypes = {
+        'jpg': 'image/jpeg',
+        'png': 'image/png',
+        'webp': 'image/webp',
+      };
+      final String contentType = mimeTypes[fileExtension] ?? 'image/jpeg';
+
+      final bytes = await file.readAsBytes();
 
       String uploadResponse;
 
       if (kIsWeb) {
-        // For web, handle differently
-        final XFile file = XFile(filePath);
-        final bytes = await file.readAsBytes();
-
         uploadResponse = await _supabase.storage
             .from('sponsor-images')
-            .uploadBinary(fileName, bytes);
+            .uploadBinary(
+              fileName,
+              bytes,
+              fileOptions: FileOptions(contentType: contentType),
+            );
       } else {
-        // For mobile platforms
-        final file = File(filePath);
-
         uploadResponse = await _supabase.storage
             .from('sponsor-images')
-            .upload(fileName, file);
+            .uploadBinary(
+              fileName,
+              bytes,
+              fileOptions: FileOptions(contentType: contentType),
+            );
       }
 
       if (uploadResponse.isNotEmpty) {
         // Get public URL for the uploaded image
-        final publicUrl =
-            _supabase.storage.from('sponsor-images').getPublicUrl(fileName);
+        final publicUrl = _supabase.storage
+            .from('sponsor-images')
+            .getPublicUrl(fileName);
 
         return publicUrl;
       }
@@ -259,24 +310,26 @@ class SponsorService {
   // Get sponsor statistics (for admin dashboard)
   static Future<Map<String, int>> getSponsorStats() async {
     try {
-      final allSponsors = await _supabase.from('sponsors').select('status');
+      final allSponsors = await _supabase
+          .from('sponsors')
+          .select('status, category');
 
       final total = allSponsors.length;
       final active = allSponsors.where((s) => s['status'] == 'active').length;
       final inactive = total - active;
+      final affiliazioni = allSponsors
+          .where((s) => s['category'] == 'affiliazione')
+          .length;
 
       return {
         'total': total,
         'active': active,
         'inactive': inactive,
+        'affiliazioni': affiliazioni,
       };
     } catch (error) {
       print('Error fetching sponsor stats: $error');
-      return {
-        'total': 0,
-        'active': 0,
-        'inactive': 0,
-      };
+      return {'total': 0, 'active': 0, 'inactive': 0, 'affiliazioni': 0};
     }
   }
 

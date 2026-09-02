@@ -5,6 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../services/instructor_management_service.dart';
 import '../../../services/supabase_service.dart';
+import '../../../services/discipline_service.dart';
+import '../../../core/app_export.dart';
 
 class InstructorProfileEditorWidget extends StatefulWidget {
   final Map<String, dynamic>? selectedInstructor;
@@ -44,19 +46,45 @@ class _InstructorProfileEditorWidgetState
   bool _isActive = true;
   bool _isLoading = false;
   bool _isUpdating = false;
+  bool _disciplinesLoading = false;
 
-  final List<String> _availableDisciplines = [
-    'bjj',
-    'mma',
-    'sambo',
-    'grappling',
-    'fitness',
-  ];
+  // Dynamic disciplines: list of {id, name}
+  List<Map<String, String>> _availableDisciplines = [];
 
   @override
   void initState() {
     super.initState();
+    _loadDisciplines();
     _loadInstructorData();
+  }
+
+  Future<void> _loadDisciplines() async {
+    setState(() => _disciplinesLoading = true);
+    try {
+      final disciplines =
+          await DisciplineService.instance.getActiveDisciplines();
+      setState(() {
+        _availableDisciplines = disciplines
+            .map<Map<String, String>>((d) => {
+                  'id': d['id']?.toString() ?? '',
+                  'name': d['name']?.toString() ?? d['id']?.toString() ?? '',
+                })
+            .where((d) => d['id']!.isNotEmpty)
+            .toList();
+      });
+    } catch (e) {
+      // fallback: keep empty list
+    } finally {
+      setState(() => _disciplinesLoading = false);
+    }
+  }
+
+  String _getDisciplineDisplayName(String id) {
+    final match = _availableDisciplines.firstWhere(
+      (d) => d['id'] == id,
+      orElse: () => {'id': id, 'name': id.toUpperCase()},
+    );
+    return match['name'] ?? id.toUpperCase();
   }
 
   @override
@@ -164,8 +192,8 @@ class _InstructorProfileEditorWidgetState
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Immagine caricata con successo!'),
+          SnackBar(
+            content: Text('instructor_mgmt.image_upload_success'.tr()),
             backgroundColor: Colors.green,
           ),
         );
@@ -173,12 +201,11 @@ class _InstructorProfileEditorWidgetState
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
-        String errorMessage = 'Errore nel caricamento dell\'immagine';
+        String errorMessage = 'instructor_management.image_load_error'.tr();
 
         // Provide specific error messages for common issues
         if (e.toString().contains('row-level security')) {
-          errorMessage =
-              'Errore di autorizzazione. Contatta l\'amministratore.';
+          errorMessage = 'instructor_management.auth_error'.tr();
         } else if (e.toString().contains('Unauthorized')) {
           errorMessage =
               'Non hai i permessi necessari per caricare l\'immagine.';
@@ -192,7 +219,7 @@ class _InstructorProfileEditorWidgetState
             content: Text(errorMessage),
             backgroundColor: Colors.red,
             action: SnackBarAction(
-              label: 'Riprova',
+              label: 'common.retry'.tr(),
               textColor: Colors.white,
               onPressed: _pickImage,
             ),
@@ -210,8 +237,8 @@ class _InstructorProfileEditorWidgetState
 
     if (_primaryDiscipline == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Seleziona una disciplina principale'),
+        SnackBar(
+          content: Text('instructor_management.select_main_discipline'.tr()),
           backgroundColor: Colors.red,
         ),
       );
@@ -230,22 +257,19 @@ class _InstructorProfileEditorWidgetState
         'primary_discipline': _primaryDiscipline,
         'disciplines': _selectedDisciplines,
         'specializations': _specializations,
-        'achievements':
-            _achievementsController.text
-                .split('\n')
-                .where((line) => line.trim().isNotEmpty)
-                .toList(),
-        'certifications':
-            _certificationsController.text
-                .split('\n')
-                .where((line) => line.trim().isNotEmpty)
-                .toList(),
-        'languages':
-            _languagesController.text
-                .split(',')
-                .map((lang) => lang.trim())
-                .where((lang) => lang.isNotEmpty)
-                .toList(),
+        'achievements': _achievementsController.text
+            .split('\n')
+            .where((line) => line.trim().isNotEmpty)
+            .toList(),
+        'certifications': _certificationsController.text
+            .split('\n')
+            .where((line) => line.trim().isNotEmpty)
+            .toList(),
+        'languages': _languagesController.text
+            .split(',')
+            .map((lang) => lang.trim())
+            .where((lang) => lang.isNotEmpty)
+            .toList(),
         'is_active': _isActive,
         'profile_image_url': _profileImageUrl,
       };
@@ -257,8 +281,8 @@ class _InstructorProfileEditorWidgetState
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profilo istruttore aggiornato con successo!'),
+          SnackBar(
+            content: Text('instructor_management.profile_updated'.tr()),
             backgroundColor: Colors.green,
           ),
         );
@@ -268,7 +292,8 @@ class _InstructorProfileEditorWidgetState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore nell\'aggiornamento: $e'),
+            content: Text(
+                'instructor_mgmt.update_error'.tr(namedArgs: {'error': '$e'})),
             backgroundColor: Colors.red,
           ),
         );
@@ -283,34 +308,33 @@ class _InstructorProfileEditorWidgetState
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: const Color(0xFF2A2A2A),
-            title: Text(
-              'Conferma Eliminazione',
-              style: GoogleFonts.inter(color: Colors.white),
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: Text(
+          'instructor_management.confirm_deletion'.tr(),
+          style: GoogleFonts.inter(color: Colors.white),
+        ),
+        content: Text(
+          'Sei sicuro di voler eliminare questo istruttore? Questa azione non può essere annullata.',
+          style: GoogleFonts.inter(color: Colors.grey[300]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'common.cancel'.tr(),
+              style: GoogleFonts.inter(color: Colors.grey),
             ),
-            content: Text(
-              'Sei sicuro di voler eliminare questo istruttore? Questa azione non può essere annullata.',
-              style: GoogleFonts.inter(color: Colors.grey[300]),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text(
-                  'Annulla',
-                  style: GoogleFonts.inter(color: Colors.grey),
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: Text(
-                  'Elimina',
-                  style: GoogleFonts.inter(color: Colors.red),
-                ),
-              ),
-            ],
           ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(
+              'common.delete'.tr(),
+              style: GoogleFonts.inter(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
     );
 
     if (confirmed != true) return;
@@ -323,8 +347,8 @@ class _InstructorProfileEditorWidgetState
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Istruttore eliminato con successo!'),
+          SnackBar(
+            content: Text('instructor_mgmt.instructor_deleted'.tr()),
             backgroundColor: Colors.green,
           ),
         );
@@ -334,7 +358,8 @@ class _InstructorProfileEditorWidgetState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore nell\'eliminazione: $e'),
+            content: Text(
+                'instructor_mgmt.delete_error'.tr(namedArgs: {'error': '$e'})),
             backgroundColor: Colors.red,
           ),
         );
@@ -354,7 +379,7 @@ class _InstructorProfileEditorWidgetState
             Icon(Icons.person_search, size: 64, color: Colors.grey[600]),
             const SizedBox(height: 16),
             Text(
-              'Seleziona un istruttore dalla lista',
+              'instructor_management.select_instructor_from_list'.tr(),
               style: GoogleFonts.inter(fontSize: 18, color: Colors.grey[600]),
             ),
             Text(
@@ -389,53 +414,49 @@ class _InstructorProfileEditorWidgetState
                           width: 3,
                         ),
                       ),
-                      child:
-                          _isLoading
-                              ? const Center(
-                                child: CircularProgressIndicator(
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Color(0xFFFF0000),
-                                  ),
+                      child: _isLoading
+                          ? const Center(
+                              child: CircularProgressIndicator(
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Color(0xFFFF0000),
                                 ),
-                              )
-                              : ClipRRect(
-                                borderRadius: BorderRadius.circular(57),
-                                child:
-                                    _profileImageUrl != null
-                                        ? CachedNetworkImage(
-                                          imageUrl: _profileImageUrl!,
-                                          fit: BoxFit.cover,
-                                          placeholder:
-                                              (context, url) => Container(
-                                                color: const Color(0xFF3A3A3A),
-                                                child: const Icon(
-                                                  Icons.person,
-                                                  color: Colors.grey,
-                                                  size: 50,
-                                                ),
-                                              ),
-                                          errorWidget:
-                                              (context, url, error) =>
-                                                  Container(
-                                                    color: const Color(
-                                                      0xFF3A3A3A,
-                                                    ),
-                                                    child: const Icon(
-                                                      Icons.person,
-                                                      color: Colors.grey,
-                                                      size: 50,
-                                                    ),
-                                                  ),
-                                        )
-                                        : Container(
-                                          color: const Color(0xFF3A3A3A),
-                                          child: const Icon(
-                                            Icons.add_a_photo,
-                                            color: Colors.grey,
-                                            size: 50,
-                                          ),
-                                        ),
                               ),
+                            )
+                          : ClipRRect(
+                              borderRadius: BorderRadius.circular(57),
+                              child: _profileImageUrl != null
+                                  ? CachedNetworkImage(
+                                      imageUrl: _profileImageUrl!,
+                                      fit: BoxFit.cover,
+                                      placeholder: (context, url) => Container(
+                                        color: const Color(0xFF3A3A3A),
+                                        child: const Icon(
+                                          Icons.person,
+                                          color: Colors.grey,
+                                          size: 50,
+                                        ),
+                                      ),
+                                      errorWidget: (context, url, error) =>
+                                          Container(
+                                        color: const Color(
+                                          0xFF3A3A3A,
+                                        ),
+                                        child: const Icon(
+                                          Icons.person,
+                                          color: Colors.grey,
+                                          size: 50,
+                                        ),
+                                      ),
+                                    )
+                                  : Container(
+                                      color: const Color(0xFF3A3A3A),
+                                      child: const Icon(
+                                        Icons.add_a_photo,
+                                        color: Colors.grey,
+                                        size: 50,
+                                      ),
+                                    ),
+                            ),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -450,7 +471,7 @@ class _InstructorProfileEditorWidgetState
 
             // Basic Info Section
             Text(
-              'Informazioni Generali',
+              'instructor_management.general_info'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -505,10 +526,10 @@ class _InstructorProfileEditorWidgetState
                       _isActive = value;
                     });
                   },
-                  activeColor: const Color(0xFFFF0000),
+                  activeThumbColor: const Color(0xFFFF0000),
                 ),
                 Text(
-                  _isActive ? 'Attivo' : 'Inattivo',
+                  _isActive ? 'common.active'.tr() : 'common.inactive'.tr(),
                   style: GoogleFonts.inter(
                     fontSize: 14,
                     color: _isActive ? Colors.green : Colors.orange,
@@ -533,7 +554,7 @@ class _InstructorProfileEditorWidgetState
             _buildDropdownField(
               label: 'Disciplina Principale',
               value: _primaryDiscipline,
-              items: _availableDisciplines,
+              items: _availableDisciplines.map((d) => d['id']!).toList(),
               onChanged: (value) {
                 setState(() {
                   _primaryDiscipline = value;
@@ -551,49 +572,56 @@ class _InstructorProfileEditorWidgetState
               style: GoogleFonts.inter(fontSize: 14, color: Colors.grey[300]),
             ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children:
-                  _availableDisciplines.map((discipline) {
-                    final isSelected = _selectedDisciplines.contains(
-                      discipline,
-                    );
-                    return FilterChip(
-                      label: Text(
-                        discipline.toUpperCase(),
-                        style: GoogleFonts.inter(
-                          color: isSelected ? Colors.white : Colors.grey,
-                          fontWeight: FontWeight.w600,
+            _disciplinesLoading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(Color(0xFFFF0000)),
+                    ),
+                  )
+                : Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _availableDisciplines.map((discipline) {
+                      final id = discipline['id']!;
+                      final displayName = discipline['name']!;
+                      final isSelected = _selectedDisciplines.contains(id);
+                      return FilterChip(
+                        label: Text(
+                          displayName.toUpperCase(),
+                          style: GoogleFonts.inter(
+                            color: isSelected ? Colors.white : Colors.grey,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        setState(() {
-                          if (selected) {
-                            _selectedDisciplines.add(discipline);
-                          } else {
-                            if (discipline != _primaryDiscipline) {
-                              _selectedDisciplines.remove(discipline);
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setState(() {
+                            if (selected) {
+                              _selectedDisciplines.add(id);
+                            } else {
+                              if (id != _primaryDiscipline) {
+                                _selectedDisciplines.remove(id);
+                              }
                             }
-                          }
-                        });
-                      },
-                      selectedColor: const Color(0xFFFF0000),
-                      checkmarkColor: Colors.white,
-                      backgroundColor: const Color(0xFF3A3A3A),
-                      side: BorderSide(
-                        color:
-                            isSelected ? const Color(0xFFFF0000) : Colors.grey,
-                      ),
-                    );
-                  }).toList(),
-            ),
+                          });
+                        },
+                        selectedColor: const Color(0xFFFF0000),
+                        checkmarkColor: Colors.white,
+                        backgroundColor: const Color(0xFF3A3A3A),
+                        side: BorderSide(
+                          color: isSelected
+                              ? const Color(0xFFFF0000)
+                              : Colors.grey,
+                        ),
+                      );
+                    }).toList(),
+                  ),
             const SizedBox(height: 30),
 
             // Additional Information Section
             Text(
-              'Informazioni Aggiuntive',
+              'instructor_management.additional_info'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -625,26 +653,25 @@ class _InstructorProfileEditorWidgetState
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child:
-                        _isUpdating
-                            ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
-                                ),
-                                strokeWidth: 2,
+                    child: _isUpdating
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
                               ),
-                            )
-                            : Text(
-                              'Aggiorna Profilo',
-                              style: GoogleFonts.inter(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
+                              strokeWidth: 2,
                             ),
+                          )
+                        : Text(
+                            'instructor_management.update_profile'.tr(),
+                            style: GoogleFonts.inter(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -742,29 +769,43 @@ class _InstructorProfileEditorWidgetState
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0xFF333333)),
           ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: value,
-              style: GoogleFonts.inter(color: Colors.white),
-              dropdownColor: const Color(0xFF2A2A2A),
-              icon: const Icon(Icons.arrow_drop_down, color: Colors.grey),
-              hint: Text(
-                'Seleziona disciplina',
-                style: GoogleFonts.inter(color: Colors.grey[600]),
-              ),
-              items:
-                  items.map((item) {
-                    return DropdownMenuItem(
-                      value: item,
-                      child: Text(
-                        item.toUpperCase(),
-                        style: GoogleFonts.inter(color: Colors.white),
+          child: _disciplinesLoading
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(
+                    child: SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(Color(0xFFFF0000)),
+                        strokeWidth: 2,
                       ),
-                    );
-                  }).toList(),
-              onChanged: onChanged,
-            ),
-          ),
+                    ),
+                  ),
+                )
+              : DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: items.contains(value) ? value : null,
+                    style: GoogleFonts.inter(color: Colors.white),
+                    dropdownColor: const Color(0xFF2A2A2A),
+                    icon: const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                    hint: Text(
+                      'instructor_management.select_discipline_label'.tr(),
+                      style: GoogleFonts.inter(color: Colors.grey[600]),
+                    ),
+                    items: items.map((item) {
+                      return DropdownMenuItem(
+                        value: item,
+                        child: Text(
+                          _getDisciplineDisplayName(item).toUpperCase(),
+                          style: GoogleFonts.inter(color: Colors.white),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: onChanged,
+                  ),
+                ),
         ),
       ],
     );

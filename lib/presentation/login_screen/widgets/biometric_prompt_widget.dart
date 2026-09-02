@@ -67,8 +67,8 @@ class _BiometricPromptWidgetState extends State<BiometricPromptWidget> {
       }
 
       // Get available biometric types
-      final availableBiometrics =
-          await _authService.biometricService.getAvailableBiometrics();
+      final availableBiometrics = await _authService.biometricService
+          .getAvailableBiometrics();
 
       if (availableBiometrics.isEmpty) {
         _authService.showErrorToast(
@@ -96,16 +96,18 @@ class _BiometricPromptWidgetState extends State<BiometricPromptWidget> {
           _isEnabled = true;
         });
 
-        HapticFeedback.heavyImpact();
-        _authService
-            .showSuccessToast('Accesso biometrico abilitato con successo!');
+        if (!kIsWeb) HapticFeedback.heavyImpact();
+        _authService.showSuccessToast(
+          'Accesso biometrico abilitato con successo!',
+        );
 
         // Wait a moment then proceed to dashboard
         await Future.delayed(const Duration(milliseconds: 1500));
         widget.onBiometricLogin();
       } else {
         _authService.showErrorToast(
-            'Errore nell\'abilitazione dell\'accesso biometrico');
+          'Errore nell\'abilitazione dell\'accesso biometrico',
+        );
       }
     } catch (e) {
       print('Error enabling biometric auth: $e');
@@ -122,7 +124,7 @@ class _BiometricPromptWidgetState extends State<BiometricPromptWidget> {
   Future<void> _skipBiometricSetup() async {
     try {
       await _authService.clearPendingBiometricSetup();
-      HapticFeedback.lightImpact();
+      if (!kIsWeb) HapticFeedback.lightImpact();
       widget.onSkip();
     } catch (e) {
       print('Error skipping biometric setup: $e');
@@ -145,10 +147,7 @@ class _BiometricPromptWidgetState extends State<BiometricPromptWidget> {
         decoration: BoxDecoration(
           color: AppTheme.lightTheme.colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.orange,
-            width: 2,
-          ),
+          border: Border.all(color: Colors.orange, width: 2),
           boxShadow: [
             BoxShadow(
               color: Colors.orange.withValues(alpha: 0.1),
@@ -160,11 +159,7 @@ class _BiometricPromptWidgetState extends State<BiometricPromptWidget> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.warning_amber_rounded,
-              color: Colors.orange,
-              size: 12.w,
-            ),
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 12.w),
             SizedBox(height: 3.h),
             Text(
               'Biometrico Non Disponibile',
@@ -235,11 +230,7 @@ class _BiometricPromptWidgetState extends State<BiometricPromptWidget> {
           AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             child: _isEnabled
-                ? Icon(
-                    Icons.check_circle,
-                    color: Colors.green,
-                    size: 12.w,
-                  )
+                ? Icon(Icons.check_circle, color: Colors.green, size: 12.w)
                 : CustomIconWidget(
                     iconName: 'fingerprint',
                     color: AppTheme.primaryLight,
@@ -285,11 +276,7 @@ class _BiometricPromptWidgetState extends State<BiometricPromptWidget> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.person,
-                    color: AppTheme.primaryLight,
-                    size: 4.w,
-                  ),
+                  Icon(Icons.person, color: AppTheme.primaryLight, size: 4.w),
                   SizedBox(width: 2.w),
                   Flexible(
                     child: Text(
@@ -350,17 +337,18 @@ class _BiometricPromptWidgetState extends State<BiometricPromptWidget> {
                             height: 5.w,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
                             ),
                           )
                         : Text(
                             'Abilita Biometrico',
                             style: AppTheme.lightTheme.textTheme.titleSmall
                                 ?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
                           ),
                   ),
                 ),
@@ -387,11 +375,11 @@ class _BiometricPromptWidgetState extends State<BiometricPromptWidget> {
                     SizedBox(width: 2.w),
                     Text(
                       'Continua',
-                      style:
-                          AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: AppTheme.lightTheme.textTheme.titleMedium
+                          ?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
                     ),
                   ],
                 ),

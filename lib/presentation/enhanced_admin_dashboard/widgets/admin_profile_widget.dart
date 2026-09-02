@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
@@ -62,7 +63,7 @@ class _AdminProfileWidgetState extends State<AdminProfileWidget> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Profilo aggiornato con successo',
+              'admin_dashboard.profile_updated'.tr(),
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSecondary,
               ),
@@ -88,7 +89,8 @@ class _AdminProfileWidgetState extends State<AdminProfileWidget> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Errore durante l\'aggiornamento: ${error.toString()}',
+              'user_mgmt.update_profile_error'
+                  .tr(namedArgs: {'detail': error.toString()}),
               style: TextStyle(color: Theme.of(context).colorScheme.onError),
             ),
             backgroundColor: Theme.of(context).colorScheme.error,
@@ -139,11 +141,11 @@ class _AdminProfileWidgetState extends State<AdminProfileWidget> {
                   ),
                   SizedBox(width: 3.w),
                   Text(
-                    'Profilo Amministratore',
+                    'admin_profile.title'.tr(),
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontWeight: FontWeight.w600,
-                    ),
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontWeight: FontWeight.w600,
+                        ),
                   ),
                 ],
               ),
@@ -186,17 +188,16 @@ class _AdminProfileWidgetState extends State<AdminProfileWidget> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     filled: true,
-                    fillColor:
-                        _isEditing
-                            ? Theme.of(context).colorScheme.surface
-                            : Theme.of(context)
-                                .colorScheme
-                                .surfaceContainerHighest
-                                .withValues(alpha: 0.3),
+                    fillColor: _isEditing
+                        ? Theme.of(context).colorScheme.surface
+                        : Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.3),
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'Nome richiesto';
+                      return 'admin_dashboard.name_required'.tr();
                     }
                     return null;
                   },
@@ -209,7 +210,7 @@ class _AdminProfileWidgetState extends State<AdminProfileWidget> {
                   controller: _emailController,
                   enabled: false,
                   decoration: InputDecoration(
-                    labelText: 'Email',
+                    labelText: 'common.email'.tr(),
                     prefixIcon: Icon(
                       Icons.email,
                       color: Theme.of(context).colorScheme.secondary,
@@ -233,7 +234,7 @@ class _AdminProfileWidgetState extends State<AdminProfileWidget> {
                   enabled: _isEditing,
                   keyboardType: TextInputType.phone,
                   decoration: InputDecoration(
-                    labelText: 'Numero di Telefono',
+                    labelText: 'profile.phone_number_label'.tr(),
                     prefixIcon: Icon(
                       Icons.phone,
                       color: Theme.of(context).colorScheme.secondary,
@@ -242,18 +243,17 @@ class _AdminProfileWidgetState extends State<AdminProfileWidget> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     filled: true,
-                    fillColor:
-                        _isEditing
-                            ? Theme.of(context).colorScheme.surface
-                            : Theme.of(context)
-                                .colorScheme
-                                .surfaceContainerHighest
-                                .withValues(alpha: 0.3),
+                    fillColor: _isEditing
+                        ? Theme.of(context).colorScheme.surface
+                        : Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.3),
                   ),
                   validator: (value) {
                     if (value != null && value.trim().isNotEmpty) {
                       if (!RegExp(r'^[+]?[0-9\s\-()]+$').hasMatch(value)) {
-                        return 'Numero di telefono non valido';
+                        return 'admin_dashboard.invalid_phone'.tr();
                       }
                     }
                     return null;
@@ -278,28 +278,28 @@ class _AdminProfileWidgetState extends State<AdminProfileWidget> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child:
-                          _isSaving
-                              ? SizedBox(
-                                width: 5.w,
-                                height: 5.w,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Theme.of(context).colorScheme.onSecondary,
-                                  ),
-                                ),
-                              )
-                              : Text(
-                                'Salva Modifiche',
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.titleMedium?.copyWith(
-                                  color:
-                                      Theme.of(context).colorScheme.onSecondary,
-                                  fontWeight: FontWeight.w600,
+                      child: _isSaving
+                          ? SizedBox(
+                              width: 5.w,
+                              height: 5.w,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Theme.of(context).colorScheme.onSecondary,
                                 ),
                               ),
+                            )
+                          : Text(
+                              'profile.save_changes'.tr(),
+                              style: Theme.of(
+                                context,
+                              ).textTheme.titleMedium?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSecondary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
                     ),
                   ),
                 ],
@@ -328,11 +328,11 @@ class _AdminProfileWidgetState extends State<AdminProfileWidget> {
                 ),
                 SizedBox(width: 2.w),
                 Text(
-                  'Amministratore Principale',
+                  'roles.principal_admin'.tr(),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.secondary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                        color: Theme.of(context).colorScheme.secondary,
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
               ],
             ),

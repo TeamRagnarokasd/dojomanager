@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
-import '../../../widgets/custom_icon_widget.dart';
 
 class SubscriptionStatusCard extends StatefulWidget {
   final Map<String, dynamic> subscriptionData;
@@ -30,13 +29,22 @@ class _SubscriptionStatusCardState extends State<SubscriptionStatusCard> {
 
   @override
   Widget build(BuildContext context) {
+    // 🔥 CRITICAL: Update badge color based on subscription status
+    final isActive = widget.subscriptionData['status'] == 'active' ||
+        widget.subscriptionData['hasAnnualRegistration'] == true ||
+        widget.subscriptionData['hasActiveSubscription'] == true;
+
+    final badgeColor = isActive
+        ? Colors.green // Active status - Green badge
+        : Theme.of(context).colorScheme.tertiary; // Inactive status
+
+    final badgeText = isActive ? 'common.active'.tr() : 'common.inactive'.tr();
+
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
       child: Card(
         elevation: 4,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
@@ -64,24 +72,27 @@ class _SubscriptionStatusCardState extends State<SubscriptionStatusCard> {
                     SizedBox(width: 3.w),
                     Expanded(
                       child: Text(
-                        'Stato Abbonamento',
+                        'payment.subscription_status'.tr(),
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                               color: Theme.of(context).colorScheme.onPrimary,
                               fontWeight: FontWeight.w600,
                             ),
                       ),
                     ),
+                    // 🔥 LOGICA ISCRIZIONE: Update badge based on annual registration status
                     Container(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 3.w,
+                        vertical: 1.h,
+                      ),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.tertiary,
+                        color: badgeColor,
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        'ATTIVO',
+                        badgeText,
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onTertiary,
+                              color: Colors.white,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.5,
                             ),
@@ -92,59 +103,137 @@ class _SubscriptionStatusCardState extends State<SubscriptionStatusCard> {
                 SizedBox(height: 3.h),
                 Row(
                   children: [
+                    // Piano Attuale Column
                     Expanded(
+                      flex: 2,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Piano Attuale',
+                            'payment.current_plan'.tr(),
                             style:
                                 Theme.of(context).textTheme.bodySmall?.copyWith(
                                       color: Theme.of(context)
                                           .colorScheme
                                           .onPrimary
                                           .withValues(alpha: 0.8),
+                                      fontWeight: FontWeight.w500,
                                     ),
                           ),
                           SizedBox(height: 0.5.h),
+                          // 🔥 LOGICA PIANO ATTUALE: Show active plan excluding Iscrizione Annuale
                           Text(
-                            widget.subscriptionData['planName'] as String,
+                            widget.subscriptionData['currentPlanName']
+                                    as String? ??
+                                widget.subscriptionData['planName']
+                                    as String? ??
+                                'payment.no_active_subscription'.tr(),
                             style: Theme.of(context)
                                 .textTheme
-                                .titleMedium
+                                .bodyMedium
                                 ?.copyWith(
-                                  color:
-                                      Theme.of(context).colorScheme.onPrimary,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onPrimary,
                                   fontWeight: FontWeight.w600,
                                 ),
                           ),
                         ],
                       ),
                     ),
-                    SizedBox(width: 4.w),
+                    SizedBox(width: 3.w),
+                    // Iscrizione Column
                     Expanded(
+                      flex: 2,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Rinnovo',
+                            'payment.registration_label'.tr(),
                             style:
                                 Theme.of(context).textTheme.bodySmall?.copyWith(
                                       color: Theme.of(context)
                                           .colorScheme
                                           .onPrimary
                                           .withValues(alpha: 0.8),
+                                      fontWeight: FontWeight.w500,
                                     ),
                           ),
                           SizedBox(height: 0.5.h),
+                          // 🔥 LOGICA ISCRIZIONE: Display status from database
                           Text(
-                            widget.subscriptionData['renewalDate'] as String,
+                            widget.subscriptionData['annualRegistrationStatus']
+                                    as String? ??
+                                'payment.to_purchase'.tr(),
                             style: Theme.of(context)
                                 .textTheme
-                                .titleMedium
+                                .bodyMedium
                                 ?.copyWith(
-                                  color:
-                                      Theme.of(context).colorScheme.onPrimary,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onPrimary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          // 🔥 LOGICA ISCRIZIONE: Show expiry if registration is active
+                          if (widget.subscriptionData[
+                                      'annualRegistrationStatus'] ==
+                                  'Effettuata' &&
+                              widget.subscriptionData[
+                                      'annualRegistrationExpiry'] !=
+                                  null &&
+                              (widget.subscriptionData[
+                                      'annualRegistrationExpiry'] as String)
+                                  .isNotEmpty) ...[
+                            SizedBox(height: 0.3.h),
+                            Text(
+                              widget.subscriptionData[
+                                  'annualRegistrationExpiry'] as String,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onPrimary
+                                        .withValues(alpha: 0.9),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    SizedBox(width: 3.w),
+                    // Rinnovo Column
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'payment.renewal'.tr(),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onPrimary
+                                          .withValues(alpha: 0.8),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                          ),
+                          SizedBox(height: 0.5.h),
+                          // 🔥 LOGICA PIANO ATTUALE: Show renewal date for current plan
+                          Text(
+                            widget.subscriptionData['renewalDate'] as String? ??
+                                '',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onPrimary,
                                   fontWeight: FontWeight.w600,
                                 ),
                           ),

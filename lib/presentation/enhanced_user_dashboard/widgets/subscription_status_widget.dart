@@ -180,7 +180,8 @@ class _SubscriptionStatusWidgetState extends State<SubscriptionStatusWidget> {
                     onChanged: (value) {
                       setState(() => _autoRenew = value);
                     },
-                    activeColor: const Color(0xFFFF0000), // Team Ragnarok red
+                    activeThumbColor:
+                        const Color(0xFFFF0000), // Team Ragnarok red
                     activeTrackColor:
                         const Color(0xFFFF0000).withValues(alpha: 0.3),
                     inactiveThumbColor:

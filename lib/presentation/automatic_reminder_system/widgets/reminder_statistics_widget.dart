@@ -22,9 +22,9 @@ class ReminderStatisticsWidget extends StatelessWidget {
           Text(
             'Statistiche Promemoria',
             style: Theme.of(context).textTheme.headlineSmall!.copyWith(
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.primary,
-            ),
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
           ),
           SizedBox(height: 3.h),
           _buildStatisticsGrid(),
@@ -119,16 +119,16 @@ class ReminderStatisticsWidget extends StatelessWidget {
             Text(
               value,
               style: Theme.of(context).textTheme.headlineMedium!.copyWith(
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
             ),
             SizedBox(height: 1.h),
             Text(
               title,
               style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                color: Colors.grey[600],
-              ),
+                    color: Colors.grey[600],
+                  ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -164,8 +164,8 @@ class ReminderStatisticsWidget extends StatelessWidget {
             Text(
               'Tasso di Successo Promemoria',
               style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
             SizedBox(height: 2.h),
             Expanded(
@@ -179,20 +179,22 @@ class ReminderStatisticsWidget extends StatelessWidget {
                       title: '${successRate.toStringAsFixed(1)}%',
                       color: Colors.green,
                       radius: 60,
-                      titleStyle: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      titleStyle:
+                          Theme.of(context).textTheme.bodyMedium!.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
                     ),
                     PieChartSectionData(
                       value: remaining,
                       title: '${remaining.toStringAsFixed(1)}%',
                       color: Colors.grey[300],
                       radius: 50,
-                      titleStyle: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                        color: Colors.grey[700],
-                        fontWeight: FontWeight.bold,
-                      ),
+                      titleStyle:
+                          Theme.of(context).textTheme.bodyMedium!.copyWith(
+                                color: Colors.grey[700],
+                                fontWeight: FontWeight.bold,
+                              ),
                     ),
                   ],
                 ),
@@ -227,8 +229,8 @@ class ReminderStatisticsWidget extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.bodySmall!.copyWith(
-              color: Colors.grey[600],
-            ),
+                  color: Colors.grey[600],
+                ),
           ),
         ],
       ),
@@ -257,8 +259,8 @@ class ReminderStatisticsWidget extends StatelessWidget {
             Text(
               'Andamento Mensile',
               style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
             SizedBox(height: 2.h),
             Container(

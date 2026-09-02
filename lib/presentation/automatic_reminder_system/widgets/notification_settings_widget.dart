@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+
 import '../../../core/app_export.dart';
-import '../../../theme/app_theme.dart';
 
 class NotificationSettingsWidget extends StatefulWidget {
   final VoidCallback onSettingsChanged;
@@ -66,15 +66,16 @@ class _NotificationSettingsWidgetState
       widget.onSettingsChanged();
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Impostazioni salvate con successo'),
+        SnackBar(
+          content: Text('reminders.settings_saved'.tr()),
           backgroundColor: Colors.green,
         ),
       );
     } catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Errore nel salvare le impostazioni: $error'),
+          content: Text('reminders.settings_save_error'
+              .tr(namedArgs: {'error': '$error'})),
           backgroundColor: Colors.red,
         ),
       );
@@ -99,9 +100,9 @@ class _NotificationSettingsWidgetState
           Text(
             'Impostazioni Notifiche',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: AppTheme.primaryLight,
-            ),
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryLight,
+                ),
           ),
           SizedBox(height: 3.h),
           _buildGeneralSettings(),
@@ -141,16 +142,16 @@ class _NotificationSettingsWidgetState
           Text(
             'Impostazioni Generali',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+                  fontWeight: FontWeight.bold,
+                ),
           ),
           SizedBox(height: 2.h),
           SwitchListTile(
-            title: const Text('Promemoria Automatici'),
+            title: Text('reminders.auto_reminders'.tr()),
             subtitle: const Text(
                 'Abilita l\'invio automatico di promemoria ogni mese'),
             value: _enableAutomaticReminders,
-            activeColor: AppTheme.primaryLight,
+            activeThumbColor: AppTheme.primaryLight,
             onChanged: (value) {
               setState(() => _enableAutomaticReminders = value);
               _markAsChanged();
@@ -158,11 +159,10 @@ class _NotificationSettingsWidgetState
           ),
           const Divider(),
           SwitchListTile(
-            title: const Text('Tracciamento Notifiche'),
-            subtitle:
-                const Text('Traccia lo stato di consegna delle notifiche'),
+            title: Text('reminders.delivery_tracking'.tr()),
+            subtitle: Text('reminders.delivery_tracking_subtitle'.tr()),
             value: _enableNotificationTracking,
-            activeColor: AppTheme.primaryLight,
+            activeThumbColor: AppTheme.primaryLight,
             onChanged: (value) {
               setState(() => _enableNotificationTracking = value);
               _markAsChanged();
@@ -194,15 +194,15 @@ class _NotificationSettingsWidgetState
           Text(
             'Frequenza Promemoria',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+                  fontWeight: FontWeight.bold,
+                ),
           ),
           SizedBox(height: 2.h),
           Text(
             'Giorno del mese per l\'invio automatico',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+                  fontWeight: FontWeight.w600,
+                ),
           ),
           SizedBox(height: 1.h),
           Slider(
@@ -219,10 +219,11 @@ class _NotificationSettingsWidgetState
           ),
           Center(
             child: Text(
-              'Promemoria inviati il ${_reminderFrequencyDays}° giorno di ogni mese',
+              'reminders.reminder_day_of_month'
+                  .tr(namedArgs: {'day': '$_reminderFrequencyDays'}),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey[600],
-              ),
+                    color: Colors.grey[600],
+                  ),
               textAlign: TextAlign.center,
             ),
           ),
@@ -230,8 +231,8 @@ class _NotificationSettingsWidgetState
           Text(
             'Numero massimo di tentativi per utente',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+                  fontWeight: FontWeight.w600,
+                ),
           ),
           SizedBox(height: 1.h),
           Slider(
@@ -250,8 +251,8 @@ class _NotificationSettingsWidgetState
             child: Text(
               'Massimo $_maxRetriesPerUser tentativi per notifica fallita',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey[600],
-              ),
+                    color: Colors.grey[600],
+                  ),
               textAlign: TextAlign.center,
             ),
           ),
@@ -281,15 +282,15 @@ class _NotificationSettingsWidgetState
           Text(
             'Metodi di Consegna',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+                  fontWeight: FontWeight.bold,
+                ),
           ),
           SizedBox(height: 2.h),
           SwitchListTile(
-            title: const Text('Notifiche Push'),
-            subtitle: const Text('Notifiche nell\'app mobile'),
+            title: Text('reminders.push_notifications'.tr()),
+            subtitle: Text('reminders.push_subtitle'.tr()),
             value: _enablePushNotifications,
-            activeColor: AppTheme.primaryLight,
+            activeThumbColor: AppTheme.primaryLight,
             onChanged: (value) {
               setState(() => _enablePushNotifications = value);
               _markAsChanged();
@@ -297,10 +298,10 @@ class _NotificationSettingsWidgetState
           ),
           const Divider(),
           SwitchListTile(
-            title: const Text('Email'),
-            subtitle: const Text('Invia promemoria via email'),
+            title: Text('common.email'.tr()),
+            subtitle: Text('reminders.email_subtitle'.tr()),
             value: _enableEmailNotifications,
-            activeColor: AppTheme.primaryLight,
+            activeThumbColor: AppTheme.primaryLight,
             onChanged: (value) {
               setState(() => _enableEmailNotifications = value);
               _markAsChanged();
@@ -308,10 +309,10 @@ class _NotificationSettingsWidgetState
           ),
           const Divider(),
           SwitchListTile(
-            title: const Text('SMS'),
-            subtitle: const Text('Invia promemoria via SMS (servizio premium)'),
+            title: Text('reminders.sms'.tr()),
+            subtitle: Text('reminders.sms_subtitle'.tr()),
             value: _enableSMSNotifications,
-            activeColor: AppTheme.primaryLight,
+            activeThumbColor: AppTheme.primaryLight,
             onChanged: (value) {
               setState(() => _enableSMSNotifications = value);
               _markAsChanged();
@@ -343,16 +344,15 @@ class _NotificationSettingsWidgetState
           Text(
             'Privacy e Consenso',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+                  fontWeight: FontWeight.bold,
+                ),
           ),
           SizedBox(height: 2.h),
           SwitchListTile(
-            title: const Text('Opt-out Membri'),
-            subtitle:
-                const Text('Permetti ai membri di disattivare i promemoria'),
+            title: Text('reminders.opt_out_title'.tr()),
+            subtitle: Text('reminders.opt_out_subtitle'.tr()),
             value: _enableMemberOptOut,
-            activeColor: AppTheme.primaryLight,
+            activeThumbColor: AppTheme.primaryLight,
             onChanged: (value) {
               setState(() => _enableMemberOptOut = value);
               _markAsChanged();
@@ -378,11 +378,11 @@ class _NotificationSettingsWidgetState
                     ),
                     SizedBox(width: 2.w),
                     Text(
-                      'Gestione Privacy',
+                      'reminders.privacy_management'.tr(),
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue[700],
-                      ),
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue[700],
+                          ),
                     ),
                   ],
                 ),
@@ -391,8 +391,8 @@ class _NotificationSettingsWidgetState
                   'I membri possono disattivare i promemoria dalle impostazioni del loro profilo. '
                   'I dati di contatto sono utilizzati solo per comunicazioni relative agli abbonamenti.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.blue[800],
-                  ),
+                        color: Colors.blue[800],
+                      ),
                 ),
               ],
             ),
@@ -439,9 +439,9 @@ class _NotificationSettingsWidgetState
                 child: Text(
                   'Regole Team Ragnarok ASD',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.primaryLight,
-                  ),
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryLight,
+                      ),
                 ),
               ),
             ],
@@ -459,9 +459,9 @@ class _NotificationSettingsWidgetState
                 Text(
                   'Sistema di Promemoria Automatico',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.primaryLight,
-                  ),
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryLight,
+                      ),
                 ),
                 SizedBox(height: 1.h),
                 Text(
@@ -473,9 +473,9 @@ class _NotificationSettingsWidgetState
                   '• I membri possono disattivare le notifiche dalle impostazioni profilo\n'
                   '• Tracciamento automatico del tasso di successo dei pagamenti',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey[700],
-                    height: 1.4,
-                  ),
+                        color: Colors.grey[700],
+                        height: 1.4,
+                      ),
                 ),
               ],
             ),
@@ -500,7 +500,7 @@ class _NotificationSettingsWidgetState
                 ),
               )
             : const Icon(Icons.save),
-        label: const Text('Salva Impostazioni'),
+        label: Text('reminders.save_settings'.tr()),
         style: ElevatedButton.styleFrom(
           backgroundColor: AppTheme.primaryLight,
           padding: EdgeInsets.symmetric(vertical: 2.h),

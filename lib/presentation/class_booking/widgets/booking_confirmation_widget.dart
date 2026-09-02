@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
 
@@ -36,7 +37,7 @@ class BookingConfirmationWidget extends StatelessWidget {
 
           // Success Message
           Text(
-            'Prenotazione Confermata!',
+            'class_booking.booking_confirmed_title'.tr(),
             style: GoogleFonts.inter(
               fontSize: 24.sp,
               fontWeight: FontWeight.bold,
@@ -46,7 +47,7 @@ class BookingConfirmationWidget extends StatelessWidget {
           ),
           SizedBox(height: 8.h),
           Text(
-            'La tua prenotazione è stata registrata con successo',
+            'class_booking.booking_registered_success'.tr(),
             style: GoogleFonts.inter(fontSize: 16.sp, color: Colors.grey[400]),
             textAlign: TextAlign.center,
           ),
@@ -63,7 +64,7 @@ class BookingConfirmationWidget extends StatelessWidget {
             child: Column(
               children: [
                 Text(
-                  'Dettagli Prenotazione',
+                  'class_booking.booking_details_title'.tr(),
                   style: GoogleFonts.inter(
                     fontSize: 18.sp,
                     fontWeight: FontWeight.bold,
@@ -73,9 +74,10 @@ class BookingConfirmationWidget extends StatelessWidget {
                 SizedBox(height: 16.h),
                 _buildDetailRow('ID Prenotazione', bookingId),
                 _buildDetailRow('Disciplina', classData['discipline']),
-                _buildDetailRow('Data', classData['date']),
-                _buildDetailRow('Orario', classData['time']),
-                _buildDetailRow('Istruttore', classData['instructor']['name']),
+                _buildDetailRow('class_schedule.date'.tr(), classData['date']),
+                _buildDetailRow('class_schedule.time'.tr(), classData['time']),
+                _buildDetailRow('class_schedule.instructor'.tr(),
+                    classData['instructor']['name']),
                 _buildDetailRow(
                   'Prezzo',
                   '€${classData['price'].toStringAsFixed(2)}',

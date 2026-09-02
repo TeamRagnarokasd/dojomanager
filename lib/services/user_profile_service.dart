@@ -1,9 +1,10 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:io';
-import 'dart:typed_data';
+import 'dart:io' if (dart.library.io) 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:math';
+// 🎯 NEW: Add image package for advanced compression
+import 'package:image/image.dart' as img;
 
 import './supabase_service.dart';
 
@@ -13,12 +14,11 @@ class UserProfileService {
   // Get user profile by ID
   static Future<Map<String, dynamic>?> getUserProfile(String userId) async {
     try {
-      final response =
-          await _supabase
-              .from('user_profiles')
-              .select('*')
-              .eq('id', userId)
-              .single();
+      final response = await _supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', userId)
+          .single();
 
       return response;
     } catch (e) {
@@ -66,7 +66,7 @@ class UserProfileService {
     }
   }
 
-  /// Upload profile photo to Supabase storage
+  /// Upload profile photo to Supabase storage with compression
   Future<Map<String, dynamic>> uploadProfilePhoto(XFile imageFile) async {
     try {
       final client = SupabaseService.instance.client;
@@ -86,15 +86,26 @@ class UserProfileService {
       } else {
         final file = File(imageFile.path);
         imageBytes = await file.readAsBytes();
-        fileName =
-            imageFile.name.isNotEmpty
-                ? imageFile.name
-                : 'profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        fileName = imageFile.name.isNotEmpty
+            ? imageFile.name
+            : 'profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      }
+
+      // 🎯 NEW: Compress image to ensure it's under 1MB
+      imageBytes = await _compressImage(imageBytes);
+
+      // 🎯 NEW: Validate file size (must be under 1MB)
+      if (imageBytes.lengthInBytes > 1024 * 1024) {
+        return {
+          'success': false,
+          'message':
+              'L\'immagine deve essere inferiore a 1MB. Riprova con un\'immagine più piccola.',
+        };
       }
 
       // Generate unique filename with timestamp
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileExtension = fileName.split('.').last.toLowerCase();
+      final fileExtension = 'jpg'; // Always use jpg after compression
       final uniqueFileName = 'profile_${user.id}_$timestamp.$fileExtension';
 
       // Upload to Supabase Storage
@@ -103,18 +114,14 @@ class UserProfileService {
           .uploadBinary(uniqueFileName, imageBytes);
 
       // Get public URL
-      final publicUrl = client.storage
-          .from('profile-images')
-          .getPublicUrl(uniqueFileName);
+      final publicUrl =
+          client.storage.from('profile-images').getPublicUrl(uniqueFileName);
 
       // Update user profile with new image URL
-      await client
-          .from('user_profiles')
-          .update({
-            'profile_image_url': publicUrl,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', user.id);
+      await client.from('user_profiles').update({
+        'profile_image_url': publicUrl,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', user.id);
 
       return {
         'success': true,
@@ -127,6 +134,49 @@ class UserProfileService {
         'success': false,
         'message': 'Errore durante l\'aggiornamento della foto: $e',
       };
+    }
+  }
+
+  /// 🎯 NEW: Compress image to ensure file size is under 1MB
+  Future<Uint8List> _compressImage(Uint8List imageBytes) async {
+    try {
+      // Decode the image
+      img.Image? image = img.decodeImage(imageBytes);
+
+      if (image == null) {
+        print('⚠️ Failed to decode image, returning original bytes');
+        return imageBytes;
+      }
+
+      // Resize image to max 512x512 while maintaining aspect ratio
+      img.Image resized = img.copyResize(
+        image,
+        width: 512,
+        height: 512,
+        interpolation: img.Interpolation.linear,
+      );
+
+      // Compress as JPEG with quality 85
+      Uint8List compressed = Uint8List.fromList(
+        img.encodeJpg(resized, quality: 85),
+      );
+
+      // If still over 1MB, reduce quality further
+      int quality = 85;
+      while (compressed.lengthInBytes > 1024 * 1024 && quality > 50) {
+        quality -= 10;
+        compressed = Uint8List.fromList(
+          img.encodeJpg(resized, quality: quality),
+        );
+      }
+
+      print(
+        '✅ Image compressed: ${imageBytes.lengthInBytes} bytes → ${compressed.lengthInBytes} bytes',
+      );
+      return compressed;
+    } catch (e) {
+      print('⚠️ Error compressing image: $e, returning original bytes');
+      return imageBytes;
     }
   }
 
@@ -152,10 +202,9 @@ class UserProfileService {
       } else {
         final file = File(certificateFile.path);
         fileBytes = await file.readAsBytes();
-        fileName =
-            certificateFile.name.isNotEmpty
-                ? certificateFile.name
-                : 'certificate_${DateTime.now().millisecondsSinceEpoch}.pdf';
+        fileName = certificateFile.name.isNotEmpty
+            ? certificateFile.name
+            : 'certificate_${DateTime.now().millisecondsSinceEpoch}.pdf';
       }
 
       // Generate unique filename
@@ -175,14 +224,11 @@ class UserProfileService {
           .createSignedUrl(uniqueFileName, 31536000); // 1 year in seconds
 
       // Update user profile with medical certificate info
-      await client
-          .from('user_profiles')
-          .update({
-            'medical_certificate_url': signedUrl,
-            'medical_certificate_status': 'pending_review',
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', user.id);
+      await client.from('user_profiles').update({
+        'medical_certificate_url': signedUrl,
+        'medical_certificate_status': 'pending_review',
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', user.id);
 
       return {
         'success': true,
@@ -306,10 +352,7 @@ class UserProfileService {
 
       print('📥 Fetching user profile for user: ${user.id}');
 
-      final response =
-          await client
-              .from('user_profiles')
-              .select('''
+      final response = await client.from('user_profiles').select('''
             profile_image_url, 
             medical_certificate_url, 
             medical_certificate_status,
@@ -318,9 +361,7 @@ class UserProfileService {
             medical_certificate_doctor_name,
             medical_certificate_medical_center,
             medical_certificate_type
-          ''')
-              .eq('id', user.id)
-              .single();
+          ''').eq('id', user.id).single();
 
       print('✅ Profile data retrieved: ${response.keys.join(", ")}');
 
@@ -353,13 +394,10 @@ class UserProfileService {
           print('✅ New signed URL generated successfully');
 
           // Update the database with new signed URL
-          await client
-              .from('user_profiles')
-              .update({
-                'medical_certificate_url': certificateUrl,
-                'updated_at': DateTime.now().toIso8601String(),
-              })
-              .eq('id', user.id);
+          await client.from('user_profiles').update({
+            'medical_certificate_url': certificateUrl,
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('id', user.id);
 
           print('✅ Database updated with new signed URL');
         } catch (e) {
@@ -407,11 +445,7 @@ class UserProfileService {
     if (user == null) return null;
 
     final response =
-        await client
-            .from('user_profiles')
-            .select()
-            .eq('id', user.id)
-            .single();
+        await client.from('user_profiles').select().eq('id', user.id).single();
 
     return response;
   }
@@ -500,18 +534,16 @@ class UserProfileService {
       final subscription = await getUserSubscription();
 
       final totalClasses = attendanceResponse.length;
-      final thisMonthClasses =
-          attendanceResponse.where((entry) {
-            final usedAt = DateTime.parse(entry['used_at']);
-            final now = DateTime.now();
-            return usedAt.year == now.year && usedAt.month == now.month;
-          }).length;
+      final thisMonthClasses = attendanceResponse.where((entry) {
+        final usedAt = DateTime.parse(entry['used_at']);
+        final now = DateTime.now();
+        return usedAt.year == now.year && usedAt.month == now.month;
+      }).length;
 
       return {
         'total_classes': totalClasses,
         'this_month_classes': thisMonthClasses,
-        'current_plan':
-            subscription?['subscription_plans']?['name'] ??
+        'current_plan': subscription?['subscription_plans']?['name'] ??
             'Nessun piano attivo',
         'remaining_entries': subscription?['entries_remaining'] ?? 0,
       };

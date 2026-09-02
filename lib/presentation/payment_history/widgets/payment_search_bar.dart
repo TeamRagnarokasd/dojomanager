@@ -2,16 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
-import '../../../widgets/custom_icon_widget.dart';
 
 class PaymentSearchBar extends StatefulWidget {
-  final String hintText;
   final Function(String)? onSearchChanged;
   final VoidCallback? onClear;
 
   const PaymentSearchBar({
     Key? key,
-    this.hintText = 'Cerca per importo o descrizione...',
     this.onSearchChanged,
     this.onClear,
   }) : super(key: key);
@@ -61,7 +58,7 @@ class _PaymentSearchBarState extends State<PaymentSearchBar> {
         onChanged: widget.onSearchChanged,
         style: Theme.of(context).textTheme.bodyMedium,
         decoration: InputDecoration(
-          hintText: 'Cerca pagamenti...',
+          hintText: 'payment.search_payments'.tr(),
           hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context)
                     .colorScheme

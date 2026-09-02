@@ -5,7 +5,6 @@ import 'package:sizer/sizer.dart';
 import '../../constants/app_constants.dart';
 import '../../core/app_export.dart';
 import '../../services/auth_service.dart';
-import '../../theme/app_theme.dart';
 import '../user_profile/widgets/account_security_widget.dart';
 import '../user_profile/widgets/emergency_contacts_widget.dart';
 import '../user_profile/widgets/medical_certificate_status_widget.dart';
@@ -25,6 +24,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
   bool _isLoading = true;
   Map<String, dynamic>? _adminProfile;
   String? _adminRole;
+  String? _currentUserId;
 
   @override
   void initState() {
@@ -39,9 +39,8 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
     }
 
     try {
-      final profile = await AuthService.instance.getUserProfile(
-        AuthService.instance.currentUser!.id,
-      );
+      final userId = AuthService.instance.currentUser!.id;
+      final profile = await AuthService.instance.getUserProfile(userId);
       final role = await AuthService.instance.getUserRole();
 
       // Verify admin privileges
@@ -54,6 +53,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
         setState(() {
           _adminProfile = profile;
           _adminRole = role;
+          _currentUserId = userId;
           _isLoading = false;
         });
       }
@@ -63,7 +63,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              "Errore nel caricamento profilo",
+              'payment.load_profile_error'.tr(),
               style: TextStyle(color: Theme.of(context).colorScheme.onError),
             ),
             backgroundColor: Theme.of(context).colorScheme.error,
@@ -76,13 +76,13 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
   String _getAdminLevelTitle() {
     switch (_adminRole) {
       case 'principal_admin':
-        return 'Amministratore Principale';
+        return 'roles.principal_admin'.tr();
       case 'instructor_admin':
-        return 'Istruttore Admin';
+        return 'dashboard.role_instructor_admin'.tr();
       case 'admin':
-        return 'Amministratore';
+        return 'roles.admin'.tr();
       default:
-        return 'Admin';
+        return 'roles.admin'.tr();
     }
   }
 
@@ -93,7 +93,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
         backgroundColor: AppTheme.darkTheme.scaffoldBackgroundColor,
         appBar: AppBar(
           title: Text(
-            'Profilo Amministratore',
+            'admin_profile.title'.tr(),
             style: GoogleFonts.inter(
               color: Colors.white,
               fontSize: 18.sp,
@@ -120,7 +120,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
         backgroundColor: AppTheme.darkTheme.scaffoldBackgroundColor,
         appBar: AppBar(
           title: Text(
-            'Profilo Amministratore',
+            'admin_profile.title'.tr(),
             style: GoogleFonts.inter(
               color: Colors.white,
               fontSize: 18.sp,
@@ -145,7 +145,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
               ),
               SizedBox(height: 2.h),
               Text(
-                'Errore di caricamento profilo',
+                'admin_profile.load_error'.tr(),
                 style: GoogleFonts.inter(
                   color: Colors.white,
                   fontSize: 18.sp,
@@ -162,7 +162,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
       backgroundColor: AppTheme.darkTheme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          'Profilo Amministratore',
+          'admin_profile.title'.tr(),
           style: GoogleFonts.inter(
             color: Colors.white,
             fontSize: 18.sp,
@@ -241,7 +241,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                           ),
                         ),
                         Text(
-                          'Accesso completo al sistema',
+                          'admin_profile.full_access'.tr(),
                           style: GoogleFonts.inter(
                             color: Colors.grey[400],
                             fontSize: 12.sp,
@@ -257,27 +257,27 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
             SizedBox(height: 3.h),
 
             // Profile Header - Reusing from user profile
-            ProfileHeaderWidget(),
+            ProfileHeaderWidget(userId: _currentUserId),
             SizedBox(height: 3.h),
 
             // Personal Info - Reusing from user profile
-            PersonalInfoWidget(),
+            PersonalInfoWidget(userId: _currentUserId),
             SizedBox(height: 3.h),
 
             // Medical Certificate Status - Reusing from user profile
-            MedicalCertificateStatusWidget(),
+            MedicalCertificateStatusWidget(userId: _currentUserId),
             SizedBox(height: 3.h),
 
             // Settings Section - Reusing from user profile
             SettingsSectionWidget(
               notificationsEnabled: _notificationsEnabled,
-              onNotificationChanged:
-                  (value) => setState(() => _notificationsEnabled = value),
+              onNotificationChanged: (value) =>
+                  setState(() => _notificationsEnabled = value),
             ),
             SizedBox(height: 3.h),
 
             // Emergency Contacts - Reusing from user profile
-            EmergencyContactsWidget(),
+            EmergencyContactsWidget(userId: _currentUserId),
             SizedBox(height: 3.h),
 
             // Account Security - Reusing from user profile
@@ -315,7 +315,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
             Icon(Icons.dashboard, color: Colors.white),
             SizedBox(width: 2.w),
             Text(
-              'Torna al Dashboard',
+              'admin_profile.back_to_dashboard'.tr(),
               style: GoogleFonts.inter(
                 color: Colors.white,
                 fontSize: 14.sp,

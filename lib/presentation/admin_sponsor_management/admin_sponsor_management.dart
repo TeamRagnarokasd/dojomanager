@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/app_export.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../services/sponsor_service.dart';
@@ -20,6 +21,7 @@ class _AdminSponsorManagementState extends State<AdminSponsorManagement> {
   bool _isLoading = true;
   String _searchQuery = '';
   String _statusFilter = 'all'; // all, active, inactive
+  String _categoryFilter = 'all'; // all, sponsor, affiliazione
 
   @override
   void initState() {
@@ -42,7 +44,7 @@ class _AdminSponsorManagementState extends State<AdminSponsorManagement> {
       print('Error loading sponsors: $error');
       if (mounted) {
         setState(() => _isLoading = false);
-        _showErrorMessage('Errore nel caricamento degli sponsor');
+        _showErrorMessage('user_mgmt.load_sponsors_error'.tr());
       }
     }
   }
@@ -59,25 +61,26 @@ class _AdminSponsorManagementState extends State<AdminSponsorManagement> {
   }
 
   Future<void> _refreshData() async {
-    await Future.wait([
-      _loadSponsors(),
-      _loadStats(),
-    ]);
+    await Future.wait([_loadSponsors(), _loadStats()]);
   }
 
   List<Map<String, dynamic>> get _filteredSponsors {
     return _sponsors.where((sponsor) {
-      final matchesSearch = _searchQuery.isEmpty ||
+      final matchesSearch =
+          _searchQuery.isEmpty ||
           sponsor['name'].toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          (sponsor['description']
-                  ?.toLowerCase()
-                  .contains(_searchQuery.toLowerCase()) ??
+          (sponsor['description']?.toLowerCase().contains(
+                _searchQuery.toLowerCase(),
+              ) ??
               false);
 
       final matchesStatus =
           _statusFilter == 'all' || sponsor['status'] == _statusFilter;
 
-      return matchesSearch && matchesStatus;
+      final matchesCategory =
+          _categoryFilter == 'all' || sponsor['category'] == _categoryFilter;
+
+      return matchesSearch && matchesStatus && matchesCategory;
     }).toList();
   }
 
@@ -118,7 +121,7 @@ class _AdminSponsorManagementState extends State<AdminSponsorManagement> {
         _refreshData();
         _showSuccessMessage('Sponsor eliminato con successo');
       } else {
-        _showErrorMessage('Errore nell\'eliminazione dello sponsor');
+        _showErrorMessage('user_mgmt.delete_sponsor_error'.tr());
       }
     } catch (error) {
       print('Error deleting sponsor: $error');
@@ -127,17 +130,22 @@ class _AdminSponsorManagementState extends State<AdminSponsorManagement> {
   }
 
   Future<void> _toggleSponsorStatus(
-      String sponsorId, String currentStatus) async {
+    String sponsorId,
+    String currentStatus,
+  ) async {
     try {
-      final success =
-          await SponsorService.toggleSponsorStatus(sponsorId, currentStatus);
+      final success = await SponsorService.toggleSponsorStatus(
+        sponsorId,
+        currentStatus,
+      );
       if (success) {
         _refreshData();
-        final newStatus =
-            currentStatus == 'active' ? 'disattivato' : 'attivato';
+        final newStatus = currentStatus == 'active'
+            ? 'disattivato'
+            : 'attivato';
         _showSuccessMessage('Sponsor $newStatus con successo');
       } else {
-        _showErrorMessage('Errore nel cambio di stato dello sponsor');
+        _showErrorMessage('user_mgmt.toggle_sponsor_error'.tr());
       }
     } catch (error) {
       print('Error toggling sponsor status: $error');
@@ -149,18 +157,19 @@ class _AdminSponsorManagementState extends State<AdminSponsorManagement> {
     return await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Conferma eliminazione'),
+            title: Text('reminders.delete_confirm_title'.tr()),
             content: Text(
-                'Sei sicuro di voler eliminare lo sponsor "$sponsorName"?'),
+              'Sei sicuro di voler eliminare lo sponsor "$sponsorName"?',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Annulla'),
+                child: Text('common.cancel'.tr()),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context, true),
                 style: TextButton.styleFrom(foregroundColor: Colors.red),
-                child: const Text('Elimina'),
+                child: Text('common.delete'.tr()),
               ),
             ],
           ),
@@ -197,7 +206,7 @@ class _AdminSponsorManagementState extends State<AdminSponsorManagement> {
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-          title: const Text('Gestione Sponsor'),
+          title: Text('admin_sponsor.title'.tr()),
           backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
           elevation: 0,
           actions: [
@@ -215,70 +224,118 @@ class _AdminSponsorManagementState extends State<AdminSponsorManagement> {
         ),
         body: RefreshIndicator(
           onRefresh: _refreshData,
-          child: Column(
-            children: [
+          child: CustomScrollView(
+            slivers: [
               // Stats Section
-              SponsorStatsWidget(stats: _stats),
+              SliverToBoxAdapter(child: SponsorStatsWidget(stats: _stats)),
 
               // Search and Filter
-              Container(
-                margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-                child: Column(
-                  children: [
-                    // Search Bar
-                    TextField(
-                      onChanged: (value) =>
-                          setState(() => _searchQuery = value),
-                      decoration: InputDecoration(
-                        hintText: 'Cerca sponsor...',
-                        prefixIcon: const Icon(Icons.search),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        filled: true,
-                        fillColor: Theme.of(context).cardColor,
-                      ),
-                    ),
-
-                    SizedBox(height: 2.h),
-
-                    // Status Filter
-                    Row(
-                      children: [
-                        Text(
-                          'Stato: ',
-                          style:
-                              Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                        ),
-                        SizedBox(width: 2.w),
-                        Expanded(
-                          child: Wrap(
-                            spacing: 2.w,
-                            children: [
-                              _buildFilterChip('Tutti', 'all'),
-                              _buildFilterChip('Attivi', 'active'),
-                              _buildFilterChip('Inattivi', 'inactive'),
-                            ],
+              SliverToBoxAdapter(
+                child: Container(
+                  margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+                  child: Column(
+                    children: [
+                      // Search Bar
+                      TextField(
+                        onChanged: (value) =>
+                            setState(() => _searchQuery = value),
+                        decoration: InputDecoration(
+                          hintText: 'admin_sponsor.search_hint'.tr(),
+                          prefixIcon: const Icon(Icons.search),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
+                          filled: true,
+                          fillColor: Theme.of(context).cardColor,
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+
+                      SizedBox(height: 2.h),
+
+                      // Status Filter
+                      Row(
+                        children: [
+                          Text(
+                            'Stato: ',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w500),
+                          ),
+                          SizedBox(width: 2.w),
+                          Expanded(
+                            child: Wrap(
+                              spacing: 2.w,
+                              children: [
+                                _buildFilterChip(
+                                  'disciplines.all'.tr(),
+                                  'all',
+                                  isStatus: true,
+                                ),
+                                _buildFilterChip(
+                                  'Attivi',
+                                  'active',
+                                  isStatus: true,
+                                ),
+                                _buildFilterChip(
+                                  'Inattivi',
+                                  'inactive',
+                                  isStatus: true,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      SizedBox(height: 1.h),
+
+                      // Category Filter
+                      Row(
+                        children: [
+                          Text(
+                            'Categoria: ',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w500),
+                          ),
+                          SizedBox(width: 2.w),
+                          Expanded(
+                            child: Wrap(
+                              spacing: 2.w,
+                              children: [
+                                _buildFilterChip(
+                                  'Tutti',
+                                  'all',
+                                  isStatus: false,
+                                ),
+                                _buildFilterChip(
+                                  'Sponsor',
+                                  'sponsor',
+                                  isStatus: false,
+                                ),
+                                _buildFilterChip(
+                                  'Affiliazioni',
+                                  'affiliazione',
+                                  isStatus: false,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
               // Sponsors List
-              Expanded(
-                child: _isLoading
-                    ? Center(
+              _isLoading
+                  ? SliverFillRemaining(
+                      child: Center(
                         child: CircularProgressIndicator(
                           color: Theme.of(context).colorScheme.primary,
                         ),
-                      )
-                    : _buildSponsorsList(),
-              ),
+                      ),
+                    )
+                  : _buildSponsorsListSliver(),
             ],
           ),
         ),
@@ -294,18 +351,27 @@ class _AdminSponsorManagementState extends State<AdminSponsorManagement> {
     );
   }
 
-  Widget _buildFilterChip(String label, String value) {
-    final isSelected = _statusFilter == value;
+  Widget _buildFilterChip(String label, String value, {bool isStatus = true}) {
+    final isSelected = isStatus
+        ? _statusFilter == value
+        : _categoryFilter == value;
     return FilterChip(
       label: Text(label),
       selected: isSelected,
       onSelected: (selected) {
         if (selected) {
-          setState(() => _statusFilter = value);
+          setState(() {
+            if (isStatus) {
+              _statusFilter = value;
+            } else {
+              _categoryFilter = value;
+            }
+          });
         }
       },
-      selectedColor:
-          Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+      selectedColor: Theme.of(
+        context,
+      ).colorScheme.primary.withValues(alpha: 0.3),
       labelStyle: TextStyle(
         color: isSelected
             ? Theme.of(context).colorScheme.primary
@@ -315,61 +381,61 @@ class _AdminSponsorManagementState extends State<AdminSponsorManagement> {
     );
   }
 
-  Widget _buildSponsorsList() {
+  Widget _buildSponsorsListSliver() {
     final filteredSponsors = _filteredSponsors;
 
     if (filteredSponsors.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.store_outlined,
-              size: 64,
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurfaceVariant
-                  .withValues(alpha: 0.5),
-            ),
-            SizedBox(height: 2.h),
-            Text(
-              _searchQuery.isEmpty && _statusFilter == 'all'
-                  ? 'Nessuno sponsor presente'
-                  : 'Nessun risultato trovato',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-            SizedBox(height: 1.h),
-            Text(
-              _searchQuery.isEmpty && _statusFilter == 'all'
-                  ? 'Aggiungi il primo sponsor cliccando il pulsante +'
-                  : 'Prova con criteri di ricerca diversi',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+      return SliverFillRemaining(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.store_outlined,
+                size: 64,
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+              ),
+              SizedBox(height: 2.h),
+              Text(
+                _searchQuery.isEmpty && _statusFilter == 'all'
+                    ? 'common.no_sponsors'.tr()
+                    : 'common.no_results'.tr(),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              SizedBox(height: 1.h),
+              Text(
+                _searchQuery.isEmpty && _statusFilter == 'all'
+                    ? 'Aggiungi il primo sponsor cliccando il pulsante +'
+                    : 'Prova con criteri di ricerca diversi',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    return ListView.builder(
+    return SliverPadding(
       padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
-      itemCount: filteredSponsors.length,
-      itemBuilder: (context, index) {
-        final sponsor = filteredSponsors[index];
-        return SponsorCardWidget(
-          sponsor: sponsor,
-          onEdit: () => _showEditSponsorDialog(sponsor),
-          onDelete: () => _deleteSponsor(sponsor['id'], sponsor['name']),
-          onToggleStatus: () => _toggleSponsorStatus(
-            sponsor['id'],
-            sponsor['status'],
-          ),
-        );
-      },
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate((context, index) {
+          final sponsor = filteredSponsors[index];
+          return SponsorCardWidget(
+            sponsor: sponsor,
+            onEdit: () => _showEditSponsorDialog(sponsor),
+            onDelete: () => _deleteSponsor(sponsor['id'], sponsor['name']),
+            onToggleStatus: () =>
+                _toggleSponsorStatus(sponsor['id'], sponsor['status']),
+          );
+        }, childCount: filteredSponsors.length),
+      ),
     );
   }
 }

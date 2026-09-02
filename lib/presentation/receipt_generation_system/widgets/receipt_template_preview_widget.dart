@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
 
-
 class ReceiptTemplatePreviewWidget extends StatelessWidget {
   const ReceiptTemplatePreviewWidget({Key? key}) : super(key: key);
 

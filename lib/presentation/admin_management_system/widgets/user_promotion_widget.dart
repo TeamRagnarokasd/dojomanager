@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
-import '../../../theme/app_theme.dart';
 
 class UserPromotionWidget extends StatelessWidget {
   final List<dynamic> users;
@@ -60,7 +59,7 @@ class UserPromotionWidget extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Promozione Utenti',
+                      'admin_management.user_promotion_title'.tr(),
                       style: GoogleFonts.inter(
                         fontSize: 18.sp,
                         fontWeight: FontWeight.bold,
@@ -68,7 +67,7 @@ class UserPromotionWidget extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'Eleva il ruolo degli utenti esistenti',
+                      'admin_management.user_promotion_subtitle'.tr(),
                       style: GoogleFonts.inter(
                         fontSize: 14.sp,
                         color: AppTheme.textSecondaryLight,
@@ -84,7 +83,8 @@ class UserPromotionWidget extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  '${promotableUsers.length} disponibili',
+                  'admin_management.available_count'
+                      .tr(namedArgs: {'count': '${promotableUsers.length}'}),
                   style: GoogleFonts.inter(
                     fontSize: 12.sp,
                     fontWeight: FontWeight.w600,
@@ -115,7 +115,7 @@ class UserPromotionWidget extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Ruoli Disponibili per Promozione',
+                        'admin_management.promotion_roles_available'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 14.sp,
                           fontWeight: FontWeight.w600,
@@ -124,7 +124,7 @@ class UserPromotionWidget extends StatelessWidget {
                       ),
                       SizedBox(height: 4.h),
                       Text(
-                        'Istruttore • Admin • Istruttore/Admin',
+                        'admin_management.promotion_roles_list'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 12.sp,
                           color: Colors.amber.shade700,
@@ -161,7 +161,7 @@ class UserPromotionWidget extends StatelessWidget {
           ),
           SizedBox(height: 16.h),
           Text(
-            'Nessun utente da promuovere',
+            'admin_management.no_users_to_promote'.tr(),
             style: GoogleFonts.inter(
               fontSize: 16.sp,
               fontWeight: FontWeight.w500,
@@ -170,7 +170,7 @@ class UserPromotionWidget extends StatelessWidget {
           ),
           SizedBox(height: 8.h),
           Text(
-            'Tutti gli utenti hanno già ruoli appropriati',
+            'admin_management.all_users_have_roles'.tr(),
             style: GoogleFonts.inter(
               fontSize: 14.sp,
               color: AppTheme.textSecondaryLight.withAlpha(179),
@@ -215,7 +215,8 @@ class UserPromotionWidget extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      user['full_name'] ?? 'Nome non disponibile',
+                      user['full_name'] ??
+                          'registration_mgmt.name_unavailable'.tr(),
                       style: GoogleFonts.inter(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w600,
@@ -254,42 +255,42 @@ class UserPromotionWidget extends StatelessWidget {
             children: [
               Expanded(
                 child: _buildPromotionButton(
-                  'Istruttore',
+                  'class_schedule.instructor'.tr(),
                   Icons.fitness_center,
                   Colors.green,
                   () => _showPromotionConfirmation(
                     context,
                     user,
                     'instructor',
-                    'Istruttore',
+                    'class_schedule.instructor'.tr(),
                   ),
                 ),
               ),
               SizedBox(width: 8.w),
               Expanded(
                 child: _buildPromotionButton(
-                  'Admin',
+                  'roles.admin'.tr(),
                   Icons.admin_panel_settings,
                   Colors.blue,
                   () => _showPromotionConfirmation(
                     context,
                     user,
                     'admin',
-                    'Admin',
+                    'roles.admin'.tr(),
                   ),
                 ),
               ),
               SizedBox(width: 8.w),
               Expanded(
                 child: _buildPromotionButton(
-                  'Istr./Admin',
+                  'admin_management.instructor_admin_short'.tr(),
                   Icons.shield,
                   Colors.purple,
                   () => _showPromotionConfirmation(
                     context,
                     user,
                     'instructor_admin',
-                    'Istruttore/Admin',
+                    'roles.instructor_admin'.tr(),
                   ),
                 ),
               ),
@@ -334,14 +335,14 @@ class UserPromotionWidget extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          'Conferma Promozione',
+          'admin_management.confirm_promotion_title'.tr(),
           style: GoogleFonts.inter(fontWeight: FontWeight.bold),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Vuoi promuovere questo utente?'),
+            Text('admin_management.promote_confirm'.tr()),
             SizedBox(height: 16.h),
             Container(
               padding: EdgeInsets.all(12.w),
@@ -359,7 +360,8 @@ class UserPromotionWidget extends StatelessWidget {
                   Text('Email: ${user['email']}'),
                   SizedBox(height: 8.h),
                   Text('Ruolo attuale: ${_getRoleDisplayName(user['role'])}'),
-                  Text('Nuovo ruolo: $roleDisplayName'),
+                  Text('admin_management.new_role'
+                      .tr(namedArgs: {'role': roleDisplayName})),
                 ],
               ),
             ),
@@ -392,7 +394,7 @@ class UserPromotionWidget extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Annulla'),
+            child: Text('common.cancel'.tr()),
           ),
           ElevatedButton(
             onPressed: () {
@@ -403,7 +405,7 @@ class UserPromotionWidget extends StatelessWidget {
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
             ),
-            child: Text('Conferma'),
+            child: Text('common.confirm'.tr()),
           ),
         ],
       ),
@@ -430,15 +432,15 @@ class UserPromotionWidget extends StatelessWidget {
   String _getRoleDisplayName(String? role) {
     switch (role) {
       case 'admin':
-        return 'Admin';
+        return 'roles.admin'.tr();
       case 'instructor':
-        return 'Istruttore';
+        return 'dashboard.role_instructor'.tr();
       case 'instructor_admin':
         return 'Istruttore/Admin';
       case 'member':
         return 'Membro';
       case 'student':
-        return 'Studente';
+        return 'dashboard.role_student'.tr();
       default:
         return role ?? 'Sconosciuto';
     }

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_export.dart';
 import '../../services/supabase_service.dart';
-import '../../theme/app_theme.dart';
 import '../../widgets/custom_error_widget.dart';
 import './widgets/delivery_status_dashboard_widget.dart';
 import './widgets/manual_reminder_widget.dart';
@@ -63,7 +62,8 @@ class _AutomaticReminderSystemState extends State<AutomaticReminderSystem>
       await _loadDeliveryStatistics();
     } catch (error) {
       setState(() {
-        _errorMessage = 'Errore nel caricamento dei dati: $error';
+        _errorMessage =
+            'errors.load_data_error'.tr(namedArgs: {'detail': '$error'});
       });
     } finally {
       setState(() => _isLoading = false);
@@ -256,16 +256,17 @@ class _AutomaticReminderSystemState extends State<AutomaticReminderSystem>
         indicatorColor: AppTheme.primaryLight,
         labelColor: AppTheme.primaryLight,
         unselectedLabelColor: Colors.grey[600],
-        labelStyle: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-        tabs: const [
-          Tab(text: 'Statistiche'),
-          Tab(text: 'Configurazione'),
-          Tab(text: 'Template'),
-          Tab(text: 'Promemoria'),
-          Tab(text: 'Invio Manuale'),
-          Tab(text: 'Status Invio'),
-          Tab(text: 'Cronologia'),
-          Tab(text: 'Impostazioni'),
+        labelStyle: AppTheme.lightTheme.textTheme.bodyMedium
+            ?.copyWith(fontWeight: FontWeight.w600),
+        tabs: [
+          Tab(text: 'reminders.tab_statistics'.tr()),
+          Tab(text: 'reminders.tab_configuration'.tr()),
+          Tab(text: 'communication.tab_templates'.tr()),
+          Tab(text: 'reminders.tab_reminders'.tr()),
+          Tab(text: 'reminders.tab_manual_send'.tr()),
+          Tab(text: 'reminders.tab_delivery_status'.tr()),
+          Tab(text: 'reminders.tab_history'.tr()),
+          Tab(text: 'reminders.tab_settings'.tr()),
         ],
       ),
     );
@@ -288,8 +289,8 @@ class _AutomaticReminderSystemState extends State<AutomaticReminderSystem>
     return NotificationTemplateEditorWidget(
       onTemplateUpdated: () {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Template aggiornato con successo'),
+          SnackBar(
+            content: Text('reminders.template_updated'.tr()),
             backgroundColor: Colors.green,
           ),
         );
@@ -309,8 +310,8 @@ class _AutomaticReminderSystemState extends State<AutomaticReminderSystem>
       onReminderSent: () {
         _loadReminderData();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Promemoria inviato con successo'),
+          SnackBar(
+            content: Text('reminders.send_success'.tr()),
             backgroundColor: Colors.green,
           ),
         );

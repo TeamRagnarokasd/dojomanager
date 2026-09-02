@@ -64,6 +64,7 @@ class StudentRegistrationService {
     required List<Map<String, String>> emergencyContacts,
     required List<Map<String, dynamic>> medicalDocuments,
     required bool termsAccepted,
+    String? luogoNascita, // ✅ FIX: Add luogoNascita parameter
     String? parentGuardianName,
     String? parentGuardianSurname,
     String? parentGuardianCodiceFiscale,
@@ -85,6 +86,11 @@ class StudentRegistrationService {
       if (emergencyContacts.isEmpty ||
           emergencyContacts.first['nome']?.isEmpty == true) {
         throw Exception('Almeno un contatto di emergenza è obbligatorio');
+      }
+
+      // ✅ FIX: Validate birth_place is provided
+      if (luogoNascita == null || luogoNascita.trim().isEmpty) {
+        throw Exception('Luogo di nascita obbligatorio');
       }
 
       // Check if user is minor (under 18)
@@ -130,6 +136,7 @@ class StudentRegistrationService {
         data: {
           'full_name': '$nome $cognome',
           'birth_date': dataNascita.toIso8601String(),
+          'birth_place': luogoNascita, // ✅ FIX: Add birth_place to auth data
           'is_minor': isMinor,
         },
       );
@@ -141,94 +148,87 @@ class StudentRegistrationService {
       }
 
       print('👤 Creating user profile and pending registration...');
-      // Step 2: Create user profile directly (with duplicate handling)
+      // Step 2: Create user profile via SECURITY DEFINER RPC (bypasses RLS during registration)
       try {
-        // First check if profile already exists
-        final existingProfile =
-            await _supabase
-                .from('user_profiles')
-                .select('id')
-                .eq('id', authResponse.user!.id)
-                .maybeSingle();
-
-        if (existingProfile != null) {
-          print('⚠️ User profile already exists, skipping creation');
-        } else {
-          await _supabase.from('user_profiles').insert({
-            'id': authResponse.user!.id,
-            'email': email.toLowerCase().trim(),
-            'full_name': '$nome $cognome',
-            'phone': telefono,
-            'birth_date': dataNascita.toIso8601String().split('T')[0],
-            'codice_fiscale': codiceFiscale.toUpperCase(),
-            'address_line': indirizzoResidenza,
-            'city': citta,
-            'province': provincia.toUpperCase(),
-            'cap': cap,
-            'emergency_contact':
-                emergencyContacts.isNotEmpty
-                    ? emergencyContacts.first['nome'] ?? ''
-                    : '',
-            'emergency_phone':
-                emergencyContacts.isNotEmpty
-                    ? emergencyContacts.first['telefono'] ?? ''
-                    : '',
-            'is_minor': isMinor,
-            'role': 'student',
-            'status': 'pending',
-            'parent_guardian_name': isMinor ? parentGuardianName : null,
-            'parent_guardian_surname': isMinor ? parentGuardianSurname : null,
-            'parent_guardian_codice_fiscale':
+        final profileResult = await _supabase.rpc(
+          'upsert_registration_profile',
+          params: {
+            'p_user_id': authResponse.user!.id,
+            'p_email': email.toLowerCase().trim(),
+            'p_full_name': '$nome $cognome',
+            'p_first_name': nome,
+            'p_last_name': cognome,
+            'p_phone': telefono,
+            'p_birth_date': dataNascita.toIso8601String().split('T')[0],
+            'p_birth_place': luogoNascita.trim(),
+            'p_codice_fiscale': codiceFiscale.toUpperCase(),
+            'p_address_line': indirizzoResidenza,
+            'p_city': citta,
+            'p_province': provincia.toUpperCase(),
+            'p_cap': cap,
+            'p_emergency_contact': emergencyContacts.isNotEmpty
+                ? emergencyContacts.first['nome'] ?? ''
+                : '',
+            'p_emergency_phone': emergencyContacts.isNotEmpty
+                ? emergencyContacts.first['telefono'] ?? ''
+                : '',
+            'p_is_minor': isMinor,
+            'p_parent_guardian_name': isMinor ? parentGuardianName : null,
+            'p_parent_guardian_surname': isMinor ? parentGuardianSurname : null,
+            'p_parent_guardian_codice_fiscale':
                 isMinor ? parentGuardianCodiceFiscale?.toUpperCase() : null,
-            'parent_guardian_email': isMinor ? parentGuardianEmail : null,
-            'parent_guardian_phone': isMinor ? parentGuardianPhone : null,
-            'parent_guardian_relation': isMinor ? parentGuardianRelation : null,
-            'medical_certificate_status': 'pending',
-          });
-          print('✅ User profile created successfully');
+            'p_parent_guardian_email': isMinor ? parentGuardianEmail : null,
+            'p_parent_guardian_phone': isMinor ? parentGuardianPhone : null,
+            'p_parent_guardian_relation':
+                isMinor ? parentGuardianRelation : null,
+          },
+        );
+
+        if (profileResult is Map && profileResult['success'] == false) {
+          final errMsg = profileResult['error'] ?? 'Errore sconosciuto';
+          // If email already exists, surface the error
+          if (errMsg.toString().contains('già registrata')) {
+            throw Exception(errMsg);
+          }
+          // Otherwise log but continue (profile may already exist)
+          print('⚠️ upsert_registration_profile warning: $errMsg');
+        } else {
+          print('✅ User profile upserted successfully via RPC');
         }
       } catch (e) {
-        print('❌ Error creating user profile: $e');
-        // Try to clean up the auth user if profile creation failed
+        print('❌ Error upserting user profile via RPC: $e');
         try {
           await _cleanupFailedRegistration(authResponse.user!.id);
         } catch (cleanupError) {
           print(
-            'Warning: Could not cleanup failed registration: $cleanupError',
-          );
+              'Warning: Could not cleanup failed registration: $cleanupError');
         }
         throw Exception('Errore durante la creazione del profilo utente: $e');
       }
 
-      // Step 3: Create pending registration (with duplicate handling)
+      // Step 3: Create pending registration via SECURITY DEFINER RPC
       try {
-        // Check if pending registration already exists
-        final existingPending =
-            await _supabase
-                .from('pending_registrations')
-                .select('id')
-                .eq('email', email.toLowerCase().trim())
-                .maybeSingle();
-
-        if (existingPending != null) {
-          print('⚠️ Pending registration already exists, skipping creation');
-        } else {
-          await _supabase.from('pending_registrations').insert({
-            'email': email.toLowerCase().trim(),
-            'full_name': '$nome $cognome',
-            'phone': telefono,
-            'requested_role': 'student',
-            'status': 'pending',
-            'message':
+        final pendingResult = await _supabase.rpc(
+          'create_pending_registration',
+          params: {
+            'p_email': email.toLowerCase().trim(),
+            'p_full_name': '$nome $cognome',
+            'p_phone': telefono,
+            'p_message':
                 'Nuova richiesta di registrazione studente: $nome $cognome' +
-                (isMinor && parentGuardianName != null
-                    ? ' (MINORE - Genitore/Tutore: $parentGuardianName)'
-                    : ''),
-          });
-          print('✅ Pending registration created successfully');
+                    (isMinor && parentGuardianName != null
+                        ? ' (MINORE - Genitore/Tutore: $parentGuardianName)'
+                        : ''),
+          },
+        );
+        if (pendingResult is Map && pendingResult['success'] == false) {
+          print(
+              '⚠️ create_pending_registration warning: ${pendingResult['error']}');
+        } else {
+          print('✅ Pending registration created successfully via RPC');
         }
       } catch (e) {
-        print('⚠️ Warning: Could not create pending registration: $e');
+        print('⚠️ Warning: Could not create pending registration via RPC: $e');
         // Don't fail the registration if pending registration fails
       }
 
@@ -249,8 +249,7 @@ class StudentRegistrationService {
         'success': true,
         'user_id': authResponse.user!.id,
         'email': email,
-        'message':
-            'Registrazione completata con successo!\n\n'
+        'message': 'Registrazione completata con successo!\n\n'
             '📋 La tua richiesta è stata inviata agli amministratori per l\'approvazione.\n'
             '📧 Riceverai una email di conferma una volta che la richiesta sarà approvata.\n'
             '⏳ Il processo di approvazione richiede normalmente 24-48 ore.',
@@ -273,8 +272,7 @@ class StudentRegistrationService {
     String? parentGuardianName,
   ) async {
     try {
-      final message =
-          'Nuova richiesta di registrazione studente:\n\n'
+      final message = 'Nuova richiesta di registrazione studente:\n\n'
           '👤 Nome: $fullName\n'
           '📧 Email: $email\n'
           '${isMinor && parentGuardianName != null ? '👨‍👩‍👧‍👦 MINORENNE - Genitore/Tutore: $parentGuardianName\n' : ''}'
@@ -348,7 +346,21 @@ class StudentRegistrationService {
       );
 
       if (response == true) {
-        // Send approval notification to user
+        // Fetch full name for the welcome email
+        String? fullName;
+        try {
+          final profile = await _supabase
+              .from('user_profiles')
+              .select('full_name')
+              .eq('email', email.toLowerCase())
+              .maybeSingle();
+          fullName = profile?['full_name'] as String?;
+        } catch (_) {}
+
+        // Send welcome email via Resend edge function
+        await _sendWelcomeEmail(email, fullName);
+
+        // Also keep the internal communication record
         await _sendUserApprovalNotification(email, true, adminComment);
       }
 
@@ -356,6 +368,32 @@ class StudentRegistrationService {
     } catch (e) {
       print('Error approving user: $e');
       throw Exception('Errore durante l\'approvazione: $e');
+    }
+  }
+
+  /// Sends welcome email via Resend edge function
+  static Future<void> _sendWelcomeEmail(String email, String? fullName) async {
+    try {
+      final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
+      final supabaseAnonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
+
+      final response = await _supabase.functions.invoke(
+        'send-welcome-email',
+        body: {
+          'email': email,
+          'fullName': fullName ?? '',
+        },
+      );
+
+      if (response.status != 200) {
+        print(
+            '⚠️ Warning: Welcome email function returned status ${response.status}');
+      } else {
+        print('✅ Welcome email sent to $email');
+      }
+    } catch (e) {
+      // Non-blocking: log but don't fail the approval
+      print('⚠️ Warning: Failed to send welcome email to $email: $e');
     }
   }
 
@@ -391,14 +429,13 @@ class StudentRegistrationService {
     try {
       // In a real implementation, you would integrate with an email service
       // For now, we'll create a user-specific communication record
-      final message =
-          approved
-              ? '🎉 La tua registrazione è stata approvata!\n\n'
-                  'Puoi ora accedere al tuo account e iniziare a utilizzare tutti i servizi.\n\n'
-                  '${reason != null ? 'Note dall\'amministratore: $reason' : ''}'
-              : '❌ La tua richiesta di registrazione è stata rifiutata.\n\n'
-                  '${reason ?? 'Contatta l\'amministratore per maggiori informazioni.'}\n\n'
-                  'Puoi presentare una nuova richiesta se ritieni sia stato un errore.';
+      final message = approved
+          ? '🎉 La tua registrazione è stata approvata!\n\n'
+              'Puoi ora accedere al tuo account e iniziare a utilizzare tutti i servizi.\n\n'
+              '${reason != null ? 'Note dall\'amministratore: $reason' : ''}'
+          : '❌ La tua richiesta di registrazione è stata rifiutata.\n\n'
+              '${reason ?? 'Contatta l\'amministratore per maggiori informazioni.'}\n\n'
+              'Puoi presentare una nuova richiesta se ritieni sia stato un errore.';
 
       await _supabase.from('admin_communications').insert({
         'title':
@@ -421,24 +458,22 @@ class StudentRegistrationService {
   ) async {
     try {
       // Check user profile status
-      final userProfile =
-          await _supabase
-              .from('user_profiles')
-              .select('status, approved_at, approved_by, created_at')
-              .eq('email', email.toLowerCase())
-              .maybeSingle();
+      final userProfile = await _supabase
+          .from('user_profiles')
+          .select('status, approved_at, approved_by, created_at')
+          .eq('email', email.toLowerCase())
+          .maybeSingle();
 
       if (userProfile == null) {
         return null;
       }
 
       // Check if there's a pending registration entry
-      final pendingReg =
-          await _supabase
-              .from('pending_registrations')
-              .select('status, reviewed_at, reviewed_by, created_at')
-              .eq('email', email.toLowerCase())
-              .maybeSingle();
+      final pendingReg = await _supabase
+          .from('pending_registrations')
+          .select('status, reviewed_at, reviewed_by, created_at')
+          .eq('email', email.toLowerCase())
+          .maybeSingle();
 
       return {
         'user_status': userProfile['status'],
@@ -498,12 +533,11 @@ class StudentRegistrationService {
   /// Gets user profile by ID
   static Future<Map<String, dynamic>?> getUserProfile(String userId) async {
     try {
-      final response =
-          await _supabase
-              .from('user_profiles')
-              .select('*')
-              .eq('id', userId)
-              .maybeSingle();
+      final response = await _supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
 
       return response;
     } catch (e) {

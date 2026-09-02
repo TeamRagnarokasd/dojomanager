@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
 
@@ -43,7 +44,7 @@ class AvailabilityIndicatorWidget extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Posti disponibili',
+                      'class_schedule.available_spots'.tr(),
                       style: GoogleFonts.inter(
                         fontSize: 14.sp,
                         color: Colors.grey[400],

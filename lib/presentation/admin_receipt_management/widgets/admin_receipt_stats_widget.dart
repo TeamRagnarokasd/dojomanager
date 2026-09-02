@@ -22,7 +22,8 @@ class AdminReceiptStatsWidget extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Statistiche - $selectedPeriod',
+            'receipt_mgmt.stats_title'
+                .tr(namedArgs: {'period': selectedPeriod}),
             style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w700,
             ),
@@ -34,7 +35,7 @@ class AdminReceiptStatsWidget extends StatelessWidget {
             children: [
               Expanded(
                 child: _buildStatCard(
-                  title: 'Ricevute Totali',
+                  title: 'receipt_mgmt.total_receipts'.tr(),
                   value: stats['total_receipts'].toString(),
                   icon: 'receipt_long',
                   color: AppTheme.lightTheme.colorScheme.primary,
@@ -43,7 +44,7 @@ class AdminReceiptStatsWidget extends StatelessWidget {
               SizedBox(width: 4.w),
               Expanded(
                 child: _buildStatCard(
-                  title: 'Incasso Totale',
+                  title: 'receipt_mgmt.total_revenue'.tr(),
                   value:
                       '€${stats['total_amount'].toStringAsFixed(2).replaceAll('.', ',')}',
                   icon: 'euro',
@@ -60,7 +61,7 @@ class AdminReceiptStatsWidget extends StatelessWidget {
             children: [
               Expanded(
                 child: _buildStatCard(
-                  title: 'Abbonamenti Mensili',
+                  title: 'receipt_mgmt.monthly_subscriptions'.tr(),
                   value: stats['monthly_receipts'].toString(),
                   icon: 'calendar_month',
                   color: Colors.blue,
@@ -69,7 +70,7 @@ class AdminReceiptStatsWidget extends StatelessWidget {
               SizedBox(width: 4.w),
               Expanded(
                 child: _buildStatCard(
-                  title: 'Iscrizioni Annuali',
+                  title: 'receipt_mgmt.annual_enrollments'.tr(),
                   value: stats['annual_receipts'].toString(),
                   icon: 'calendar_view_year',
                   color: Colors.purple,
@@ -85,7 +86,7 @@ class AdminReceiptStatsWidget extends StatelessWidget {
             children: [
               Expanded(
                 child: _buildStatCard(
-                  title: 'Pagamenti SumUp',
+                  title: 'receipt_mgmt.sumup_payments'.tr(),
                   value: stats['sumup_payments'].toString(),
                   icon: 'credit_card',
                   color: const Color(0xFF2196F3),
@@ -94,7 +95,7 @@ class AdminReceiptStatsWidget extends StatelessWidget {
               SizedBox(width: 4.w),
               Expanded(
                 child: _buildStatCard(
-                  title: 'Pagamenti Satispay',
+                  title: 'receipt_mgmt.satispay_payments'.tr(),
                   value: stats['satispay_payments'].toString(),
                   icon: 'phone_android',
                   color: const Color(0xFFFF5722),
@@ -145,7 +146,7 @@ class AdminReceiptStatsWidget extends StatelessWidget {
                       ),
                       SizedBox(width: 3.w),
                       Text(
-                        'Performance Questo Mese',
+                        'receipt_mgmt.this_month_performance'.tr(),
                         style:
                             AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
@@ -162,7 +163,7 @@ class AdminReceiptStatsWidget extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Ricevute',
+                              'receipt_mgmt.receipts_label'.tr(),
                               style: AppTheme.lightTheme.textTheme.bodyMedium
                                   ?.copyWith(
                                 color: AppTheme
@@ -186,7 +187,7 @@ class AdminReceiptStatsWidget extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Incasso',
+                              'receipt_mgmt.revenue_label'.tr(),
                               style: AppTheme.lightTheme.textTheme.bodyMedium
                                   ?.copyWith(
                                 color: AppTheme
@@ -216,7 +217,7 @@ class AdminReceiptStatsWidget extends StatelessWidget {
           // Charts Section
           if (stats['total_receipts'] > 0) ...[
             Text(
-              'Distribuzione Pagamenti',
+              'receipt_mgmt.payment_distribution'.tr(),
               style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -237,7 +238,7 @@ class AdminReceiptStatsWidget extends StatelessWidget {
             ),
             SizedBox(height: 4.h),
             Text(
-              'Tipi di Abbonamento',
+              'receipt_mgmt.subscription_types'.tr(),
               style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -325,8 +326,8 @@ class AdminReceiptStatsWidget extends StatelessWidget {
     final totalPayments = sumupPayments + satispayPayments;
 
     if (totalPayments == 0) {
-      return const Center(
-        child: Text('Nessun dato disponibile'),
+      return Center(
+        child: Text('receipt_mgmt.no_data'.tr()),
       );
     }
 
@@ -335,7 +336,8 @@ class AdminReceiptStatsWidget extends StatelessWidget {
         sections: [
           PieChartSectionData(
             value: sumupPayments.toDouble(),
-            title: 'SumUp\n$sumupPayments',
+            title: 'receipt_mgmt.sumup_chart'
+                .tr(namedArgs: {'count': '$sumupPayments'}),
             color: const Color(0xFF2196F3),
             radius: 80,
             titleStyle: AppTheme.lightTheme.textTheme.labelMedium?.copyWith(
@@ -345,7 +347,8 @@ class AdminReceiptStatsWidget extends StatelessWidget {
           ),
           PieChartSectionData(
             value: satispayPayments.toDouble(),
-            title: 'Satispay\n$satispayPayments',
+            title: 'receipt_mgmt.satispay_chart'
+                .tr(namedArgs: {'count': '$satispayPayments'}),
             color: const Color(0xFFFF5722),
             radius: 80,
             titleStyle: AppTheme.lightTheme.textTheme.labelMedium?.copyWith(
@@ -366,8 +369,8 @@ class AdminReceiptStatsWidget extends StatelessWidget {
     final totalReceipts = monthlyReceipts + annualReceipts;
 
     if (totalReceipts == 0) {
-      return const Center(
-        child: Text('Nessun dato disponibile'),
+      return Center(
+        child: Text('receipt_mgmt.no_data'.tr()),
       );
     }
 
@@ -376,7 +379,8 @@ class AdminReceiptStatsWidget extends StatelessWidget {
         sections: [
           PieChartSectionData(
             value: monthlyReceipts.toDouble(),
-            title: 'Mensile\n$monthlyReceipts',
+            title: 'receipt_mgmt.monthly_receipts'
+                .tr(namedArgs: {'count': '$monthlyReceipts'}),
             color: Colors.blue,
             radius: 80,
             titleStyle: AppTheme.lightTheme.textTheme.labelMedium?.copyWith(
@@ -386,7 +390,8 @@ class AdminReceiptStatsWidget extends StatelessWidget {
           ),
           PieChartSectionData(
             value: annualReceipts.toDouble(),
-            title: 'Annuale\n$annualReceipts',
+            title: 'receipt_mgmt.annual_receipts'
+                .tr(namedArgs: {'count': '$annualReceipts'}),
             color: Colors.purple,
             radius: 80,
             titleStyle: AppTheme.lightTheme.textTheme.labelMedium?.copyWith(

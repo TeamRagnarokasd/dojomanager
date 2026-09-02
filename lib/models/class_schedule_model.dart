@@ -3,6 +3,7 @@ class ClassScheduleModel {
   final String id;
   final String discipline;
   final String disciplineDisplayName;
+  final String disciplineColor;
   final String instructorName;
   final String instructorEmail;
   final String instructorBio;
@@ -22,11 +23,14 @@ class ClassScheduleModel {
   final String startTime;
   final String endTime;
   final String classDate;
+  final bool isFromTemplate;
+  final String? templateId;
 
   ClassScheduleModel({
     required this.id,
     required this.discipline,
     required this.disciplineDisplayName,
+    this.disciplineColor = '#757575',
     required this.instructorName,
     required this.instructorEmail,
     required this.instructorBio,
@@ -46,6 +50,8 @@ class ClassScheduleModel {
     required this.startTime,
     required this.endTime,
     required this.classDate,
+    this.isFromTemplate = false,
+    this.templateId,
   });
 
   bool get hasAvailableSpots => enrolled < capacity && !isCancelled;
@@ -77,9 +83,18 @@ class ClassScheduleModel {
       id: json['id'] ?? '',
       discipline: json['discipline'] ?? 'bjj',
       disciplineDisplayName:
-          json['discipline_display_name'] ??
-          json['disciplineDisplayName'] ??
+          (json['discipline_display_name']?.toString().trim().isNotEmpty == true
+              ? json['discipline_display_name'].toString().trim()
+              : null) ??
+          (json['disciplineDisplayName']?.toString().trim().isNotEmpty == true
+              ? json['disciplineDisplayName'].toString().trim()
+              : null) ??
           _mapDbValueToUI(json['discipline'] ?? 'bjj'),
+      disciplineColor:
+          (json['discipline_color']?.toString().trim().isNotEmpty == true
+              ? json['discipline_color'].toString().trim()
+              : null) ??
+          _getDefaultColor(json['discipline'] ?? 'bjj'),
       instructorName: finalInstructorName,
       instructorEmail:
           json['instructor_email'] ?? json['instructorEmail'] ?? '',
@@ -114,6 +129,9 @@ class ClassScheduleModel {
           json['class_date'] ??
           json['classDate'] ??
           DateTime.now().toIso8601String().split('T')[0],
+      isFromTemplate:
+          json['is_from_template'] ?? json['isFromTemplate'] ?? false,
+      templateId: json['template_id'] ?? json['templateId'],
     );
   }
 
@@ -122,6 +140,7 @@ class ClassScheduleModel {
       'id': id,
       'discipline': discipline,
       'disciplineDisplayName': disciplineDisplayName,
+      'discipline_color': disciplineColor,
       'instructor_name': instructorName,
       'instructor_email': instructorEmail,
       'instructor_bio': instructorBio,
@@ -141,6 +160,8 @@ class ClassScheduleModel {
       'start_time': startTime,
       'end_time': endTime,
       'class_date': classDate,
+      'is_from_template': isFromTemplate,
+      'template_id': templateId,
     };
   }
 
@@ -148,6 +169,7 @@ class ClassScheduleModel {
     String? id,
     String? discipline,
     String? disciplineDisplayName,
+    String? disciplineColor,
     String? instructorName,
     String? instructorEmail,
     String? instructorBio,
@@ -167,12 +189,15 @@ class ClassScheduleModel {
     String? startTime,
     String? endTime,
     String? classDate,
+    bool? isFromTemplate,
+    String? templateId,
   }) {
     return ClassScheduleModel(
       id: id ?? this.id,
       discipline: discipline ?? this.discipline,
       disciplineDisplayName:
           disciplineDisplayName ?? this.disciplineDisplayName,
+      disciplineColor: disciplineColor ?? this.disciplineColor,
       instructorName: instructorName ?? this.instructorName,
       instructorEmail: instructorEmail ?? this.instructorEmail,
       instructorBio: instructorBio ?? this.instructorBio,
@@ -192,6 +217,8 @@ class ClassScheduleModel {
       startTime: startTime ?? this.startTime,
       endTime: endTime ?? this.endTime,
       classDate: classDate ?? this.classDate,
+      isFromTemplate: isFromTemplate ?? this.isFromTemplate,
+      templateId: templateId ?? this.templateId,
     );
   }
 
@@ -208,7 +235,24 @@ class ClassScheduleModel {
       case 'fitness':
         return 'Prep. Atletica';
       default:
-        return 'BJJ';
+        return dbDiscipline;
+    }
+  }
+
+  static String _getDefaultColor(String dbDiscipline) {
+    switch (dbDiscipline.toLowerCase()) {
+      case 'bjj':
+        return '#1565C0';
+      case 'mma':
+        return '#D32F2F';
+      case 'sambo':
+        return '#1976D2';
+      case 'grappling':
+        return '#7B1FA2';
+      case 'fitness':
+        return '#E65100';
+      default:
+        return '#757575';
     }
   }
 

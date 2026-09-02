@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
-
 class PaymentFilterChips extends StatefulWidget {
   final List<String> filterOptions;
   final String selectedFilter;

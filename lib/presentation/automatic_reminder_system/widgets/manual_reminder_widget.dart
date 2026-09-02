@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:sizer/sizer.dart';
 import '../../../services/supabase_service.dart';
 
@@ -58,7 +59,8 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
     } catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Errore nel caricamento utenti: $error'),
+          content: Text(
+              'reminders.load_users_error'.tr(namedArgs: {'error': '$error'})),
           backgroundColor: Colors.red,
         ),
       );
@@ -118,8 +120,8 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
   Future<void> _sendManualReminders() async {
     if (_selectedUsers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Seleziona almeno un utente'),
+        SnackBar(
+          content: Text('reminders.select_one_user'.tr()),
           backgroundColor: Colors.orange,
         ),
       );
@@ -135,7 +137,7 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
         await _supabaseService.client.from('payment_reminders').insert({
           'user_id': userId,
           'reminder_date': reminderDate.toIso8601String().split('T')[0],
-          'message': 'Promemoria manuale per pagamento abbonamento',
+          'message': 'reminders.manual_payment_message'.tr(),
           'is_sent': false,
         });
       }
@@ -145,7 +147,8 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
     } catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Errore nell\'invio: $error'),
+          content:
+              Text('reminders.send_error'.tr(namedArgs: {'error': '$error'})),
           backgroundColor: Colors.red,
         ),
       );
@@ -176,16 +179,16 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
           Text(
             'Invio Manuale Promemoria',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.primary,
-            ),
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
           ),
           SizedBox(height: 1.h),
           Text(
-            'Seleziona gli utenti a cui inviare un promemoria manuale',
+            'reminders.manual_send_hint'.tr(),
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.grey[600],
-            ),
+                  color: Colors.grey[600],
+                ),
           ),
           if (_selectedUsers.isNotEmpty) ...[
             SizedBox(height: 1.h),
@@ -198,9 +201,9 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
               child: Text(
                 '${_selectedUsers.length} utenti selezionati',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.bold,
-                ),
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
               ),
             ),
           ],
@@ -217,7 +220,7 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
         children: [
           TextField(
             decoration: InputDecoration(
-              hintText: 'Cerca per nome o email...',
+              hintText: 'reminders.search_name_email'.tr(),
               prefixIcon: const Icon(Icons.search),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -235,10 +238,10 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildFilterChip('Tutti', 'all'),
-                _buildFilterChip('Mensili', 'monthly'),
-                _buildFilterChip('Annuali', 'annual'),
-                _buildFilterChip('Scaduti', 'expired'),
+                _buildFilterChip('disciplines.all'.tr(), 'all'),
+                _buildFilterChip('reminders.filter_monthly'.tr(), 'monthly'),
+                _buildFilterChip('reminders.filter_annual'.tr(), 'annual'),
+                _buildFilterChip('reminders.filter_expired'.tr(), 'expired'),
               ],
             ),
           ),
@@ -286,10 +289,10 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
             ),
             SizedBox(height: 2.h),
             Text(
-              'Nessun utente trovato',
+              'reminders.no_users_found'.tr(),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Colors.grey[600],
-              ),
+                    color: Colors.grey[600],
+                  ),
             ),
           ],
         ),
@@ -311,7 +314,7 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
     final isSelected = _selectedUsers.contains(userId);
     final subscriptions = user['subscriptions'] as List? ?? [];
 
-    String subscriptionStatus = 'Nessun abbonamento';
+    String subscriptionStatus = 'reminders.no_subscription'.tr();
     Color statusColor = Colors.grey;
 
     if (subscriptions.isNotEmpty) {
@@ -324,7 +327,7 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
       final now = DateTime.now();
 
       if (endDate.isBefore(now)) {
-        subscriptionStatus = 'Scaduto';
+        subscriptionStatus = 'profile.status_expired'.tr();
         statusColor = Colors.red;
       } else {
         subscriptionStatus =
@@ -375,8 +378,8 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
         title: Text(
           user['full_name'] ?? 'Nome non disponibile',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+                fontWeight: FontWeight.bold,
+              ),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -385,8 +388,8 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
             Text(
               user['email'] ?? '',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey[600],
-              ),
+                    color: Colors.grey[600],
+                  ),
             ),
             SizedBox(height: 1.h),
             Container(
@@ -398,9 +401,9 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
               child: Text(
                 subscriptionStatus,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: statusColor,
-                  fontWeight: FontWeight.w500,
-                ),
+                      color: statusColor,
+                      fontWeight: FontWeight.w500,
+                    ),
               ),
             ),
           ],
@@ -433,8 +436,8 @@ class _ManualReminderWidgetState extends State<ManualReminderWidget> {
                   child: Text(
                     'I promemoria verranno programmati per domani',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.blue[700],
-                    ),
+                          color: Colors.blue[700],
+                        ),
                   ),
                 ),
               ],

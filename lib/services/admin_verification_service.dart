@@ -52,6 +52,16 @@ class AdminVerificationService {
   /// Verify principal admin configuration using correct function call
   Future<AdminVerificationResult> verifyPrincipalAdminConfiguration() async {
     try {
+      // Skip verification if no user is authenticated — RLS blocks anonymous reads
+      final currentUser = _client.auth.currentUser;
+      if (currentUser == null) {
+        return AdminVerificationResult(
+          success: true,
+          message:
+              'Principal admin check skipped (no authenticated user — RLS active)',
+        );
+      }
+
       // Use the database function to verify admin status with correct parameter name
       final response = await _client.rpc('get_admin_verification_status',
           params: {'admin_email': _principalAdminEmail});
@@ -169,6 +179,16 @@ class AdminVerificationService {
   /// Verify admin tables exist and are accessible
   Future<AdminVerificationResult> verifyAdminTables() async {
     try {
+      // Skip user_profiles check if no user is authenticated — RLS blocks anonymous reads
+      final currentUser = _client.auth.currentUser;
+      if (currentUser == null) {
+        return AdminVerificationResult(
+          success: true,
+          message:
+              'Admin table check skipped (no authenticated user — RLS active)',
+        );
+      }
+
       // Test connection to critical admin tables
       await _client.from('user_profiles').select('id').limit(1);
       await _client.from('admin_activity_log').select('id').limit(1);

@@ -2,9 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
-import '../../../core/app_export.dart';
 import '../../../services/instructor_service.dart';
-import '../../../theme/app_theme.dart';
 
 class InstructorCardWidget extends StatelessWidget {
   final InstructorProfile instructor;
@@ -75,7 +73,8 @@ class InstructorCardWidget extends StatelessWidget {
                                 child: Center(
                                   child: CircularProgressIndicator(
                                     valueColor: AlwaysStoppedAnimation<Color>(
-                                        const Color(0xFFFF0000)),
+                                      const Color(0xFFFF0000),
+                                    ),
                                     strokeWidth: 2,
                                   ),
                                 ),
@@ -139,114 +138,83 @@ class InstructorCardWidget extends StatelessWidget {
               ),
             ),
 
-            // Content Section
-            Expanded(
-              flex: 2,
+            // Content Section — fixed height, never expands
+            SizedBox(
+              height: 72,
               child: Padding(
-                padding: EdgeInsets.all(3.w),
+                padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Name and Experience
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          instructor.fullName ?? 'Nome non disponibile',
-                          style: AppTheme.lightTheme.textTheme.titleMedium
-                              ?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14.sp,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        if (instructor.yearsExperience != null) ...[
-                          SizedBox(height: 0.5.h),
-                          Text(
-                            instructor.experienceText,
-                            style: AppTheme.lightTheme.textTheme.bodySmall
-                                ?.copyWith(
-                              color: Colors.grey[400],
-                              fontSize: 11.sp,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-
-                    // Disciplines
-                    Wrap(
-                      spacing: 1.w,
-                      children:
-                          instructor.disciplines.take(2).map((discipline) {
-                        return Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 2.w,
-                            vertical: 0.5.w,
-                          ),
-                          decoration: BoxDecoration(
-                            color:
-                                const Color(0xFFFF0000).withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: const Color(0xFFFF0000)
-                                  .withValues(alpha: 0.5),
-                              width: 0.5,
-                            ),
-                          ),
-                          child: Text(
-                            discipline.toUpperCase(),
-                            style: AppTheme.lightTheme.textTheme.bodySmall
-                                ?.copyWith(
-                              color: const Color(0xFFFF0000),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 9.sp,
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-
-                    // Specializations (if available)
-                    if (instructor.specializations.isNotEmpty)
+                    // Role Title
+                    if (instructor.roleTitle != null &&
+                        instructor.roleTitle!.isNotEmpty)
                       Text(
-                        instructor.specializations.take(2).join(' • '),
-                        style:
-                            AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[300],
-                          fontSize: 10.sp,
+                        instructor.roleTitle!,
+                        style: const TextStyle(
+                          color: Color(0xFFFF0000),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 10,
+                          letterSpacing: 0.5,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
 
-                    // View Profile Button
-                    Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.symmetric(vertical: 2.w),
-                      decoration: BoxDecoration(
-                        color: Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: const Color(0xFFFF0000).withValues(alpha: 0.5),
-                          width: 1,
-                        ),
+                    // Name
+                    Text(
+                      instructor.fullName ?? 'Nome non disponibile',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
                       ),
-                      child: Center(
-                        child: Text(
-                          'Visualizza Profilo',
-                          style: AppTheme.lightTheme.textTheme.bodyMedium
-                              ?.copyWith(
-                            color: const Color(0xFFFF0000),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 11.sp,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+
+                    // Experience
+                    if (instructor.yearsExperience != null)
+                      Text(
+                        instructor.experienceText,
+                        style: TextStyle(
+                          color: Colors.grey[400],
+                          fontSize: 10,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+
+                    const SizedBox(height: 4),
+
+                    // First discipline chip
+                    if (instructor.disciplines.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF0000).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color:
+                                const Color(0xFFFF0000).withValues(alpha: 0.5),
+                            width: 0.5,
                           ),
                         ),
+                        child: Text(
+                          instructor.disciplines.first.toUpperCase(),
+                          style: const TextStyle(
+                            color: Color(0xFFFF0000),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 9,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -263,19 +231,12 @@ class InstructorCardWidget extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.person,
-            size: 40,
-            color: Colors.grey[600],
-          ),
+          Icon(Icons.person, size: 40, color: Colors.grey[600]),
           SizedBox(height: 1.h),
           Text(
             'Foto non\ndisponibile',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.grey[500],
-              fontSize: 10.sp,
-            ),
+            style: TextStyle(color: Colors.grey[500], fontSize: 10.sp),
           ),
         ],
       ),

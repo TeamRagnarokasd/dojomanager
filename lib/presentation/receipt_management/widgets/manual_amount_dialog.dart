@@ -274,7 +274,7 @@ class _ManualAmountDialogState extends State<ManualAmountDialog> {
         TextButton(
           onPressed: widget.onCancel,
           child: Text(
-            'Annulla',
+            'common.cancel'.tr(),
             style: AppTheme.lightTheme.textTheme.titleSmall?.copyWith(
               color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
             ),
@@ -309,11 +309,11 @@ class _ManualAmountDialogState extends State<ManualAmountDialog> {
       case 'sumup':
         return 'SumUp';
       case 'satispay':
-        return 'Satispay';
+        return 'payment.satispay'.tr();
       case 'cash':
-        return 'Contanti';
+        return 'payment.cash'.tr();
       case 'bank_transfer':
-        return 'Bonifico Bancario';
+        return 'payment.bank_transfer'.tr();
       default:
         return method;
     }

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
 
-import '../../../theme/app_theme.dart';
+import '../../../core/app_export.dart';
 
 class DocumentVerificationWidget extends StatefulWidget {
   final Map<String, dynamic> registration;
@@ -25,21 +25,21 @@ class _DocumentVerificationWidgetState
     extends State<DocumentVerificationWidget> {
   final List<Map<String, dynamic>> _documents = [
     {
-      'name': 'Certificato Medico',
+      'name': 'profile.medical_certificate'.tr(),
       'type': 'medical_certificate',
       'status': 'pending',
       'url': 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400',
       'uploadedAt': '2025-01-15',
     },
     {
-      'name': 'Documento Identità',
+      'name': 'registration_card.identity_document'.tr(),
       'type': 'identity_document',
       'status': 'pending',
       'url': 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=400',
       'uploadedAt': '2025-01-15',
     },
     {
-      'name': 'Codice Fiscale',
+      'name': 'profile.tax_code'.tr(),
       'type': 'tax_code',
       'status': 'pending',
       'url': 'https://images.unsplash.com/photo-1554224154-26032fced8bd?w=400',
@@ -129,7 +129,7 @@ class _DocumentVerificationWidgetState
                         ? () => _showRejectDialog()
                         : null,
                     icon: Icon(Icons.close, size: 16.sp),
-                    label: Text('Rifiuta Documento'),
+                    label: Text('registration_mgmt.reject_document'.tr()),
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(color: Colors.red),
                       foregroundColor: Colors.red,
@@ -144,7 +144,7 @@ class _DocumentVerificationWidgetState
                         ? () => _approveDocument()
                         : null,
                     icon: Icon(Icons.check, size: 16.sp),
-                    label: Text('Approva Documento'),
+                    label: Text('registration_mgmt.approve_document'.tr()),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
@@ -207,7 +207,8 @@ class _DocumentVerificationWidgetState
                           style: GoogleFonts.inter(fontSize: 12.sp),
                         ),
                         subtitle: Text(
-                          'Caricato il ${doc['uploadedAt']}',
+                          'common.uploaded_on'
+                              .tr(namedArgs: {'date': '${doc['uploadedAt']}'}),
                           style: GoogleFonts.inter(
                             fontSize: 10.sp,
                             color: AppTheme.textSecondaryLight,
@@ -310,7 +311,8 @@ class _DocumentVerificationWidgetState
                       ),
                       SizedBox(height: 4.h),
                       Text(
-                        'Caricato: ${doc['uploadedAt']}',
+                        'common.uploaded_label'
+                            .tr(namedArgs: {'date': '${doc['uploadedAt']}'}),
                         style: GoogleFonts.inter(
                           fontSize: 12.sp,
                           color: AppTheme.textSecondaryLight,
@@ -414,7 +416,7 @@ class _DocumentVerificationWidgetState
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          'Rifiuta Documento',
+          'registration_mgmt.reject_document'.tr(),
           style: GoogleFonts.inter(fontWeight: FontWeight.w600),
         ),
         content: Column(
@@ -438,7 +440,7 @@ class _DocumentVerificationWidgetState
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Annulla'),
+            child: Text('common.cancel'.tr()),
           ),
           ElevatedButton(
             onPressed: () {
@@ -451,7 +453,8 @@ class _DocumentVerificationWidgetState
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: Text('Rifiuta', style: TextStyle(color: Colors.white)),
+            child: Text('registration_mgmt.reject'.tr(),
+                style: TextStyle(color: Colors.white)),
           ),
         ],
       ),

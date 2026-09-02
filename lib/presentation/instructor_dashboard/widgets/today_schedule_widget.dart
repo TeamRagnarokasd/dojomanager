@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:sizer/sizer.dart';
 
@@ -58,8 +59,8 @@ class TodayScheduleWidget extends StatelessWidget {
                 Text(
                   'Programma di Oggi',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
@@ -70,9 +71,9 @@ class TodayScheduleWidget extends StatelessWidget {
                   child: Text(
                     '${todayClasses.length} Lezioni',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFFFF0000),
-                      fontWeight: FontWeight.w500,
-                    ),
+                          color: const Color(0xFFFF0000),
+                          fontWeight: FontWeight.w500,
+                        ),
                   ),
                 ),
               ],
@@ -115,7 +116,7 @@ class TodayScheduleWidget extends StatelessWidget {
             backgroundColor: const Color(0xFF00CC66),
             foregroundColor: Colors.white,
             icon: Icons.message,
-            label: 'Messaggio',
+            label: 'communication.message_label'.tr(),
             borderRadius: BorderRadius.circular(8),
           ),
           SlidableAction(
@@ -123,7 +124,7 @@ class TodayScheduleWidget extends StatelessWidget {
             backgroundColor: const Color(0xFFFF0000),
             foregroundColor: Colors.white,
             icon: Icons.edit,
-            label: 'Modifica',
+            label: 'profile.modify'.tr(),
             borderRadius: BorderRadius.circular(8),
           ),
         ],
@@ -166,7 +167,9 @@ class TodayScheduleWidget extends StatelessWidget {
                         children: [
                           Text(
                             classData['martial_art'],
-                            style: Theme.of(context).textTheme.titleSmall
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
                                 ?.copyWith(fontWeight: FontWeight.w600),
                           ),
                           Text(
@@ -174,9 +177,9 @@ class TodayScheduleWidget extends StatelessWidget {
                             style: Theme.of(
                               context,
                             ).textTheme.bodySmall?.copyWith(
-                              color: const Color(0xFFFF0000),
-                              fontWeight: FontWeight.w500,
-                            ),
+                                  color: const Color(0xFFFF0000),
+                                  fontWeight: FontWeight.w500,
+                                ),
                           ),
                         ],
                       ),
@@ -193,12 +196,11 @@ class TodayScheduleWidget extends StatelessWidget {
                               Icon(
                                 Icons.people,
                                 size: 14.sp,
-                                color:
-                                    isNearCapacity
-                                        ? isFull
-                                            ? Colors.red
-                                            : Colors.orange
-                                        : Colors.green,
+                                color: isNearCapacity
+                                    ? isFull
+                                        ? Colors.red
+                                        : Colors.orange
+                                    : Colors.green,
                               ),
                               SizedBox(width: 4.w),
                               Text(
@@ -206,14 +208,13 @@ class TodayScheduleWidget extends StatelessWidget {
                                 style: Theme.of(
                                   context,
                                 ).textTheme.bodySmall?.copyWith(
-                                  color:
-                                      isNearCapacity
+                                      color: isNearCapacity
                                           ? isFull
                                               ? Colors.red
                                               : Colors.orange
                                           : Colors.green,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                                      fontWeight: FontWeight.w500,
+                                    ),
                               ),
                             ],
                           ),
@@ -264,9 +265,9 @@ class TodayScheduleWidget extends StatelessWidget {
                           style: Theme.of(
                             context,
                           ).textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFFFF0000),
-                            fontWeight: FontWeight.w500,
-                          ),
+                                color: const Color(0xFFFF0000),
+                                fontWeight: FontWeight.w500,
+                              ),
                         ),
                       ],
                     ),
@@ -286,93 +287,95 @@ class TodayScheduleWidget extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder:
-          (context) => Container(
-            padding: EdgeInsets.all(16.w),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Lista Studenti - ${classData['martial_art']}',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+      builder: (context) => Container(
+        padding: EdgeInsets.all(16.w),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Lista Studenti - ${classData['martial_art']}',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
-                ),
-                SizedBox(height: 16.h),
-                // Mock student list
-                ...List.generate(classData['students'], (index) {
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundImage: NetworkImage(
-                        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=50&h=50&fit=crop&crop=face',
-                      ),
-                      radius: 20.sp,
-                    ),
-                    title: Text('Studente ${index + 1}'),
-                    subtitle: Text('Livello: ${classData['level']}'),
-                    trailing: Icon(Icons.check_circle, color: Colors.green),
-                  );
-                }),
-                SizedBox(height: 16.h),
-              ],
             ),
-          ),
+            SizedBox(height: 16.h),
+            // Mock student list
+            ...List.generate(classData['students'], (index) {
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundImage: NetworkImage(
+                    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=50&h=50&fit=crop&crop=face',
+                  ),
+                  radius: 20.sp,
+                ),
+                title: Text('instructor_dashboard_ui.student_n'
+                    .tr(namedArgs: {'n': '${index + 1}'})),
+                subtitle: Text('Livello: ${classData['level']}'),
+                trailing: Icon(Icons.check_circle, color: Colors.green),
+              );
+            }),
+            SizedBox(height: 16.h),
+          ],
+        ),
+      ),
     );
   }
 
   void _sendMessage(BuildContext context, Map<String, dynamic> classData) {
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('Invia Messaggio'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Invia un messaggio agli studenti della lezione ${classData['martial_art']}:',
-                ),
-                SizedBox(height: 16.h),
-                TextField(
-                  decoration: InputDecoration(
-                    labelText: 'Messaggio',
-                    hintText: 'Scrivi il tuo messaggio...',
-                  ),
-                  maxLines: 3,
-                ),
-              ],
+      builder: (context) => AlertDialog(
+        title: Text('instructor_dashboard_ui.send_message'.tr()),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'instructor_dashboard_ui.send_message_prompt'
+                  .tr(namedArgs: {'discipline': '${classData['martial_art']}'}),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Annulla'),
+            SizedBox(height: 16.h),
+            TextField(
+              decoration: InputDecoration(
+                labelText: 'communication.message_label'.tr(),
+                hintText: 'communication.message_hint'.tr(),
               ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Messaggio inviato a ${classData['students']} studenti',
-                      ),
-                      backgroundColor: const Color(0xFFFF0000),
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('common.cancel'.tr()),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Messaggio inviato a ${classData['students']} studenti',
+                  ),
                   backgroundColor: const Color(0xFFFF0000),
                 ),
-                child: Text('Invia', style: TextStyle(color: Colors.white)),
-              ),
-            ],
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF0000),
+            ),
+            child:
+                Text('common.send'.tr(), style: TextStyle(color: Colors.white)),
           ),
+        ],
+      ),
     );
   }
 
   void _editClass(BuildContext context, Map<String, dynamic> classData) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Modifica lezione ${classData['martial_art']}'),
+        content: Text('instructor_dashboard_ui.edit_lesson'
+            .tr(namedArgs: {'discipline': '${classData['martial_art']}'})),
         backgroundColor: const Color(0xFFFF0000),
       ),
     );

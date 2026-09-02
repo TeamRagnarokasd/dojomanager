@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/app_export.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:async';
 
@@ -82,7 +83,8 @@ class _RegistrationManagementSystemState
         bool matchesUrgency = true;
 
         if (selectedTypeFilter != 'all') {
-          final role = registration['requested_role']?.toString() ?? 'instructor';
+          final role =
+              registration['requested_role']?.toString() ?? 'instructor';
           if (selectedTypeFilter == 'admin') {
             matchesType = ['admin', 'instructor_admin'].contains(role);
           } else if (selectedTypeFilter == 'standard') {
@@ -92,9 +94,10 @@ class _RegistrationManagementSystemState
 
         if (selectedUrgencyFilter != 'all') {
           final createdAt = DateTime.parse(registration['created_at']);
-          final daysSinceSubmission = DateTime.now().difference(createdAt).inDays;
+          final daysSinceSubmission =
+              DateTime.now().difference(createdAt).inDays;
           final isUrgent = daysSinceSubmission >= 7;
-          
+
           if (selectedUrgencyFilter == 'urgent') {
             matchesUrgency = isUrgent;
           } else if (selectedUrgencyFilter == 'normal') {
@@ -113,18 +116,19 @@ class _RegistrationManagementSystemState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Conferma Approvazione Multipla'),
+        title: Text('registration_mgmt.confirm_bulk_approval_title'.tr()),
         content: Text(
-          'Sei sicuro di voler approvare ${selectedRegistrations.length} registrazioni?',
+          'registration_mgmt.confirm_bulk_approval_message'
+              .tr(namedArgs: {'count': '${selectedRegistrations.length}'}),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Annulla'),
+            child: Text('common.cancel'.tr()),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Approva Tutto'),
+            child: Text('registration_mgmt.approve_all'.tr()),
           ),
         ],
       ),
@@ -145,11 +149,15 @@ class _RegistrationManagementSystemState
         );
       }
 
-      _showMessage('${selectedRegistrations.length} registrazioni approvate');
+      _showMessage('registration_mgmt.bulk_approved'
+          .tr(namedArgs: {'count': '${selectedRegistrations.length}'}));
       selectedRegistrations.clear();
       await _loadPendingRegistrations();
     } catch (e) {
-      _showMessage('Errore durante l\'approvazione multipla: $e', isError: true);
+      _showMessage(
+          'registration_mgmt.bulk_approval_error'
+              .tr(namedArgs: {'error': '$e'}),
+          isError: true);
     } finally {
       setState(() => isLoading = false);
     }
@@ -161,18 +169,19 @@ class _RegistrationManagementSystemState
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Conferma Approvazione'),
+          title: Text('registration_mgmt.confirm_approval'.tr()),
           content: Text(
-            'Sei sicuro di voler approvare la registrazione di ${registration['full_name']}?',
+            'registration_mgmt.confirm_approval_message'
+                .tr(namedArgs: {'name': registration['full_name']}),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Annulla'),
+              child: Text('common.cancel'.tr()),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Approva'),
+              child: Text('registration_mgmt.approve'.tr()),
             ),
           ],
         ),
@@ -188,14 +197,17 @@ class _RegistrationManagementSystemState
       );
 
       if (success) {
-        _showMessage('Registrazione approvata con successo');
+        _showMessage('registration_mgmt.approved_success'.tr());
         await _loadPendingRegistrations(); // Refresh the list
       } else {
-        _showMessage('Errore durante l\'approvazione', isError: true);
+        _showMessage('registration_mgmt.approval_error'.tr(), isError: true);
       }
     } catch (e) {
       print('Error approving registration: $e');
-      _showMessage('Errore durante l\'approvazione: $e', isError: true);
+      _showMessage(
+          'registration_mgmt.approval_error_detail'
+              .tr(namedArgs: {'error': '$e'}),
+          isError: true);
     } finally {
       setState(() => isLoading = false);
     }
@@ -210,18 +222,20 @@ class _RegistrationManagementSystemState
         builder: (context) {
           final reasonController = TextEditingController();
           return AlertDialog(
-            title: const Text('Rifiuta Registrazione'),
+            title: Text('registration_mgmt.reject_title'.tr()),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Sei sicuro di voler rifiutare la registrazione di ${registration['full_name']}?',
+                  'registration_mgmt.reject_message'
+                      .tr(namedArgs: {'name': registration['full_name']}),
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: reasonController,
-                  decoration: const InputDecoration(
-                    labelText: 'Motivo del rifiuto (opzionale)',
+                  decoration: InputDecoration(
+                    labelText:
+                        'registration_mgmt.rejection_reason_optional'.tr(),
                     border: OutlineInputBorder(),
                   ),
                   maxLines: 3,
@@ -231,15 +245,15 @@ class _RegistrationManagementSystemState
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Annulla'),
+                child: Text('common.cancel'.tr()),
               ),
               TextButton(
                 onPressed: () {
                   rejectionReason = reasonController.text.trim();
                   Navigator.of(context).pop(true);
                 },
-                child: const Text(
-                  'Rifiuta',
+                child: Text(
+                  'registration_mgmt.reject'.tr(),
                   style: TextStyle(color: Colors.red),
                 ),
               ),
@@ -258,14 +272,17 @@ class _RegistrationManagementSystemState
       );
 
       if (success) {
-        _showMessage('Registrazione rifiutata');
+        _showMessage('registration_mgmt.rejected_success'.tr());
         await _loadPendingRegistrations(); // Refresh the list
       } else {
-        _showMessage('Errore durante il rifiuto', isError: true);
+        _showMessage('registration_mgmt.reject_error'.tr(), isError: true);
       }
     } catch (e) {
       print('Error rejecting registration: $e');
-      _showMessage('Errore durante il rifiuto: $e', isError: true);
+      _showMessage(
+          'registration_mgmt.reject_error_detail'
+              .tr(namedArgs: {'error': '$e'}),
+          isError: true);
     } finally {
       setState(() => isLoading = false);
     }
@@ -303,7 +320,7 @@ class _RegistrationManagementSystemState
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Sistema Gestione Registrazioni',
+                'registration_mgmt.title'.tr(),
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 18,
@@ -311,7 +328,7 @@ class _RegistrationManagementSystemState
                 ),
               ),
               Text(
-                'Team Ragnarok',
+                'app.name'.tr(),
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
@@ -348,7 +365,7 @@ class _RegistrationManagementSystemState
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Sistema Gestione Registrazioni',
+              'registration_mgmt.title'.tr(),
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 18,
@@ -356,7 +373,7 @@ class _RegistrationManagementSystemState
               ),
             ),
             Text(
-              'Team Ragnarok',
+              'app.name'.tr(),
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
@@ -391,7 +408,7 @@ class _RegistrationManagementSystemState
                 ),
                 SizedBox(width: 4),
                 Text(
-                  'Admin',
+                  'registration_mgmt.filter_admin'.tr(),
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.secondary,
                     fontSize: 10,
@@ -465,7 +482,7 @@ class _RegistrationManagementSystemState
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Gestione Registrazioni',
+                              'registration_mgmt.title'.tr(),
                               style: TextStyle(
                                 color: Theme.of(context).colorScheme.onSurface,
                                 fontWeight: FontWeight.w600,
@@ -473,7 +490,7 @@ class _RegistrationManagementSystemState
                               ),
                             ),
                             Text(
-                              'Approva, gestisci e monitora registrazioni',
+                              'registration_mgmt.subtitle'.tr(),
                               style: TextStyle(
                                 color: Theme.of(
                                   context,
@@ -534,7 +551,10 @@ class _RegistrationManagementSystemState
                           SizedBox(width: 16),
                         ],
                         Text(
-                          '${approvalStatistics['approved']} approvate • ${approvalStatistics['rejected']} respinte',
+                          'registration_mgmt.stats_summary'.tr(namedArgs: {
+                            'approved': '${approvalStatistics['approved']}',
+                            'rejected': '${approvalStatistics['rejected']}'
+                          }),
                           style: TextStyle(
                             color:
                                 Theme.of(context).colorScheme.onSurfaceVariant,
@@ -557,7 +577,7 @@ class _RegistrationManagementSystemState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Filtri Registrazioni',
+                    'registration_mgmt.filters_title'.tr(),
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 12,
@@ -570,7 +590,7 @@ class _RegistrationManagementSystemState
                     child: Row(
                       children: [
                         _buildFilterChip(
-                          'Tutte',
+                          'registration_mgmt.filter_all'.tr(),
                           'all',
                           selectedTypeFilter,
                           Colors.grey,
@@ -581,7 +601,7 @@ class _RegistrationManagementSystemState
                         ),
                         SizedBox(width: 8),
                         _buildFilterChip(
-                          'Standard',
+                          'registration_mgmt.filter_standard'.tr(),
                           'standard',
                           selectedTypeFilter,
                           Colors.blue,
@@ -592,7 +612,7 @@ class _RegistrationManagementSystemState
                         ),
                         SizedBox(width: 8),
                         _buildFilterChip(
-                          'Admin',
+                          'registration_mgmt.filter_admin'.tr(),
                           'admin',
                           selectedTypeFilter,
                           Colors.orange,
@@ -603,7 +623,7 @@ class _RegistrationManagementSystemState
                         ),
                         SizedBox(width: 16),
                         _buildFilterChip(
-                          'Urgenti',
+                          'registration_mgmt.filter_urgent'.tr(),
                           'urgent',
                           selectedUrgencyFilter,
                           Colors.red,
@@ -614,7 +634,7 @@ class _RegistrationManagementSystemState
                         ),
                         SizedBox(width: 8),
                         _buildFilterChip(
-                          'Normali',
+                          'registration_mgmt.filter_normal'.tr(),
                           'normal',
                           selectedUrgencyFilter,
                           Colors.green,
@@ -656,7 +676,7 @@ class _RegistrationManagementSystemState
                           ),
                           SizedBox(height: 16),
                           Text(
-                            'Nessuna registrazione in attesa',
+                            'registration_mgmt.no_pending'.tr(),
                             style: TextStyle(
                               fontSize: 16,
                               color: Theme.of(
@@ -675,7 +695,8 @@ class _RegistrationManagementSystemState
                                   _applyFilters();
                                 });
                               },
-                              child: Text('Pulisci filtri'),
+                              child:
+                                  Text('registration_mgmt.clear_filters'.tr()),
                             ),
                           ],
                         ],
@@ -728,7 +749,7 @@ class _RegistrationManagementSystemState
           ],
         ),
         label: Text(
-          'Notifiche',
+          'registration_mgmt.notifications'.tr(),
           style: GoogleFonts.inter(
             color: Colors.white,
             fontWeight: FontWeight.w600,
@@ -757,7 +778,8 @@ class _RegistrationManagementSystemState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        registration['full_name'] ?? 'Nome non disponibile',
+                        registration['full_name'] ??
+                            'registration_mgmt.name_unavailable'.tr(),
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -781,8 +803,8 @@ class _RegistrationManagementSystemState
                       color: Colors.orange,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Text(
-                      'MINORENNE',
+                    child: Text(
+                      'registration_mgmt.minor_label'.tr(),
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 12,
@@ -797,16 +819,18 @@ class _RegistrationManagementSystemState
 
             // Registration details
             if (registration['phone'] != null)
-              _buildDetailRow('Telefono', registration['phone']),
+              _buildDetailRow('profile.phone'.tr(), registration['phone']),
 
             _buildDetailRow(
-              'Data richiesta',
+              'registration_mgmt.request_date'.tr(),
               _formatDate(registration['created_at']),
             ),
 
             _buildDetailRow(
-              'Certificato medico',
-              medicalStatus == 'uploaded' ? 'Caricato' : 'Da caricare',
+              'registration_mgmt.medical_certificate'.tr(),
+              medicalStatus == 'uploaded'
+                  ? 'registration_mgmt.medical_uploaded'.tr()
+                  : 'registration_mgmt.medical_pending'.tr(),
             ),
 
             // Message from registration
@@ -823,8 +847,8 @@ class _RegistrationManagementSystemState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Dettagli registrazione:',
+                      Text(
+                        'registration_mgmt.registration_details'.tr(),
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -851,7 +875,7 @@ class _RegistrationManagementSystemState
                         ? null
                         : () => _approveRegistration(registration),
                     icon: const Icon(Icons.check),
-                    label: const Text('Approva'),
+                    label: Text('registration_mgmt.approve'.tr()),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
@@ -865,7 +889,7 @@ class _RegistrationManagementSystemState
                         ? null
                         : () => _rejectRegistration(registration),
                     icon: const Icon(Icons.close),
-                    label: const Text('Rifiuta'),
+                    label: Text('registration_mgmt.reject'.tr()),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
                       foregroundColor: Colors.white,
@@ -1055,7 +1079,8 @@ class _RegistrationManagementSystemState
                   if (_getPriorityRegistrationsCount() > 0)
                     ListTile(
                       leading: Icon(Icons.priority_high, color: Colors.red),
-                      title: Text('Registrazioni urgenti'),
+                      title:
+                          Text('registration_mgmt.urgent_registrations'.tr()),
                       subtitle: Text(
                         '${_getPriorityRegistrationsCount()} registrazioni richiedono attenzione',
                       ),
@@ -1073,7 +1098,7 @@ class _RegistrationManagementSystemState
                       Icons.admin_panel_settings,
                       color: Colors.orange,
                     ),
-                    title: Text('Richieste Admin'),
+                    title: Text('registration_mgmt.admin_requests'.tr()),
                     subtitle: Text(
                       'Richieste amministratore necessitano approvazione principale',
                     ),

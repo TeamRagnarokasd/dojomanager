@@ -4,11 +4,20 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io' if (dart.library.io) 'dart:io';
 import '../../../services/instructor_management_service.dart';
+import '../../../services/discipline_service.dart';
+import '../../../core/app_export.dart';
 
 class NewInstructorFormWidget extends StatefulWidget {
   final VoidCallback onInstructorCreated;
 
-  const NewInstructorFormWidget({super.key, required this.onInstructorCreated});
+  /// Optional pre-fill data for users promoted from user management
+  final Map<String, dynamic>? prefillData;
+
+  const NewInstructorFormWidget({
+    super.key,
+    required this.onInstructorCreated,
+    this.prefillData,
+  });
 
   @override
   State<NewInstructorFormWidget> createState() =>
@@ -37,30 +46,57 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
   Uint8List? _webImageBytes;
   bool _isCreating = false;
   bool _isPasswordVisible = false;
+  bool _disciplinesLoading = false;
 
-  final List<String> _availableDisciplines = [
-    'bjj',
-    'mma',
-    'sambo',
-    'grappling',
-    'fitness',
-  ];
+  /// True when completing the profile of a user already promoted to instructor
+  bool get _isCompletingProfile =>
+      widget.prefillData != null && widget.prefillData!['user_id'] != null;
 
-  String _getDisciplineDisplayName(String discipline) {
-    switch (discipline) {
-      case 'bjj':
-        return 'BJJ';
-      case 'mma':
-        return 'MMA';
-      case 'sambo':
-        return 'SAMBO';
-      case 'grappling':
-        return 'GRAPPLING';
-      case 'fitness':
-        return 'Prep. Atletica';
-      default:
-        return discipline.toUpperCase();
+  // Dynamic disciplines: list of {id, name}
+  List<Map<String, String>> _availableDisciplines = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDisciplines();
+    // Pre-fill fields if data is provided
+    if (widget.prefillData != null) {
+      final data = widget.prefillData!;
+      _fullNameController.text = data['full_name']?.toString() ?? '';
+      _emailController.text = data['email']?.toString() ?? '';
+      _phoneController.text = data['phone']?.toString() ?? '';
     }
+  }
+
+  Future<void> _loadDisciplines() async {
+    setState(() => _disciplinesLoading = true);
+    try {
+      final disciplines =
+          await DisciplineService.instance.getActiveDisciplines();
+      setState(() {
+        _availableDisciplines = disciplines
+            .map<Map<String, String>>(
+              (d) => {
+                'id': d['id']?.toString() ?? '',
+                'name': d['name']?.toString() ?? d['id']?.toString() ?? '',
+              },
+            )
+            .where((d) => d['id']!.isNotEmpty)
+            .toList();
+      });
+    } catch (e) {
+      // fallback: keep empty list
+    } finally {
+      setState(() => _disciplinesLoading = false);
+    }
+  }
+
+  String _getDisciplineDisplayName(String id) {
+    final match = _availableDisciplines.firstWhere(
+      (d) => d['id'] == id,
+      orElse: () => {'id': id, 'name': id.toUpperCase()},
+    );
+    return match['name'] ?? id.toUpperCase();
   }
 
   Future<bool> _validateSelectedImage() async {
@@ -103,7 +139,8 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
         final bytes = await image.readAsBytes();
         if (bytes.isEmpty) {
           _showErrorMessage(
-              'File immagine non valido. Seleziona un\'altra immagine.');
+            'student_reg_ui.invalid_image_file'.tr(),
+          );
           return;
         }
 
@@ -119,7 +156,8 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
 
         if (!exists || length == 0) {
           _showErrorMessage(
-              'File immagine non valido. Seleziona un\'altra immagine.');
+            'student_reg_ui.invalid_image_file'.tr(),
+          );
           return;
         }
 
@@ -130,10 +168,10 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
       }
 
       // Show success message
-      _showSuccessMessage('Immagine caricata con successo!');
+      _showSuccessMessage('student_reg_ui.image_upload_success'.tr());
     } catch (e) {
       print('Error picking image: $e');
-      _showErrorMessage('Errore nel caricamento dell\'immagine. Riprova.');
+      _showErrorMessage('student_reg_ui.image_load_error'.tr());
     }
   }
 
@@ -187,59 +225,79 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
     }
 
     if (_primaryDiscipline == null) {
-      _showErrorMessage('Seleziona una disciplina principale');
+      _showErrorMessage('instructor_management.select_main_discipline'.tr());
       return;
     }
 
     setState(() => _isCreating = true);
 
     try {
-      // Prepare instructor data
-      final instructorData = {
-        'full_name': _fullNameController.text.trim(),
-        'email': _emailController.text.trim(),
-        'password': _passwordController.text.trim(),
-        'phone': _phoneController.text.trim().isNotEmpty
-            ? _phoneController.text.trim()
-            : null,
-        'bio': _bioController.text.trim(),
-        'years_experience': int.tryParse(_yearsExperienceController.text),
-        'primary_discipline': _primaryDiscipline,
-        'disciplines': _selectedDisciplines,
-        'achievements': _achievementsController.text
-            .split('\n')
-            .where((line) => line.trim().isNotEmpty)
-            .toList(),
-        'certifications': _certificationsController.text
-            .split('\n')
-            .where((line) => line.trim().isNotEmpty)
-            .toList(),
-        'languages': _languagesController.text
-            .split(',')
-            .map((lang) => lang.trim())
-            .where((lang) => lang.isNotEmpty)
-            .toList(),
-        'profile_image_file': _selectedImageFile,
-        'web_image_bytes': _webImageBytes,
-      };
+      if (_isCompletingProfile) {
+        // ── Complete profile for a promoted user ──────────────────────────
+        final userId = widget.prefillData!['user_id'] as String;
+        final profileData = {
+          'bio': _bioController.text.trim(),
+          'years_experience': int.tryParse(_yearsExperienceController.text),
+          'primary_discipline': _primaryDiscipline,
+          'disciplines': _selectedDisciplines,
+          'achievements': _achievementsController.text
+              .split('\n')
+              .where((line) => line.trim().isNotEmpty)
+              .toList(),
+          'certifications': _certificationsController.text
+              .split('\n')
+              .where((line) => line.trim().isNotEmpty)
+              .toList(),
+          'languages': _languagesController.text
+              .split(',')
+              .map((lang) => lang.trim())
+              .where((lang) => lang.isNotEmpty)
+              .toList(),
+          'profile_image_file': _selectedImageFile,
+          'web_image_bytes': _webImageBytes,
+        };
 
-      // Add detailed logging to track the creation process
-      print(
-          '🔄 Starting instructor creation with data: ${instructorData.keys.toList()}');
+        await _instructorService.completeInstructorProfile(userId, profileData);
+      } else {
+        // ── Create a brand-new instructor account ─────────────────────────
+        final instructorData = {
+          'full_name': _fullNameController.text.trim(),
+          'email': _emailController.text.trim(),
+          'password': _passwordController.text.trim(),
+          'phone': _phoneController.text.trim().isNotEmpty
+              ? _phoneController.text.trim()
+              : null,
+          'bio': _bioController.text.trim(),
+          'years_experience': int.tryParse(_yearsExperienceController.text),
+          'primary_discipline': _primaryDiscipline,
+          'disciplines': _selectedDisciplines,
+          'achievements': _achievementsController.text
+              .split('\n')
+              .where((line) => line.trim().isNotEmpty)
+              .toList(),
+          'certifications': _certificationsController.text
+              .split('\n')
+              .where((line) => line.trim().isNotEmpty)
+              .toList(),
+          'languages': _languagesController.text
+              .split(',')
+              .map((lang) => lang.trim())
+              .where((lang) => lang.isNotEmpty)
+              .toList(),
+          'profile_image_file': _selectedImageFile,
+          'web_image_bytes': _webImageBytes,
+        };
 
-      await _instructorService.createNewInstructor(instructorData);
-
-      print('✅ Instructor creation completed successfully');
+        await _instructorService.createNewInstructor(instructorData);
+      }
 
       if (mounted) {
-        // Clear form after successful creation
         _clearForm();
-
-        // Show detailed success message with password info
         _showSuccessMessage(
-            'Nuovo istruttore creato con successo! L\'istruttore può ora accedere con la password fornita.');
-
-        // Close dialog and trigger refresh with a slight delay to ensure success message is visible
+          _isCompletingProfile
+              ? 'Profilo istruttore completato con successo!'
+              : 'student_reg_ui.instructor_created_success'.tr(),
+        );
         Future.delayed(const Duration(milliseconds: 1500), () {
           if (mounted) {
             Navigator.of(context).pop();
@@ -248,25 +306,25 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
         });
       }
     } catch (e) {
-      print('❌ Error creating instructor: $e');
-
+      print('❌ Error: $e');
       if (mounted) {
-        // Provide more specific error messages
-        String errorMessage = 'Errore nella creazione dell\'istruttore.';
+        String errorMessage = _isCompletingProfile
+            ? 'Errore nel completamento del profilo: ${e.toString()}'
+            : 'student_reg_ui.instructor_create_error'.tr();
 
-        if (e.toString().contains('email esiste già')) {
-          errorMessage =
-              'Un istruttore con questa email esiste già nel sistema.';
-        } else if (e.toString().contains('permission denied') ||
-            e.toString().contains('amministratori')) {
-          errorMessage =
-              'Non hai i permessi necessari per creare un nuovo istruttore.';
-        } else if (e.toString().contains('network') ||
-            e.toString().contains('connection')) {
-          errorMessage =
-              'Errore di connessione. Verifica la tua connessione internet e riprova.';
-        } else {
-          errorMessage = 'Errore nella creazione: ${e.toString()}';
+        if (!_isCompletingProfile) {
+          if (e.toString().contains('email esiste già')) {
+            errorMessage = 'student_reg_ui.email_already_exists'.tr();
+          } else if (e.toString().contains('permission denied') ||
+              e.toString().contains('amministratori')) {
+            errorMessage = 'student_reg_ui.no_permission_create'.tr();
+          } else if (e.toString().contains('network') ||
+              e.toString().contains('connection')) {
+            errorMessage = 'student_reg_ui.connection_error'.tr();
+          } else {
+            errorMessage =
+                '${'student_reg_ui.instructor_create_error'.tr()} ${e.toString()}';
+          }
         }
 
         _showErrorMessage(errorMessage);
@@ -306,14 +364,10 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.camera_alt_outlined,
-              color: Colors.grey,
-              size: 35,
-            ),
+            const Icon(Icons.camera_alt_outlined, color: Colors.grey, size: 35),
             const SizedBox(height: 6),
             Text(
-              'Aggiungi\nFoto',
+              'student_reg_ui.add_photo'.tr(),
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                 fontSize: 11,
@@ -393,12 +447,9 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Immagine\nnon valida',
+                'student_reg_ui.invalid_image'.tr(),
                 textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  color: Colors.orange,
-                ),
+                style: GoogleFonts.inter(fontSize: 10, color: Colors.orange),
               ),
             ],
           ),
@@ -433,8 +484,8 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
                     ),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
-                    Icons.person_add,
+                  child: Icon(
+                    _isCompletingProfile ? Icons.edit_note : Icons.person_add,
                     color: Colors.white,
                     size: 24,
                   ),
@@ -445,7 +496,9 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Nuovo Istruttore',
+                        _isCompletingProfile
+                            ? 'Completa Profilo Istruttore'
+                            : 'student_reg_ui.new_instructor'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
@@ -453,7 +506,9 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
                         ),
                       ),
                       Text(
-                        'Crea un profilo istruttore completo',
+                        _isCompletingProfile
+                            ? 'Inserisci le informazioni pubbliche del profilo'
+                            : 'student_reg_ui.create_instructor_profile'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 14,
                           color: Colors.grey[400],
@@ -484,7 +539,7 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Enhanced Profile Image Section
+                      // ── Profile image ──────────────────────────────────
                       Center(
                         child: Column(
                           children: [
@@ -550,8 +605,8 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
                                   const SizedBox(width: 6),
                                   Text(
                                     _selectedImageFile != null
-                                        ? 'Immagine selezionata ✓'
-                                        : 'Tocca per aggiungere foto',
+                                        ? 'student_reg_ui.image_selected'.tr()
+                                        : 'student_reg_ui.tap_add_photo'.tr(),
                                     style: GoogleFonts.inter(
                                       fontSize: 12,
                                       color: _selectedImageFile != null
@@ -568,106 +623,161 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
                       ),
                       const SizedBox(height: 32),
 
-                      // Personal Information
-                      _buildSectionTitle(
-                        'Informazioni Personali',
-                        Icons.person_outline,
-                      ),
-                      const SizedBox(height: 16),
-
-                      _buildTextFormField(
-                        controller: _fullNameController,
-                        label: 'Nome Completo *',
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Inserisci il nome completo';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      _buildTextFormField(
-                        controller: _emailController,
-                        label: 'Email *',
-                        keyboardType: TextInputType.emailAddress,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Inserisci l\'email';
-                          }
-                          if (!value.contains('@')) {
-                            return 'Inserisci un\'email valida';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // NEW: Password field
-                      _buildPasswordField(
-                        controller: _passwordController,
-                        label: 'Password *',
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Inserisci una password';
-                          }
-                          if (value.length < 6) {
-                            return 'La password deve avere almeno 6 caratteri';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      // Password help text
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withAlpha(26),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue.withAlpha(77)),
+                      // ── Personal info — shown only when creating a NEW instructor ──
+                      if (!_isCompletingProfile) ...[
+                        _buildSectionTitle(
+                          'profile.personal_info'.tr(),
+                          Icons.person_outline,
                         ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.info_outline,
-                                color: Colors.blue, size: 16),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'L\'istruttore potrà accedere con questa password e modificarla dal proprio profilo',
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  color: Colors.blue,
-                                  fontWeight: FontWeight.w500,
+                        const SizedBox(height: 16),
+                        _buildTextFormField(
+                          controller: _fullNameController,
+                          label: 'student_reg_ui.full_name_required'.tr(),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'validation.enter_full_name'.tr();
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        _buildTextFormField(
+                          controller: _emailController,
+                          label: 'student_reg_ui.email_required_label'.tr(),
+                          keyboardType: TextInputType.emailAddress,
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'validation.enter_email'.tr();
+                            }
+                            if (!value.contains('@')) {
+                              return 'validation.enter_valid_email'.tr();
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        _buildPasswordField(
+                          controller: _passwordController,
+                          label: 'student_reg_ui.password_required_label'.tr(),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'validation.enter_password'.tr();
+                            }
+                            if (value.length < 6) {
+                              return 'auth.password_min_length'.tr();
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withAlpha(26),
+                            borderRadius: BorderRadius.circular(8),
+                            border:
+                                Border.all(color: Colors.blue.withAlpha(77)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.info_outline,
+                                color: Colors.blue,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'L\'istruttore potrà accedere con questa password e modificarla dal proprio profilo',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    color: Colors.blue,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
+                        const SizedBox(height: 16),
+                        _buildTextFormField(
+                          controller: _phoneController,
+                          label: 'profile.phone'.tr(),
+                          keyboardType: TextInputType.phone,
+                        ),
+                        const SizedBox(height: 24),
+                      ],
 
-                      _buildTextFormField(
-                        controller: _phoneController,
-                        label: 'Telefono',
-                        keyboardType: TextInputType.phone,
-                      ),
-                      const SizedBox(height: 24),
+                      // ── When completing profile: show a read-only name banner ──
+                      if (_isCompletingProfile) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2A2A2A),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: const Color(0xFFFF0000).withAlpha(100),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.person,
+                                color: Color(0xFFFF0000),
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _fullNameController.text.isNotEmpty
+                                          ? _fullNameController.text
+                                          : 'Istruttore',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    if (_emailController.text.isNotEmpty)
+                                      Text(
+                                        _emailController.text,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 12,
+                                          color: Colors.grey[400],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
 
-                      // Professional Information
+                      // ── Professional Information ───────────────────────
                       _buildSectionTitle(
-                        'Informazioni Professionali',
+                        'student_reg_ui.professional_info'.tr(),
                         Icons.work_outline,
                       ),
                       const SizedBox(height: 16),
 
                       _buildTextFormField(
                         controller: _bioController,
-                        label: 'Biografia *',
+                        label: 'student_reg_ui.biography_required'.tr(),
                         maxLines: 3,
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return 'Inserisci una biografia';
+                            return 'validation.enter_biography'.tr();
                           }
                           return null;
                         },
@@ -676,28 +786,31 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
 
                       _buildTextFormField(
                         controller: _yearsExperienceController,
-                        label: 'Anni di Esperienza *',
+                        label: 'student_reg_ui.experience_years_required'.tr(),
                         keyboardType: TextInputType.number,
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
-                            return 'Inserisci gli anni di esperienza';
+                            return 'validation.enter_experience_years'.tr();
                           }
                           if (int.tryParse(value) == null) {
-                            return 'Inserisci un numero valido';
+                            return 'validation.enter_valid_number'.tr();
                           }
                           return null;
                         },
                       ),
                       const SizedBox(height: 24),
 
-                      // Enhanced Disciplines Section
-                      _buildSectionTitle('Discipline', Icons.fitness_center),
+                      // ── Disciplines ───────────────────────────────────
+                      _buildSectionTitle(
+                          'seasonal_schedule.discipline_short'.tr(),
+                          Icons.fitness_center),
                       const SizedBox(height: 16),
 
                       _buildDropdownField(
-                        label: 'Disciplina Principale *',
+                        label: 'student_reg_ui.main_discipline_required'.tr(),
                         value: _primaryDiscipline,
-                        items: _availableDisciplines,
+                        items:
+                            _availableDisciplines.map((d) => d['id']!).toList(),
                         onChanged: (value) {
                           setState(() {
                             _primaryDiscipline = value;
@@ -711,7 +824,7 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
                       const SizedBox(height: 16),
 
                       Text(
-                        'Tutte le Discipline',
+                        'student_reg_ui.all_disciplines'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 14,
                           color: Colors.grey[300],
@@ -719,78 +832,87 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: _availableDisciplines.map((discipline) {
-                          final isSelected = _selectedDisciplines.contains(
-                            discipline,
-                          );
-                          return FilterChip(
-                            label: Text(
-                              _getDisciplineDisplayName(discipline),
-                              style: GoogleFonts.inter(
-                                color: isSelected
-                                    ? Colors.white
-                                    : Colors.grey[400],
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
+                      _disciplinesLoading
+                          ? const Center(
+                              child: CircularProgressIndicator(
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Color(0xFFFF0000),
+                                ),
                               ),
+                            )
+                          : Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: _availableDisciplines.map((discipline) {
+                                final id = discipline['id']!;
+                                final displayName = discipline['name']!;
+                                final isSelected =
+                                    _selectedDisciplines.contains(id);
+                                return FilterChip(
+                                  label: Text(
+                                    displayName.toUpperCase(),
+                                    style: GoogleFonts.inter(
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.grey[400],
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  selected: isSelected,
+                                  onSelected: (selected) {
+                                    setState(() {
+                                      if (selected) {
+                                        _selectedDisciplines.add(id);
+                                      } else {
+                                        if (id != _primaryDiscipline) {
+                                          _selectedDisciplines.remove(id);
+                                        }
+                                      }
+                                    });
+                                  },
+                                  selectedColor: const Color(0xFFFF0000),
+                                  checkmarkColor: Colors.white,
+                                  backgroundColor: const Color(0xFF3A3A3A),
+                                  side: BorderSide(
+                                    color: isSelected
+                                        ? const Color(0xFFFF0000)
+                                        : Colors.grey[600]!,
+                                  ),
+                                  elevation: isSelected ? 4 : 0,
+                                  shadowColor: const Color(
+                                    0xFFFF0000,
+                                  ).withAlpha(77),
+                                );
+                              }).toList(),
                             ),
-                            selected: isSelected,
-                            onSelected: (selected) {
-                              setState(() {
-                                if (selected) {
-                                  _selectedDisciplines.add(discipline);
-                                } else {
-                                  if (discipline != _primaryDiscipline) {
-                                    _selectedDisciplines.remove(discipline);
-                                  }
-                                }
-                              });
-                            },
-                            selectedColor: const Color(0xFFFF0000),
-                            checkmarkColor: Colors.white,
-                            backgroundColor: const Color(0xFF3A3A3A),
-                            side: BorderSide(
-                              color: isSelected
-                                  ? const Color(0xFFFF0000)
-                                  : Colors.grey[600]!,
-                            ),
-                            elevation: isSelected ? 4 : 0,
-                            shadowColor: const Color(
-                              0xFFFF0000,
-                            ).withAlpha(77),
-                          );
-                        }).toList(),
-                      ),
                       const SizedBox(height: 24),
 
-                      // Additional Information
+                      // ── Additional Information ────────────────────────
                       _buildSectionTitle(
-                        'Informazioni Aggiuntive',
+                        'student_reg_ui.additional_info'.tr(),
                         Icons.info_outline,
                       ),
                       const SizedBox(height: 16),
 
                       _buildTextFormField(
                         controller: _achievementsController,
-                        label: 'Risultati e Riconoscimenti (uno per riga)',
+                        label: 'student_reg_ui.achievements_label'.tr(),
                         maxLines: 3,
                       ),
                       const SizedBox(height: 16),
 
                       _buildTextFormField(
                         controller: _certificationsController,
-                        label: 'Certificazioni (una per riga)',
+                        label: 'student_reg_ui.certifications_label'.tr(),
                         maxLines: 3,
                       ),
                       const SizedBox(height: 16),
 
                       _buildTextFormField(
                         controller: _languagesController,
-                        label: 'Lingue (separate da virgola)',
-                        hintText: 'Italiano, Inglese, Spagnolo...',
+                        label: 'student_reg_ui.languages_label'.tr(),
+                        hintText: 'instructor_management.languages_hint'.tr(),
                       ),
                     ],
                   ),
@@ -798,7 +920,7 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
               ),
             ),
 
-            // Enhanced Action Buttons
+            // ── Action Buttons ─────────────────────────────────────────
             const SizedBox(height: 24),
             Row(
               children: [
@@ -815,7 +937,7 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
                       ),
                     ),
                     child: Text(
-                      'Annulla',
+                      'common.cancel'.tr(),
                       style: GoogleFonts.inter(
                         color: Colors.grey[300],
                         fontWeight: FontWeight.w600,
@@ -854,7 +976,7 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
                               ),
                               const SizedBox(width: 12),
                               Text(
-                                'Creazione...',
+                                'student_reg_ui.creating'.tr(),
                                 style: GoogleFonts.inter(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
@@ -866,14 +988,18 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
                         : Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(
-                                Icons.person_add,
+                              Icon(
+                                _isCompletingProfile
+                                    ? Icons.check_circle_outline
+                                    : Icons.person_add,
                                 size: 20,
                                 color: Colors.white,
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                'Crea Istruttore',
+                                _isCompletingProfile
+                                    ? 'Salva Profilo'
+                                    : 'student_reg_ui.create_instructor'.tr(),
                                 style: GoogleFonts.inter(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
@@ -996,31 +1122,50 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: const Color(0xFF333333)),
           ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: value,
-              style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
-              dropdownColor: const Color(0xFF2A2A2A),
-              icon: const Icon(Icons.arrow_drop_down, color: Colors.grey),
-              hint: Text(
-                'Seleziona disciplina',
-                style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 14),
-              ),
-              items: items.map((item) {
-                return DropdownMenuItem(
-                  value: item,
-                  child: Text(
-                    _getDisciplineDisplayName(item),
-                    style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontSize: 14,
+          child: _disciplinesLoading
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(
+                    child: SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFFFF0000),
+                        ),
+                        strokeWidth: 2,
+                      ),
                     ),
                   ),
-                );
-              }).toList(),
-              onChanged: onChanged,
-            ),
-          ),
+                )
+              : DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: items.contains(value) ? value : null,
+                    style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
+                    dropdownColor: const Color(0xFF2A2A2A),
+                    icon: const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                    hint: Text(
+                      'student_reg_ui.select_discipline'.tr(),
+                      style: GoogleFonts.inter(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                    ),
+                    items: items.map((item) {
+                      return DropdownMenuItem(
+                        value: item,
+                        child: Text(
+                          _getDisciplineDisplayName(item).toUpperCase(),
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: onChanged,
+                  ),
+                ),
         ),
       ],
     );
@@ -1050,7 +1195,7 @@ class _NewInstructorFormWidgetState extends State<NewInstructorFormWidget> {
           obscureText: !_isPasswordVisible,
           validator: validator,
           decoration: InputDecoration(
-            hintText: 'Inserisci la password per l\'accesso',
+            hintText: 'student_reg_ui.password_access_hint'.tr(),
             hintStyle: GoogleFonts.inter(color: Colors.grey[600], fontSize: 14),
             filled: true,
             fillColor: const Color(0xFF2A2A2A),

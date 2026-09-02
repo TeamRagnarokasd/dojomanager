@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:sizer/sizer.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
 import '../../../services/supabase_service.dart';
@@ -58,6 +58,25 @@ class _PendingRegistrationsWidgetState
         'reviewed_by': client.auth.currentUser?.id,
       }).eq('id', registration['id']);
 
+      print('Aggiornamento DB riuscito, provo a inviare la mail...');
+
+      // Send welcome email via Edge Function
+      try {
+        final email = registration['email'] as String?;
+        final fullName = registration['full_name'] as String?;
+        if (email != null && email.isNotEmpty) {
+          final responseFunction = await client.functions.invoke(
+            'send-welcome-email',
+            body: {'email': email, 'fullName': fullName ?? ''},
+          );
+          print('Risposta funzione: ${responseFunction.data}');
+        } else {
+          print('Email non disponibile nel record, chiamata funzione saltata.');
+        }
+      } catch (e) {
+        print('Errore chiamata funzione: $e');
+      }
+
       Fluttertoast.showToast(
         msg: "Registrazione approvata con successo",
         toastLength: Toast.LENGTH_SHORT,
@@ -66,6 +85,7 @@ class _PendingRegistrationsWidgetState
 
       await _loadPendingRegistrations();
     } catch (e) {
+      print('Errore aggiornamento DB: $e');
       debugPrint('Error approving registration: $e');
       Fluttertoast.showToast(
         msg: "Errore nell'approvazione",
@@ -114,7 +134,9 @@ class _PendingRegistrationsWidgetState
             padding: EdgeInsets.all(3.w),
             decoration: BoxDecoration(
               color: AppTheme.primary,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(12),
+              ),
             ),
             child: Row(
               children: [

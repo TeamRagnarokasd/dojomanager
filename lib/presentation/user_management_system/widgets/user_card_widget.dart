@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
 
-import '../../../theme/app_theme.dart';
+import '../../../core/app_export.dart';
 
 class UserCardWidget extends StatelessWidget {
   final Map<String, dynamic> user;
@@ -20,6 +20,8 @@ class UserCardWidget extends StatelessWidget {
   final VoidCallback onGenerateReport;
   final VoidCallback onDeleteUser;
   final VoidCallback onFullProfileEdit;
+  final VoidCallback? onTogglePasspartout;
+  final VoidCallback? onViewReceipts;
 
   const UserCardWidget({
     super.key,
@@ -38,6 +40,8 @@ class UserCardWidget extends StatelessWidget {
     required this.onGenerateReport,
     required this.onDeleteUser,
     required this.onFullProfileEdit,
+    this.onTogglePasspartout,
+    this.onViewReceipts,
   });
 
   @override
@@ -59,10 +63,9 @@ class UserCardWidget extends StatelessWidget {
             padding: EdgeInsets.all(16.w),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12.0),
-              border:
-                  isSelected
-                      ? Border.all(color: AppTheme.primaryColor, width: 2)
-                      : null,
+              border: isSelected
+                  ? Border.all(color: AppTheme.primaryColor, width: 2)
+                  : null,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -76,19 +79,17 @@ class UserCardWidget extends StatelessWidget {
                         children: [
                           CircleAvatar(
                             backgroundColor: _getRoleColor(role).withAlpha(26),
-                            backgroundImage:
-                                user['profile_image_url'] != null
-                                    ? NetworkImage(user['profile_image_url'])
-                                    : null,
+                            backgroundImage: user['profile_image_url'] != null
+                                ? NetworkImage(user['profile_image_url'])
+                                : null,
                             radius: 28.w,
-                            child:
-                                user['profile_image_url'] == null
-                                    ? Icon(
-                                      _getRoleIcon(role),
-                                      color: _getRoleColor(role),
-                                      size: 24.sp,
-                                    )
-                                    : null,
+                            child: user['profile_image_url'] == null
+                                ? Icon(
+                                    _getRoleIcon(role),
+                                    color: _getRoleColor(role),
+                                    size: 24.sp,
+                                  )
+                                : null,
                           ),
                           if (isSelected)
                             Positioned(
@@ -195,7 +196,7 @@ class UserCardWidget extends StatelessWidget {
                     children: [
                       // BUTTON 1: "Modifica Veloce" - Opens quick edit popup
                       _buildActionChip(
-                        label: 'Modifica Veloce',
+                        label: 'user_mgmt.quick_edit'.tr(),
                         icon: Icons.flash_on,
                         color: Colors.orange,
                         onTap: onLongPress, // Opens quick edit dialog
@@ -208,6 +209,14 @@ class UserCardWidget extends StatelessWidget {
                         color: Colors.blue,
                         onTap: onFullProfileEdit, // Opens full profile screen
                       ),
+                      SizedBox(width: 8.w),
+                      // BUTTON 3: "Ricevute" - Opens receipt dropdown
+                      _buildActionChip(
+                        label: 'Ricevute',
+                        icon: Icons.receipt_long,
+                        color: Colors.teal,
+                        onTap: onViewReceipts ?? () {},
+                      ),
                       if ((isPrincipalAdmin ||
                               user['role']?.toString() == 'admin' ||
                               user['role']?.toString() == 'instructor_admin') &&
@@ -215,7 +224,7 @@ class UserCardWidget extends StatelessWidget {
                           user['role']?.toString() != 'principal_admin') ...[
                         SizedBox(width: 8.w),
                         _buildActionChip(
-                          label: 'Elimina',
+                          label: 'common.delete'.tr(),
                           icon: Icons.delete,
                           color: Colors.red,
                           onTap: onDeleteUser,
@@ -225,10 +234,25 @@ class UserCardWidget extends StatelessWidget {
                           user['role']?.toString() != 'principal_admin') ...[
                         SizedBox(width: 8.w),
                         _buildActionChip(
-                          label: 'Ruolo',
+                          label: 'profile.role'.tr(),
                           icon: Icons.admin_panel_settings,
                           color: Colors.purple,
                           onTap: onChangeRole,
+                        ),
+                      ],
+                      if (isPrincipalAdmin &&
+                          user['role']?.toString() != 'principal_admin' &&
+                          onTogglePasspartout != null) ...[
+                        SizedBox(width: 8.w),
+                        _buildActionChip(
+                          label: user['booking_passpartout'] == true
+                              ? 'Passpartout ON'
+                              : 'Passpartout',
+                          icon: Icons.key,
+                          color: user['booking_passpartout'] == true
+                              ? Colors.amber
+                              : Colors.grey,
+                          onTap: onTogglePasspartout!,
                         ),
                       ],
                     ],
@@ -260,7 +284,7 @@ class UserCardWidget extends StatelessWidget {
                         onSuspendAccount,
                       ),
                       _buildQuickAction(
-                        'Messaggio',
+                        'communication.message_label'.tr(),
                         Icons.message,
                         onSendMessage,
                       ),
@@ -411,26 +435,26 @@ class UserCardWidget extends StatelessWidget {
 
         if (daysUntilExpiry < 0) {
           return {
-            'label': 'Scaduto',
+            'label': 'profile.status_expired'.tr(),
             'color': Colors.red,
             'icon': Icons.error_outline,
           };
         } else if (daysUntilExpiry <= 60) {
           return {
-            'label': 'In Scadenza',
+            'label': 'profile.status_expiring_short'.tr(),
             'color': Colors.orange,
             'icon': Icons.warning_amber_outlined,
           };
         } else {
           return {
-            'label': 'Valido',
+            'label': 'profile.status_valid'.tr(),
             'color': Colors.green,
             'icon': Icons.check_circle_outline,
           };
         }
       } catch (e) {
         return {
-          'label': 'Errore',
+          'label': 'user_mgmt.error_label'.tr(),
           'color': Colors.grey,
           'icon': Icons.error_outline,
         };
@@ -438,7 +462,7 @@ class UserCardWidget extends StatelessWidget {
     }
 
     return {
-      'label': 'Caricato',
+      'label': 'common.uploaded'.tr(),
       'color': Colors.blue,
       'icon': Icons.description_outlined,
     };
@@ -451,7 +475,7 @@ class UserCardWidget extends StatelessWidget {
 
     if (subscriptionData == null) {
       return {
-        'label': 'Nessuno',
+        'label': 'common.none'.tr(),
         'color': Colors.grey,
         'icon': Icons.cancel_outlined,
       };
@@ -462,7 +486,7 @@ class UserCardWidget extends StatelessWidget {
 
     if (!isActive) {
       return {
-        'label': 'Inattivo',
+        'label': 'common.inactive'.tr(),
         'color': Colors.grey,
         'icon': Icons.cancel_outlined,
       };
@@ -475,26 +499,26 @@ class UserCardWidget extends StatelessWidget {
 
         if (daysUntilExpiry < 0) {
           return {
-            'label': 'Scaduto',
+            'label': 'profile.status_expired'.tr(),
             'color': Colors.red,
             'icon': Icons.error_outline,
           };
         } else if (daysUntilExpiry <= 7) {
           return {
-            'label': 'In Scadenza',
+            'label': 'profile.status_expiring_short'.tr(),
             'color': Colors.orange,
             'icon': Icons.warning_amber_outlined,
           };
         } else {
           return {
-            'label': 'Attivo',
+            'label': 'common.active'.tr(),
             'color': Colors.green,
             'icon': Icons.check_circle_outline,
           };
         }
       } catch (e) {
         return {
-          'label': 'Errore',
+          'label': 'user_mgmt.error_label'.tr(),
           'color': Colors.grey,
           'icon': Icons.error_outline,
         };
@@ -502,7 +526,7 @@ class UserCardWidget extends StatelessWidget {
     }
 
     return {
-      'label': 'Attivo',
+      'label': 'common.active'.tr(),
       'color': Colors.green,
       'icon': Icons.check_circle_outline,
     };
@@ -543,16 +567,16 @@ class UserCardWidget extends StatelessWidget {
   String _getRoleLabel(String role) {
     switch (role) {
       case 'principal_admin':
-        return 'Admin Principale';
+        return 'dashboard.role_principal_admin'.tr();
       case 'admin':
-        return 'Amministratore';
+        return 'roles.admin'.tr();
       case 'instructor_admin':
-        return 'Istruttore Admin';
+        return 'dashboard.role_instructor_admin'.tr();
       case 'instructor':
-        return 'Istruttore';
+        return 'dashboard.role_instructor'.tr();
       case 'student':
       default:
-        return 'Studente';
+        return 'dashboard.role_student'.tr();
     }
   }
 }

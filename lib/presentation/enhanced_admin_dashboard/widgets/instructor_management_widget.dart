@@ -3,6 +3,7 @@ import 'package:sizer/sizer.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../services/instructor_management_service.dart';
+import '../../../core/app_export.dart';
 
 class InstructorManagementWidget extends StatefulWidget {
   const InstructorManagementWidget({Key? key}) : super(key: key);
@@ -53,7 +54,8 @@ class _InstructorManagementWidgetState
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore nel caricamento degli istruttori: $error'),
+            content: Text('instructor_directory.load_error'
+                .tr(namedArgs: {'detail': '$error'})),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -80,7 +82,8 @@ class _InstructorManagementWidgetState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore nel caricamento dettagli: $error'),
+            content: Text('instructor_mgmt.load_details_error'
+                .tr(namedArgs: {'error': '$error'})),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -94,24 +97,20 @@ class _InstructorManagementWidgetState
     try {
       final updatedInstructor =
           await InstructorManagementService.updateInstructor(
-            instructorId: _selectedInstructor!['id'],
-            fullName:
-                _nameController.text.trim().isNotEmpty
-                    ? _nameController.text.trim()
-                    : null,
-            phone:
-                _phoneController.text.trim().isNotEmpty
-                    ? _phoneController.text.trim()
-                    : null,
-            emergencyContact:
-                _emergencyContactController.text.trim().isNotEmpty
-                    ? _emergencyContactController.text.trim()
-                    : null,
-            emergencyPhone:
-                _emergencyPhoneController.text.trim().isNotEmpty
-                    ? _emergencyPhoneController.text.trim()
-                    : null,
-          );
+        instructorId: _selectedInstructor!['id'],
+        fullName: _nameController.text.trim().isNotEmpty
+            ? _nameController.text.trim()
+            : null,
+        phone: _phoneController.text.trim().isNotEmpty
+            ? _phoneController.text.trim()
+            : null,
+        emergencyContact: _emergencyContactController.text.trim().isNotEmpty
+            ? _emergencyContactController.text.trim()
+            : null,
+        emergencyPhone: _emergencyPhoneController.text.trim().isNotEmpty
+            ? _emergencyPhoneController.text.trim()
+            : null,
+      );
 
       if (updatedInstructor != null && mounted) {
         setState(() {
@@ -122,7 +121,7 @@ class _InstructorManagementWidgetState
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Istruttore aggiornato con successo'),
+            content: Text('admin_dashboard.instructor_updated'.tr()),
             backgroundColor: Theme.of(context).colorScheme.secondary,
           ),
         );
@@ -131,7 +130,8 @@ class _InstructorManagementWidgetState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore nell\'aggiornamento: $error'),
+            content: Text('admin_dashboard.instructor_update_error'
+                .tr(namedArgs: {'error': '$error'})),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -157,10 +157,10 @@ class _InstructorManagementWidgetState
 
         final imageUrl =
             await InstructorManagementService.uploadInstructorImage(
-              instructorId: _selectedInstructor!['id'],
-              imageBytes: bytes,
-              fileName: fileName,
-            );
+          instructorId: _selectedInstructor!['id'],
+          imageBytes: bytes,
+          fileName: fileName,
+        );
 
         if (imageUrl != null && mounted) {
           setState(() {
@@ -171,7 +171,7 @@ class _InstructorManagementWidgetState
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Immagine caricata con successo'),
+              content: Text('instructor_management.profile_updated'.tr()),
               backgroundColor: Theme.of(context).colorScheme.secondary,
             ),
           );
@@ -181,7 +181,8 @@ class _InstructorManagementWidgetState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore nel caricamento immagine: $error'),
+            content: Text('instructor_mgmt.load_image_error'
+                .tr(namedArgs: {'error': '$error'})),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -209,7 +210,9 @@ class _InstructorManagementWidgetState
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              newStatus ? 'Istruttore attivato' : 'Istruttore disattivato',
+              newStatus
+                  ? 'admin_instructor.instructor_activated'.tr()
+                  : 'admin_dashboard.instructor_deactivated'.tr(),
             ),
             backgroundColor: Theme.of(context).colorScheme.secondary,
           ),
@@ -219,7 +222,8 @@ class _InstructorManagementWidgetState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Errore nel cambio stato: $error'),
+            content: Text('instructor_mgmt.status_change_error'
+                .tr(namedArgs: {'error': '$error'})),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -292,21 +296,21 @@ class _InstructorManagementWidgetState
                             style: Theme.of(
                               context,
                             ).textTheme.titleLarge?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface,
-                              fontWeight: FontWeight.w700,
-                            ),
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface,
+                                  fontWeight: FontWeight.w700,
+                                ),
                           ),
                           Text(
                             'Gestisci profili, foto e corsi degli istruttori',
                             style: Theme.of(
                               context,
                             ).textTheme.bodySmall?.copyWith(
-                              color:
-                                  Theme.of(
+                                  color: Theme.of(
                                     context,
                                   ).colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.w500,
-                            ),
+                                  fontWeight: FontWeight.w500,
+                                ),
                           ),
                         ],
                       ),
@@ -350,45 +354,42 @@ class _InstructorManagementWidgetState
                           style: Theme.of(
                             context,
                           ).textTheme.titleMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurface,
-                            fontWeight: FontWeight.w600,
-                          ),
+                                color: Theme.of(context).colorScheme.onSurface,
+                                fontWeight: FontWeight.w600,
+                              ),
                         ),
                         SizedBox(height: 2.h),
-
                         Container(
                           height: 12.h,
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             itemCount: _instructors.length,
-                            separatorBuilder:
-                                (context, index) => SizedBox(width: 3.w),
+                            separatorBuilder: (context, index) =>
+                                SizedBox(width: 3.w),
                             itemBuilder: (context, index) {
                               final instructor = _instructors[index];
-                              final isSelected =
-                                  _selectedInstructor?['id'] ==
+                              final isSelected = _selectedInstructor?['id'] ==
                                   instructor['id'];
 
                               return GestureDetector(
                                 onTap: () => _selectInstructor(instructor),
                                 child: Container(
                                   width: 20.w,
+                                  clipBehavior: Clip.hardEdge,
                                   decoration: BoxDecoration(
-                                    color:
-                                        isSelected
-                                            ? Colors.deepOrange.withAlpha(38)
-                                            : Theme.of(
-                                              context,
-                                            ).colorScheme.surface,
+                                    color: isSelected
+                                        ? Colors.deepOrange.withAlpha(38)
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.surface,
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
-                                      color:
-                                          isSelected
-                                              ? Colors.deepOrange
-                                              : Theme.of(context)
-                                                  .colorScheme
-                                                  .outline
-                                                  .withAlpha(77),
+                                      color: isSelected
+                                          ? Colors.deepOrange
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .outline
+                                              .withAlpha(77),
                                       width: isSelected ? 2 : 1,
                                     ),
                                   ),
@@ -397,39 +398,41 @@ class _InstructorManagementWidgetState
                                     children: [
                                       CircleAvatar(
                                         radius: 2.5.h,
-                                        backgroundImage:
-                                            instructor['profile_image_url'] !=
-                                                    null
-                                                ? NetworkImage(
-                                                  instructor['profile_image_url'],
-                                                )
-                                                : null,
+                                        backgroundImage: instructor[
+                                                    'profile_image_url'] !=
+                                                null
+                                            ? NetworkImage(
+                                                instructor['profile_image_url'],
+                                              )
+                                            : null,
                                         child:
                                             instructor['profile_image_url'] ==
                                                     null
                                                 ? Icon(
-                                                  Icons.person,
-                                                  color: Colors.deepOrange,
-                                                )
+                                                    Icons.person,
+                                                    color: Colors.deepOrange,
+                                                  )
                                                 : null,
                                       ),
                                       SizedBox(height: 1.h),
-                                      Text(
-                                        instructor['full_name'] ?? 'N/A',
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall?.copyWith(
-                                          color:
-                                              isSelected
-                                                  ? Colors.deepOrange
-                                                  : Theme.of(
-                                                    context,
-                                                  ).colorScheme.onSurface,
-                                          fontWeight: FontWeight.w600,
+                                      SizedBox(
+                                        width: 18.w,
+                                        child: Text(
+                                          instructor['full_name'] ?? 'N/A',
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.bodySmall?.copyWith(
+                                                color: isSelected
+                                                    ? Colors.deepOrange
+                                                    : Theme.of(
+                                                        context,
+                                                      ).colorScheme.onSurface,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                          textAlign: TextAlign.center,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        textAlign: TextAlign.center,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ],
                                   ),
@@ -438,7 +441,6 @@ class _InstructorManagementWidgetState
                             },
                           ),
                         ),
-
                         if (_selectedInstructor != null) ...[
                           SizedBox(height: 3.h),
                           Divider(color: Colors.deepOrange.withAlpha(77)),
@@ -465,33 +467,33 @@ class _InstructorManagementWidgetState
                                           ),
                                         ),
                                       ),
-                                      child:
-                                          _selectedInstructor!['profile_image_url'] !=
-                                                  null
-                                              ? ClipRRect(
-                                                borderRadius:
-                                                    BorderRadius.circular(11),
-                                                child: Image.network(
-                                                  _selectedInstructor!['profile_image_url'],
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder:
-                                                      (
-                                                        context,
-                                                        error,
-                                                        stackTrace,
-                                                      ) => Icon(
-                                                        Icons.person,
-                                                        color:
-                                                            Colors.deepOrange,
-                                                        size: 8.w,
-                                                      ),
+                                      child: _selectedInstructor![
+                                                  'profile_image_url'] !=
+                                              null
+                                          ? ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(11),
+                                              child: Image.network(
+                                                _selectedInstructor![
+                                                    'profile_image_url'],
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (
+                                                  context,
+                                                  error,
+                                                  stackTrace,
+                                                ) =>
+                                                    Icon(
+                                                  Icons.person,
+                                                  color: Colors.deepOrange,
+                                                  size: 8.w,
                                                 ),
-                                              )
-                                              : Icon(
-                                                Icons.add_a_photo,
-                                                color: Colors.deepOrange,
-                                                size: 8.w,
                                               ),
+                                            )
+                                          : Icon(
+                                              Icons.add_a_photo,
+                                              color: Colors.deepOrange,
+                                              size: 8.w,
+                                            ),
                                     ),
                                   ),
                                   SizedBox(height: 1.h),
@@ -500,9 +502,9 @@ class _InstructorManagementWidgetState
                                     style: Theme.of(
                                       context,
                                     ).textTheme.bodySmall?.copyWith(
-                                      color: Colors.deepOrange,
-                                      fontSize: 9.sp,
-                                    ),
+                                          color: Colors.deepOrange,
+                                          fontSize: 9.sp,
+                                        ),
                                     textAlign: TextAlign.center,
                                   ),
                                 ],
@@ -542,7 +544,7 @@ class _InstructorManagementWidgetState
                                       controller: _phoneController,
                                       keyboardType: TextInputType.phone,
                                       decoration: InputDecoration(
-                                        labelText: 'Telefono',
+                                        labelText: 'profile.phone'.tr(),
                                         prefixIcon: Icon(
                                           Icons.phone,
                                           color: Colors.deepOrange,
@@ -563,53 +565,59 @@ class _InstructorManagementWidgetState
                                       ),
                                     ),
                                     SizedBox(height: 2.h),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: ElevatedButton.icon(
-                                            onPressed: _updateInstructor,
-                                            icon: Icon(Icons.save),
-                                            label: Text('Salva Modifiche'),
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor:
-                                                  Colors.deepOrange,
-                                              foregroundColor: Colors.white,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ),
-                                            ),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                        onPressed: _updateInstructor,
+                                        icon: Icon(Icons.save),
+                                        label:
+                                            Text('profile.save_changes'.tr()),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.deepOrange,
+                                          foregroundColor: Colors.white,
+                                          padding: EdgeInsets.symmetric(
+                                            vertical: 1.5.h,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(12),
                                           ),
                                         ),
-                                        SizedBox(width: 2.w),
-                                        ElevatedButton.icon(
-                                          onPressed: _toggleInstructorStatus,
-                                          icon: Icon(
-                                            _selectedInstructor!['is_active'] ==
-                                                    true
-                                                ? Icons.pause_circle
-                                                : Icons.play_circle,
+                                      ),
+                                    ),
+                                    SizedBox(height: 1.h),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                        onPressed: _toggleInstructorStatus,
+                                        icon: Icon(
+                                          _selectedInstructor!['is_active'] ==
+                                                  true
+                                              ? Icons.pause_circle
+                                              : Icons.play_circle,
+                                        ),
+                                        label: Text(
+                                          _selectedInstructor!['is_active'] ==
+                                                  true
+                                              ? 'Disattiva'
+                                              : 'Attiva',
+                                        ),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: _selectedInstructor![
+                                                      'is_active'] ==
+                                                  true
+                                              ? Colors.red
+                                              : Colors.green,
+                                          foregroundColor: Colors.white,
+                                          padding: EdgeInsets.symmetric(
+                                            vertical: 1.5.h,
                                           ),
-                                          label: Text(
-                                            _selectedInstructor!['is_active'] ==
-                                                    true
-                                                ? 'Disattiva'
-                                                : 'Attiva',
-                                          ),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor:
-                                                _selectedInstructor!['is_active'] ==
-                                                        true
-                                                    ? Colors.red
-                                                    : Colors.green,
-                                            foregroundColor: Colors.white,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(12),
                                           ),
                                         ),
-                                      ],
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -646,8 +654,8 @@ class _InstructorManagementWidgetState
                                         style: Theme.of(
                                           context,
                                         ).textTheme.bodySmall?.copyWith(
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                                              fontWeight: FontWeight.w500,
+                                            ),
                                       ),
                                     ),
                                   ],
@@ -666,8 +674,8 @@ class _InstructorManagementWidgetState
                                       style: Theme.of(
                                         context,
                                       ).textTheme.bodySmall?.copyWith(
-                                        fontWeight: FontWeight.w500,
-                                      ),
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                     ),
                                     Spacer(),
                                     Container(
@@ -689,11 +697,11 @@ class _InstructorManagementWidgetState
                                             ? 'ATTIVO'
                                             : 'INATTIVO',
                                         style: TextStyle(
-                                          color:
-                                              _selectedInstructor!['is_active'] ==
-                                                      true
-                                                  ? Colors.green
-                                                  : Colors.red,
+                                          color: _selectedInstructor![
+                                                      'is_active'] ==
+                                                  true
+                                              ? Colors.green
+                                              : Colors.red,
                                           fontWeight: FontWeight.w700,
                                           fontSize: 10.sp,
                                         ),

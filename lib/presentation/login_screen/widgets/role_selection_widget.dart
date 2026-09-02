@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
-import '../../../theme/app_theme.dart';
 
 class RoleSelectionWidget extends StatelessWidget {
   final String selectedRole;
@@ -19,7 +18,7 @@ class RoleSelectionWidget extends StatelessWidget {
     final List<Map<String, String>> roles = [
       {'key': 'student', 'label': 'Studente'},
       {'key': 'instructor', 'label': 'Istruttore'},
-      {'key': 'admin', 'label': 'Amministratore'},
+      {'key': 'admin', 'label': 'roles.admin'.tr()},
     ];
 
     return Column(

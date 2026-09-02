@@ -36,7 +36,7 @@ class _TermsAcceptanceSectionState extends State<TermsAcceptanceSection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Termini e Condizioni',
+            'student_registration.terms_title'.tr(),
             style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
               color: AppTheme.lightTheme.colorScheme.primary,
@@ -70,9 +70,10 @@ class _TermsAcceptanceSectionState extends State<TermsAcceptanceSection> {
                   color: AppTheme.lightTheme.colorScheme.onSurface,
                 ),
                 children: [
-                  TextSpan(text: 'Accetto i '),
                   TextSpan(
-                    text: 'Termini e Condizioni',
+                      text: 'student_registration.accept_terms_prefix'.tr()),
+                  TextSpan(
+                    text: 'student_registration.terms_link'.tr(),
                     style: TextStyle(
                       color: AppTheme.lightTheme.colorScheme.primary,
                       fontWeight: FontWeight.w500,
@@ -81,7 +82,7 @@ class _TermsAcceptanceSectionState extends State<TermsAcceptanceSection> {
                   ),
                   TextSpan(text: ' e la '),
                   TextSpan(
-                    text: 'Privacy Policy',
+                    text: 'student_registration.privacy_link'.tr(),
                     style: TextStyle(
                       color: AppTheme.lightTheme.colorScheme.primary,
                       fontWeight: FontWeight.w500,
@@ -119,7 +120,7 @@ class _TermsAcceptanceSectionState extends State<TermsAcceptanceSection> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Leggi i Termini e Condizioni completi',
+                  'student_registration.read_full_terms'.tr(),
                   style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                     color: AppTheme.lightTheme.colorScheme.primary,
                     fontWeight: FontWeight.w500,

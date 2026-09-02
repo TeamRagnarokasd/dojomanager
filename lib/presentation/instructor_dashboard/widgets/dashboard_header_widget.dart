@@ -3,6 +3,7 @@ import 'package:sizer/sizer.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../constants/app_constants.dart';
+import '../../../core/app_export.dart';
 
 class DashboardHeaderWidget extends StatelessWidget {
   const DashboardHeaderWidget({Key? key}) : super(key: key);
@@ -69,7 +70,7 @@ class DashboardHeaderWidget extends StatelessWidget {
                         ),
                         SizedBox(width: 2.w),
                         Text(
-                          'MMA • BJJ • SAMBO • GRAPPLING',
+                          'profile.disciplines_tagline'.tr(),
                           style: GoogleFonts.inter(
                             color: Colors.grey[400],
                             fontSize: 9.sp,

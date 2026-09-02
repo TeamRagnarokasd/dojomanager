@@ -1,9 +1,9 @@
-import 'package:intl/intl.dart';
 import 'package:sizer/sizer.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../models/receipt_model.dart';
+import '../../../core/app_export.dart';
 
 class ReceiptCardWidget extends StatelessWidget {
   final ReceiptModel receipt;
@@ -14,6 +14,7 @@ class ReceiptCardWidget extends StatelessWidget {
   final VoidCallback onViewPdf;
   final VoidCallback onSendEmail;
   final VoidCallback onDuplicate;
+  final VoidCallback? onDelete;
 
   const ReceiptCardWidget({
     Key? key,
@@ -25,6 +26,7 @@ class ReceiptCardWidget extends StatelessWidget {
     required this.onViewPdf,
     required this.onSendEmail,
     required this.onDuplicate,
+    this.onDelete,
   }) : super(key: key);
 
   @override
@@ -82,8 +84,11 @@ class ReceiptCardWidget extends StatelessWidget {
                             ),
                           ),
                           child: isSelected
-                              ? Icon(Icons.check,
-                                  color: Colors.white, size: 16.sp)
+                              ? Icon(
+                                  Icons.check,
+                                  color: Colors.white,
+                                  size: 16.sp,
+                                )
                               : null,
                         ),
                       ),
@@ -92,8 +97,10 @@ class ReceiptCardWidget extends StatelessWidget {
 
                     // Receipt number and status
                     Container(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12.w,
+                        vertical: 6.h,
+                      ),
                       decoration: BoxDecoration(
                         color: _getStatusColor().shade100,
                         borderRadius: BorderRadius.circular(8),
@@ -112,8 +119,10 @@ class ReceiptCardWidget extends StatelessWidget {
 
                     // Payment method indicator
                     Container(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8.w,
+                        vertical: 4.h,
+                      ),
                       decoration: BoxDecoration(
                         color: _getPaymentMethodColor().shade100,
                         borderRadius: BorderRadius.circular(6),
@@ -259,6 +268,9 @@ class ReceiptCardWidget extends StatelessWidget {
                             case 'duplicate':
                               onDuplicate();
                               break;
+                            case 'delete':
+                              if (onDelete != null) onDelete!();
+                              break;
                           }
                         },
                         itemBuilder: (context) => [
@@ -266,8 +278,11 @@ class ReceiptCardWidget extends StatelessWidget {
                             value: 'pdf',
                             child: Row(
                               children: [
-                                Icon(Icons.picture_as_pdf,
-                                    color: Colors.red.shade600, size: 18.sp),
+                                Icon(
+                                  Icons.picture_as_pdf,
+                                  color: Colors.red.shade600,
+                                  size: 18.sp,
+                                ),
                                 SizedBox(width: 12.w),
                                 Text(
                                   'Visualizza PDF',
@@ -280,8 +295,11 @@ class ReceiptCardWidget extends StatelessWidget {
                             value: 'email',
                             child: Row(
                               children: [
-                                Icon(Icons.email,
-                                    color: Colors.blue.shade600, size: 18.sp),
+                                Icon(
+                                  Icons.email,
+                                  color: Colors.blue.shade600,
+                                  size: 18.sp,
+                                ),
                                 SizedBox(width: 12.w),
                                 Text(
                                   'Invia Email',
@@ -294,8 +312,11 @@ class ReceiptCardWidget extends StatelessWidget {
                             value: 'duplicate',
                             child: Row(
                               children: [
-                                Icon(Icons.content_copy,
-                                    color: Colors.green.shade600, size: 18.sp),
+                                Icon(
+                                  Icons.content_copy,
+                                  color: Colors.green.shade600,
+                                  size: 18.sp,
+                                ),
                                 SizedBox(width: 12.w),
                                 Text(
                                   'Duplica Ricevuta',
@@ -304,6 +325,27 @@ class ReceiptCardWidget extends StatelessWidget {
                               ],
                             ),
                           ),
+                          if (onDelete != null)
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.red.shade700,
+                                    size: 18.sp,
+                                  ),
+                                  SizedBox(width: 12.w),
+                                  Text(
+                                    'Elimina Ricevuta',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 14.sp,
+                                      color: Colors.red.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                         ],
                       ),
                     ],
@@ -320,7 +362,7 @@ class ReceiptCardWidget extends StatelessWidget {
   Widget _buildSwipeBackground(bool isLeft) {
     final color = isLeft ? Colors.blue : Colors.green;
     final icon = isLeft ? Icons.picture_as_pdf : Icons.email;
-    final text = isLeft ? 'PDF' : 'Email';
+    final text = isLeft ? 'PDF' : 'common.email'.tr();
 
     return Container(
       decoration: BoxDecoration(
@@ -332,11 +374,7 @@ class ReceiptCardWidget extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            color: color.shade700,
-            size: 24.sp,
-          ),
+          Icon(icon, color: color.shade700, size: 24.sp),
           SizedBox(height: 4.h),
           Text(
             text,
@@ -384,11 +422,11 @@ class ReceiptCardWidget extends StatelessWidget {
       case 'sumup':
         return 'SumUp';
       case 'satispay':
-        return 'Satispay';
+        return 'payment.satispay'.tr();
       case 'cash':
-        return 'Contanti';
+        return 'payment.cash'.tr();
       case 'bank_transfer':
-        return 'Bonifico';
+        return 'payment.bank_transfer'.tr();
       default:
         return receipt.paymentMethod;
     }

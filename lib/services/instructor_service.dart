@@ -25,6 +25,7 @@ class InstructorProfile {
   // Additional fields from user_profiles join
   final String? fullName;
   final String? email;
+  final String? roleTitle;
 
   InstructorProfile({
     required this.id,
@@ -48,6 +49,7 @@ class InstructorProfile {
     this.updatedAt,
     this.fullName,
     this.email,
+    this.roleTitle,
   });
 
   factory InstructorProfile.fromMap(Map<String, dynamic> map) {
@@ -68,14 +70,18 @@ class InstructorProfile {
       contactInfo: map['contact_info'],
       socialMedia: map['social_media'],
       studentTestimonials: map['student_testimonials'],
-      joinDate:
-          map['join_date'] != null ? DateTime.parse(map['join_date']) : null,
-      createdAt:
-          map['created_at'] != null ? DateTime.parse(map['created_at']) : null,
-      updatedAt:
-          map['updated_at'] != null ? DateTime.parse(map['updated_at']) : null,
+      joinDate: map['join_date'] != null
+          ? DateTime.parse(map['join_date'])
+          : null,
+      createdAt: map['created_at'] != null
+          ? DateTime.parse(map['created_at'])
+          : null,
+      updatedAt: map['updated_at'] != null
+          ? DateTime.parse(map['updated_at'])
+          : null,
       fullName: map['full_name'],
       email: map['email'],
+      roleTitle: map['role_title'],
     );
   }
 
@@ -102,8 +108,9 @@ class InstructorProfile {
   }
 
   // Helper methods for UI
-  String get experienceText =>
-      yearsExperience != null ? '$yearsExperience+ anni' : 'N/A';
+  String get experienceText => yearsExperience != null
+      ? '+ di $yearsExperience anni di esperienza'
+      : 'N/A';
   String get disciplinesText => disciplines.join(', ');
   String get specializationsText => specializations.join(' • ');
   String get languagesText => languages.join(', ');
@@ -139,7 +146,8 @@ class InstructorService {
             user_profiles!inner (
               full_name,
               email,
-              role
+              role,
+              role_title
             )
           ''');
 
@@ -148,7 +156,6 @@ class InstructorService {
       }
 
       if (disciplines != null && disciplines.isNotEmpty) {
-        // Filter by disciplines array overlap
         query = query.overlaps('disciplines', disciplines);
       }
 
@@ -158,10 +165,10 @@ class InstructorService {
         final instructorData = Map<String, dynamic>.from(data);
         final userProfile = instructorData['user_profiles'];
 
-        // Merge user profile data into instructor data
         if (userProfile != null) {
           instructorData['full_name'] = userProfile['full_name'];
           instructorData['email'] = userProfile['email'];
+          instructorData['role_title'] = userProfile['role_title'];
         }
 
         return InstructorProfile.fromMap(instructorData);
@@ -176,19 +183,19 @@ class InstructorService {
     String instructorId,
   ) async {
     try {
-      final response =
-          await _supabase
-              .from('instructor_profiles')
-              .select('''
+      final response = await _supabase
+          .from('instructor_profiles')
+          .select('''
             *,
             user_profiles!inner (
               full_name,
               email,
-              role
+              role,
+              role_title
             )
           ''')
-              .eq('id', instructorId)
-              .maybeSingle();
+          .eq('id', instructorId)
+          .maybeSingle();
 
       if (response == null) return null;
 
@@ -198,6 +205,7 @@ class InstructorService {
       if (userProfile != null) {
         instructorData['full_name'] = userProfile['full_name'];
         instructorData['email'] = userProfile['email'];
+        instructorData['role_title'] = userProfile['role_title'];
       }
 
       return InstructorProfile.fromMap(instructorData);
@@ -209,19 +217,19 @@ class InstructorService {
   // Get instructor by user ID
   static Future<InstructorProfile?> getInstructorByUserId(String userId) async {
     try {
-      final response =
-          await _supabase
-              .from('instructor_profiles')
-              .select('''
+      final response = await _supabase
+          .from('instructor_profiles')
+          .select('''
             *,
             user_profiles!inner (
               full_name,
               email,
-              role
+              role,
+              role_title
             )
           ''')
-              .eq('user_id', userId)
-              .maybeSingle();
+          .eq('user_id', userId)
+          .maybeSingle();
 
       if (response == null) return null;
 
@@ -231,6 +239,7 @@ class InstructorService {
       if (userProfile != null) {
         instructorData['full_name'] = userProfile['full_name'];
         instructorData['email'] = userProfile['email'];
+        instructorData['role_title'] = userProfile['role_title'];
       }
 
       return InstructorProfile.fromMap(instructorData);
@@ -271,12 +280,11 @@ class InstructorService {
         'is_active': true,
       };
 
-      final response =
-          await _supabase
-              .from('instructor_profiles')
-              .insert(instructorData)
-              .select()
-              .single();
+      final response = await _supabase
+          .from('instructor_profiles')
+          .insert(instructorData)
+          .select()
+          .single();
 
       return InstructorProfile.fromMap(response);
     } catch (e) {
@@ -324,13 +332,12 @@ class InstructorService {
         throw Exception('No data provided for update');
       }
 
-      final response =
-          await _supabase
-              .from('instructor_profiles')
-              .update(updateData)
-              .eq('id', instructorId)
-              .select()
-              .single();
+      final response = await _supabase
+          .from('instructor_profiles')
+          .update(updateData)
+          .eq('id', instructorId)
+          .select()
+          .single();
 
       return InstructorProfile.fromMap(response);
     } catch (e) {
@@ -404,7 +411,8 @@ class InstructorService {
             user_profiles!inner (
               full_name,
               email,
-              role
+              role,
+              role_title
             )
           ''');
 
@@ -412,49 +420,46 @@ class InstructorService {
         supabaseQuery = supabaseQuery.eq('is_active', true);
       }
 
-      // Get all instructors first, then filter client-side
-      // This is because Supabase doesn't support complex text search on joined tables
       final response = await supabaseQuery.order(
         'created_at',
         ascending: false,
       );
 
-      List<InstructorProfile> instructors =
-          (response as List<dynamic>).map((data) {
-            final instructorData = Map<String, dynamic>.from(data);
-            final userProfile = instructorData['user_profiles'];
+      List<InstructorProfile> instructors = (response as List<dynamic>).map((
+        data,
+      ) {
+        final instructorData = Map<String, dynamic>.from(data);
+        final userProfile = instructorData['user_profiles'];
 
-            if (userProfile != null) {
-              instructorData['full_name'] = userProfile['full_name'];
-              instructorData['email'] = userProfile['email'];
-            }
+        if (userProfile != null) {
+          instructorData['full_name'] = userProfile['full_name'];
+          instructorData['email'] = userProfile['email'];
+          instructorData['role_title'] = userProfile['role_title'];
+        }
 
-            return InstructorProfile.fromMap(instructorData);
-          }).toList();
+        return InstructorProfile.fromMap(instructorData);
+      }).toList();
 
       // Client-side filtering
       final searchQuery = query.toLowerCase();
-      instructors =
-          instructors.where((instructor) {
-            return instructor.fullName?.toLowerCase().contains(searchQuery) ==
-                    true ||
-                instructor.disciplines.any(
-                  (discipline) =>
-                      discipline.toLowerCase().contains(searchQuery),
-                ) ||
-                instructor.specializations.any(
-                  (spec) => spec.toLowerCase().contains(searchQuery),
-                );
-          }).toList();
+      instructors = instructors.where((instructor) {
+        return instructor.fullName?.toLowerCase().contains(searchQuery) ==
+                true ||
+            instructor.disciplines.any(
+              (discipline) => discipline.toLowerCase().contains(searchQuery),
+            ) ||
+            instructor.specializations.any(
+              (spec) => spec.toLowerCase().contains(searchQuery),
+            );
+      }).toList();
 
       // Additional discipline filtering if provided
       if (disciplines != null && disciplines.isNotEmpty) {
-        instructors =
-            instructors.where((instructor) {
-              return disciplines.any(
-                (discipline) => instructor.disciplines.contains(discipline),
-              );
-            }).toList();
+        instructors = instructors.where((instructor) {
+          return disciplines.any(
+            (discipline) => instructor.disciplines.contains(discipline),
+          );
+        }).toList();
       }
 
       return instructors;
@@ -476,12 +481,11 @@ class InstructorService {
       final user = _supabase.auth.currentUser;
       if (user == null) return false;
 
-      final response =
-          await _supabase
-              .from('user_profiles')
-              .select('role')
-              .eq('id', user.id)
-              .maybeSingle();
+      final response = await _supabase
+          .from('user_profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
 
       if (response == null) return false;
 

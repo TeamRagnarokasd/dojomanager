@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
 
@@ -6,7 +7,7 @@ class ClassDetailsSectionWidget extends StatelessWidget {
   final Map<String, dynamic> classData;
 
   const ClassDetailsSectionWidget({Key? key, required this.classData})
-    : super(key: key);
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +22,7 @@ class ClassDetailsSectionWidget extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Dettagli Lezione',
+            'class_booking.lesson_details'.tr(),
             style: GoogleFonts.inter(
               fontSize: 16.sp,
               fontWeight: FontWeight.bold,
@@ -39,7 +40,7 @@ class ClassDetailsSectionWidget extends StatelessWidget {
           _buildDetailRow('Location', classData['location'], Icons.location_on),
           SizedBox(height: 12.h),
           Text(
-            'Descrizione',
+            'common.description'.tr(),
             style: GoogleFonts.inter(
               fontSize: 14.sp,
               fontWeight: FontWeight.w600,

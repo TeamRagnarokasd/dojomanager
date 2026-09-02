@@ -1,16 +1,18 @@
-import 'dart:io';
+import 'dart:io' if (dart.library.io) 'dart:io';
+import '../../core/app_export.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:sizer/sizer.dart';
+import 'package:universal_html/html.dart' as html;
 
 import '../../models/receipt_model.dart';
 import '../../services/italian_receipt_service.dart';
@@ -30,7 +32,7 @@ import './widgets/receipt_statistics_widget.dart';
 
 class ReceiptArchive extends StatefulWidget {
   const ReceiptArchive({Key? key})
-      : super(key: key); //Fix constructor parameter
+    : super(key: key); //Fix constructor parameter
 
   @override
   State<ReceiptArchive> createState() => _ReceiptArchiveState();
@@ -63,6 +65,9 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
   String? _currentUser;
   bool _isAdmin = false;
 
+  List<Map<String, dynamic>> _allPayments = [];
+  List<Map<String, dynamic>> _filteredPayments = [];
+
   @override
   void initState() {
     super.initState();
@@ -76,7 +81,8 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
       if (user != null) {
         setState(() {
           _currentUser = user.id;
-          _isAdmin = user.userMetadata?['role'] == 'admin' ||
+          _isAdmin =
+              user.userMetadata?['role'] == 'admin' ||
               user.appMetadata['role'] == 'admin';
         });
         await _loadReceipts();
@@ -94,23 +100,30 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
     setState(() => _isLoading = true);
 
     try {
-      List<ReceiptModel> receipts;
-
+      // NEW: Load from payment_confirmations with server-side search
       if (_isAdmin) {
-        receipts = await _receiptService.getAllReceipts();
+        // CRITICAL FIX: Pass search filter to backend for server-side filtering
+        final searchQuery = _currentFilters['client_search'] as String?;
+        _allPayments = await _receiptService.getAllConfirmedPayments(
+          searchFilter: searchQuery,
+        );
       } else {
-        receipts = await _receiptService.getUserReceipts(_currentUser!);
+        _allPayments = await _receiptService.getUserConfirmedPayments(
+          _currentUser!,
+        );
       }
 
       setState(() {
-        _allReceipts = receipts;
-        _filteredReceipts = receipts;
+        _filteredPayments = _allPayments;
+        // Keep old receipt models for compatibility with existing widgets
+        _filteredReceipts = _convertPaymentsToReceipts(_allPayments);
       });
 
-      await _calculateStatistics();
+      await _calculateStatisticsFromPayments();
     } catch (error) {
+      print('❌ Error loading payments: $error');
       Fluttertoast.showToast(
-        msg: "Errore nel caricamento ricevute: $error",
+        msg: "Errore nel caricamento pagamenti: $error",
         backgroundColor: Colors.red,
         textColor: Colors.white,
       );
@@ -119,91 +132,74 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
     }
   }
 
-  Future<void> _calculateStatistics() async {
-    final now = DateTime.now();
-    final currentMonthReceipts = _allReceipts
-        .where((receipt) =>
-            receipt.issueDate.year == now.year &&
-            receipt.issueDate.month == now.month)
-        .toList();
+  // NEW: Convert payment data to ReceiptModel format
+  List<ReceiptModel> _convertPaymentsToReceipts(
+    List<Map<String, dynamic>> payments,
+  ) {
+    return payments.map<ReceiptModel>((payment) {
+      final userProfile = payment['user_profiles'] as Map<String, dynamic>?;
 
-    final monthlyRevenue = currentMonthReceipts.fold<double>(
-        0.0, (sum, receipt) => sum + receipt.totalAmount);
+      return ReceiptModel(
+        id: payment['id'] as String,
+        receiptNumber: int.parse(
+          payment['external_payment_id'] as String? ?? '0',
+        ),
+        userId: userProfile?['id'] as String? ?? '',
+        gymId: '', // Add default gymId
+        issueDate: DateTime.parse(payment['created_at'] as String),
+        description: 'Pagamento confermato via ${payment['payment_method']}',
+        quantity: 1,
+        unitPrice: (payment['amount'] as num).toDouble(),
+        totalAmount: (payment['amount'] as num).toDouble(),
+        paymentMethod: payment['payment_method'] as String,
+        status: payment['status'] as String,
+        createdAt: DateTime.parse(payment['created_at'] as String),
+        updatedAt: DateTime.parse(
+          payment['updated_at'] as String? ?? payment['created_at'] as String,
+        ),
+        user: userProfile != null
+            ? UserProfile(
+                id: userProfile['id'] as String,
+                email: userProfile['email'] as String? ?? '',
+                fullName: userProfile['full_name'] as String,
+                phone: userProfile['phone'] as String?,
+              )
+            : null,
+      );
+    }).toList();
+  }
 
-    setState(() {
-      _statistics = {
-        'total_receipts': _allReceipts.length,
-        'monthly_revenue': monthlyRevenue,
-        'pending_receipts':
-            _allReceipts.where((r) => r.status == 'draft').length,
-        'current_month_receipts': currentMonthReceipts.length,
-      };
-    });
+  // NEW: Calculate statistics from payment_confirmations
+  Future<void> _calculateStatisticsFromPayments() async {
+    try {
+      final stats = await _receiptService.getPaymentStatistics();
+
+      setState(() {
+        _statistics = stats;
+      });
+
+      print(
+        '✅ Payment statistics loaded: Monthly Revenue = €${stats['monthly_revenue']}',
+      );
+    } catch (error) {
+      print('❌ Error calculating payment statistics: $error');
+    }
   }
 
   void _applyFilters(Map<String, dynamic> filters) {
     setState(() {
       _currentFilters = filters;
-      _filteredReceipts = _allReceipts.where((receipt) {
-        // Date range filter
-        if (filters['date_from'] != null) {
-          if (receipt.issueDate.isBefore(filters['date_from'] as DateTime)) {
-            return false;
-          }
-        }
-        if (filters['date_to'] != null) {
-          if (receipt.issueDate.isAfter(filters['date_to'] as DateTime)) {
-            return false;
-          }
-        }
-
-        // Payment method filter
-        if (filters['payment_method'] != null &&
-            filters['payment_method'] != 'all') {
-          if (receipt.paymentMethod != filters['payment_method']) {
-            return false;
-          }
-        }
-
-        // Subscription type filter
-        if (filters['subscription_type'] != null &&
-            filters['subscription_type'] != 'all') {
-          if (receipt.subscription?.type != filters['subscription_type']) {
-            return false;
-          }
-        }
-
-        // Client search filter
-        if (filters['client_search'] != null &&
-            (filters['client_search'] as String).isNotEmpty) {
-          final searchTerm = (filters['client_search'] as String).toLowerCase();
-          final clientName = receipt.user?.fullName.toLowerCase() ?? '';
-          if (!clientName.contains(searchTerm)) {
-            return false;
-          }
-        }
-
-        // Amount range filter
-        if (filters['amount_min'] != null) {
-          if (receipt.totalAmount < (filters['amount_min'] as double)) {
-            return false;
-          }
-        }
-        if (filters['amount_max'] != null) {
-          if (receipt.totalAmount > (filters['amount_max'] as double)) {
-            return false;
-          }
-        }
-
-        return true;
-      }).toList();
     });
+
+    // CRITICAL FIX: Reload data with search filter for server-side filtering
+    // This triggers database-level ILIKE query in payment_confirmations
+    _loadReceipts();
   }
 
   void _clearFilters() {
     setState(() {
       _currentFilters = {};
-      _filteredReceipts = _allReceipts;
+      _filteredReceipts = _convertPaymentsToReceipts(_allPayments);
       _showFilters = false;
     });
   }
@@ -265,7 +261,9 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
             Text(
               'Invio Email Multiplo',
               style: GoogleFonts.inter(
-                  fontSize: 18.sp, fontWeight: FontWeight.w600),
+                fontSize: 18.sp,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),
@@ -278,16 +276,20 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
               style: GoogleFonts.inter(fontSize: 14.sp),
             ),
             SizedBox(height: 16.h),
-            ...selectedReceiptList.take(3).map((receipt) => Padding(
-                  padding: EdgeInsets.only(bottom: 4.h),
-                  child: Text(
-                    '• ${receipt.user?.fullName} - Ricevuta ${receipt.receiptNumber}',
-                    style: GoogleFonts.inter(
-                      fontSize: 12.sp,
-                      color: Colors.grey.shade700,
+            ...selectedReceiptList
+                .take(3)
+                .map(
+                  (receipt) => Padding(
+                    padding: EdgeInsets.only(bottom: 4.h),
+                    child: Text(
+                      '• ${receipt.user?.fullName} - Ricevuta ${receipt.receiptNumber}',
+                      style: GoogleFonts.inter(
+                        fontSize: 12.sp,
+                        color: Colors.grey.shade700,
+                      ),
                     ),
                   ),
-                )),
+                ),
             if (selectedReceiptList.length > 3)
               Text(
                 '... e altre ${selectedReceiptList.length - 3} ricevute',
@@ -301,8 +303,10 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Annulla',
-                style: GoogleFonts.inter(color: Colors.grey.shade600)),
+            child: Text(
+              'common.cancel'.tr(),
+              style: GoogleFonts.inter(color: Colors.grey.shade600),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -310,10 +314,13 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
               backgroundColor: Colors.blue.shade600,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
-            child: Text('Invia Email',
-                style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+            child: Text(
+              'Invia Email',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
@@ -348,13 +355,318 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
     }
 
     try {
-      final pdf = pw.Document();
+      // 🎯 CRITICAL FIX: Generate single PDF with all receipts instead of trying to merge separate PDFs
+      final combinedPdf = pw.Document();
 
+      // Load shared resources once for efficiency
+      final logoBytes = await rootBundle.load(
+        'assets/images/146804-1764638363594.jpg',
+      );
+      final logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+      final orgInfo = await _italianReceiptService.getOrganizationInfo();
+
+      // Add each receipt as a separate page in the combined PDF
       for (final receipt in selectedReceiptList) {
-        pdf.addPage(await _generateReceiptPage(receipt));
+        final receiptData = await _italianReceiptService.getReceiptById(
+          receipt.id,
+        );
+
+        if (receiptData != null) {
+          // Extract receipt data
+          final issueDate =
+              receiptData['issue_date'] ??
+              DateTime.now().toIso8601String().split('T')[0];
+          final receiptNumber = receiptData['receipt_number'] ?? '';
+          final customerName = receiptData['customer_name'] ?? '';
+          final description = receiptData['description'] ?? '';
+          final amount = (receiptData['amount'] ?? 0.0) as double;
+          final paymentMethod = _getPaymentMethodText(
+            receiptData['payment_method'] ?? 'cash',
+          );
+          final customerTaxCode =
+              receiptData['customer_tax_code'] ?? 'NON DISPONIBILE';
+
+          // Add page for this receipt
+          combinedPdf.addPage(
+            pw.Page(
+              pageFormat: PdfPageFormat.a4,
+              build: (pw.Context context) {
+                return pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    // RED HEADER - TEAM RAGNAROK WITH LOGO
+                    pw.Container(
+                      width: double.infinity,
+                      padding: const pw.EdgeInsets.all(20),
+                      decoration: pw.BoxDecoration(
+                        color: PdfColors.red700,
+                        borderRadius: pw.BorderRadius.circular(8),
+                      ),
+                      child: pw.Row(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Container(
+                            width: 60,
+                            height: 60,
+                            child: pw.Image(logoImage),
+                          ),
+                          pw.SizedBox(width: 15),
+                          pw.Expanded(
+                            child: pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
+                                pw.Text(
+                                  'TEAM RAGNAROK ASD',
+                                  style: pw.TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: pw.FontWeight.bold,
+                                    color: PdfColors.white,
+                                  ),
+                                ),
+                                pw.SizedBox(height: 4),
+                                pw.Text(
+                                  'Longiano (FC) via fratta 319 cap 47020',
+                                  style: const pw.TextStyle(
+                                    fontSize: 12,
+                                    color: PdfColors.white,
+                                  ),
+                                ),
+                                pw.Text(
+                                  'c.f. 92100170395',
+                                  style: const pw.TextStyle(
+                                    fontSize: 12,
+                                    color: PdfColors.white,
+                                  ),
+                                ),
+                                if (orgInfo.phone != null)
+                                  pw.Text(
+                                    'Tel: ${orgInfo.phone}',
+                                    style: const pw.TextStyle(
+                                      fontSize: 12,
+                                      color: PdfColors.white,
+                                    ),
+                                  ),
+                                if (orgInfo.email != null)
+                                  pw.Text(
+                                    'Email: ${orgInfo.email}',
+                                    style: const pw.TextStyle(
+                                      fontSize: 12,
+                                      color: PdfColors.white,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    pw.SizedBox(height: 30),
+
+                    // RECEIPT TITLE
+                    pw.Center(
+                      child: pw.Text(
+                        'RICEVUTA NON FISCALE',
+                        style: pw.TextStyle(
+                          fontSize: 20,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.grey800,
+                        ),
+                      ),
+                    ),
+                    pw.SizedBox(height: 20),
+
+                    // RECEIPT INFO BOX
+                    pw.Container(
+                      padding: const pw.EdgeInsets.all(15),
+                      decoration: pw.BoxDecoration(
+                        border: pw.Border.all(color: PdfColors.grey400),
+                        borderRadius: pw.BorderRadius.circular(8),
+                      ),
+                      child: pw.Row(
+                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                        children: [
+                          pw.Text(
+                            'Ricevuta N°: $receiptNumber',
+                            style: pw.TextStyle(
+                              fontSize: 14,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                          pw.Text(
+                            'Data: $issueDate',
+                            style: const pw.TextStyle(fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
+                    pw.SizedBox(height: 20),
+
+                    // CUSTOMER DETAILS
+                    pw.Text(
+                      'DATI CLIENTE',
+                      style: pw.TextStyle(
+                        fontSize: 14,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.grey800,
+                      ),
+                    ),
+                    pw.SizedBox(height: 10),
+                    pw.Container(
+                      padding: const pw.EdgeInsets.all(15),
+                      decoration: pw.BoxDecoration(
+                        color: PdfColors.grey200,
+                        borderRadius: pw.BorderRadius.circular(8),
+                      ),
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            customerName,
+                            style: pw.TextStyle(
+                              fontSize: 14,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                          pw.Text(
+                            'CF: $customerTaxCode',
+                            style: const pw.TextStyle(fontSize: 12),
+                          ),
+                          if (receiptData['customer_address'] != null)
+                            pw.Text(
+                              receiptData['customer_address'],
+                              style: const pw.TextStyle(fontSize: 12),
+                            ),
+                        ],
+                      ),
+                    ),
+                    pw.SizedBox(height: 20),
+
+                    // PAYMENT DETAILS TABLE
+                    pw.Text(
+                      'DETTAGLI PAGAMENTO',
+                      style: pw.TextStyle(
+                        fontSize: 14,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.grey800,
+                      ),
+                    ),
+                    pw.SizedBox(height: 10),
+                    pw.Table(
+                      border: pw.TableBorder.all(color: PdfColors.grey400),
+                      children: [
+                        pw.TableRow(
+                          decoration: const pw.BoxDecoration(
+                            color: PdfColors.grey300,
+                          ),
+                          children: [
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.all(8),
+                              child: pw.Text(
+                                'common.description'.tr(),
+                                style: pw.TextStyle(
+                                  fontWeight: pw.FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.all(8),
+                              child: pw.Text(
+                                'Importo',
+                                style: pw.TextStyle(
+                                  fontWeight: pw.FontWeight.bold,
+                                ),
+                                textAlign: pw.TextAlign.right,
+                              ),
+                            ),
+                          ],
+                        ),
+                        pw.TableRow(
+                          children: [
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.all(8),
+                              child: pw.Text(description),
+                            ),
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.all(8),
+                              child: pw.Text(
+                                '\\u20AC ${amount.toStringAsFixed(2).replaceAll('.', ',')}',
+                                textAlign: pw.TextAlign.right,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    pw.SizedBox(height: 20),
+
+                    // PAYMENT METHOD
+                    pw.Container(
+                      padding: const pw.EdgeInsets.all(15),
+                      decoration: pw.BoxDecoration(
+                        color: PdfColors.blue50,
+                        borderRadius: pw.BorderRadius.circular(8),
+                      ),
+                      child: pw.Row(
+                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                        children: [
+                          pw.Text(
+                            'Metodo di pagamento:',
+                            style: const pw.TextStyle(fontSize: 12),
+                          ),
+                          pw.Text(
+                            paymentMethod,
+                            style: pw.TextStyle(
+                              fontSize: 12,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    pw.SizedBox(height: 15),
+
+                    // VAT LEGAL TEXT
+                    pw.Container(
+                      padding: const pw.EdgeInsets.all(12),
+                      decoration: pw.BoxDecoration(
+                        color: PdfColors.yellow50,
+                        borderRadius: pw.BorderRadius.circular(8),
+                        border: pw.Border.all(color: PdfColors.yellow700),
+                      ),
+                      child: pw.Text(
+                        'Operazione esclusa da IVA ai sensi dell\'articolo 4, quarto comma, del DPR 26 ottobre 1972, n. 633 e successive modificazioni, in conformità all\'art. 90 della Legge 289/2002',
+                        style: const pw.TextStyle(
+                          fontSize: 8,
+                          color: PdfColors.grey800,
+                        ),
+                        textAlign: pw.TextAlign.justify,
+                      ),
+                    ),
+
+                    pw.Spacer(),
+
+                    // FOOTER
+                    pw.Divider(color: PdfColors.grey400),
+                    pw.SizedBox(height: 10),
+                    pw.Center(
+                      child: pw.Text(
+                        'Grazie per aver scelto Team Ragnarok ASD',
+                        style: const pw.TextStyle(
+                          fontSize: 10,
+                          color: PdfColors.grey600,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          );
+        }
       }
 
-      final pdfBytes = await pdf.save();
+      // Save and share the combined PDF
+      final pdfBytes = await combinedPdf.save();
 
       if (kIsWeb) {
         await Printing.layoutPdf(onLayout: (format) async => pdfBytes);
@@ -382,132 +694,16 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
     }
   }
 
-  Future<pw.Page> _generateReceiptPage(ReceiptModel receipt) async {
-    return pw.Page(
-      pageFormat: PdfPageFormat.a4,
-      build: (pw.Context context) {
-        return pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            // Header
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text('TEAM RAGNAROK ASD',
-                        style: pw.TextStyle(
-                            fontSize: 18, fontWeight: pw.FontWeight.bold)),
-                    pw.Text('Via Giulio Bezzi 25, 48026 Russi-RA'),
-                    pw.Text('CF: 92100170395'),
-                  ],
-                ),
-                pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.end,
-                  children: [
-                    pw.Text('RICEVUTA NON FISCALE'),
-                    pw.Text('N. ${receipt.receiptNumber}'),
-                    pw.Text(
-                        'Del ${DateFormat('dd-MM-yyyy').format(receipt.issueDate)}'),
-                  ],
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 30),
-
-            // Client details
-            pw.Container(
-              padding: const pw.EdgeInsets.all(10),
-              decoration: pw.BoxDecoration(border: pw.Border.all()),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text('DESTINATARIO:',
-                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                  pw.Text(receipt.user?.fullName ?? ''),
-                ],
-              ),
-            ),
-            pw.SizedBox(height: 20),
-
-            // Receipt table
-            pw.Table(
-              border: pw.TableBorder.all(),
-              children: [
-                pw.TableRow(
-                  children: [
-                    pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text('DESCRIZIONE',
-                            style:
-                                pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-                    pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text('QTÀ',
-                            style:
-                                pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-                    pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text('PREZZO',
-                            style:
-                                pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-                    pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text('IMPORTO',
-                            style:
-                                pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-                  ],
-                ),
-                pw.TableRow(
-                  children: [
-                    pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(receipt.description)),
-                    pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(receipt.quantity.toString())),
-                    pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(
-                            '€${receipt.unitPrice.toStringAsFixed(2).replaceAll('.', ',')}')),
-                    pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(
-                            '€${receipt.totalAmount.toStringAsFixed(2).replaceAll('.', ',')}')),
-                  ],
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 20),
-
-            // Payment and total
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text(
-                    'METODO PAGAMENTO: ${_getPaymentMethodText(receipt.paymentMethod)}'),
-                pw.Text(
-                    'TOTALE: €${receipt.totalAmount.toStringAsFixed(2).replaceAll('.', ',')}',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   String _getPaymentMethodText(String method) {
     switch (method.toLowerCase()) {
       case 'sumup':
         return 'SumUp';
       case 'satispay':
-        return 'Satispay';
+        return 'payment.satispay'.tr();
       case 'cash':
-        return 'Contanti';
+        return 'payment.cash'.tr();
       case 'bank_transfer':
-        return 'Bonifico Bancario';
+        return 'payment.bank_transfer'.tr();
       default:
         return method;
     }
@@ -550,7 +746,7 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
         elevation: 0,
         backgroundColor: Colors.white,
         title: Text(
-          'Archivio Ricevute',
+          'receipt.archive_title'.tr(),
           style: GoogleFonts.inter(
             color: Colors.black,
             fontWeight: FontWeight.w600,
@@ -564,10 +760,7 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
         actions: [
           // Add manual receipt creation button
           IconButton(
-            icon: Icon(
-              Icons.add_circle_outline,
-              color: Colors.green.shade600,
-            ),
+            icon: Icon(Icons.add_circle_outline, color: Colors.green.shade600),
             tooltip: 'Crea Ricevuta Manuale',
             onPressed: _showManualReceiptCreationDialog,
           ),
@@ -676,14 +869,10 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.receipt_long,
-              size: 64.sp,
-              color: Colors.grey.shade400,
-            ),
+            Icon(Icons.receipt_long, size: 64.sp, color: Colors.grey.shade400),
             SizedBox(height: 16.h),
             Text(
-              'Nessuna ricevuta trovata',
+              'receipt.no_receipts_found'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 16.sp,
                 color: Colors.grey.shade600,
@@ -694,7 +883,7 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
               TextButton(
                 onPressed: _clearFilters,
                 child: Text(
-                  'Rimuovi filtri',
+                  'receipt.clear_filters'.tr(),
                   style: GoogleFonts.inter(color: Colors.blue.shade600),
                 ),
               ),
@@ -719,22 +908,27 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
             MonthlyGroupHeaderWidget(
               monthKey: monthKey,
               receiptCount: receiptsInMonth.length,
-              totalAmount:
-                  receiptsInMonth.fold(0.0, (sum, r) => sum + r.totalAmount),
+              totalAmount: receiptsInMonth.fold(
+                0.0,
+                (sum, r) => sum + r.totalAmount,
+              ),
             ),
             SizedBox(height: 8.h),
-            ...receiptsInMonth.map((receipt) => ReceiptCardWidget(
-                  receipt: receipt,
-                  isSelected: _selectedReceipts.contains(receipt.id),
-                  bulkMode: _bulkMode,
-                  onTap: () => _bulkMode
-                      ? _toggleReceiptSelection(receipt.id)
-                      : _showReceiptDetail(receipt),
-                  onToggleSelect: () => _toggleReceiptSelection(receipt.id),
-                  onViewPdf: () => _viewReceiptPdf(receipt),
-                  onSendEmail: () => _sendReceiptEmail(receipt),
-                  onDuplicate: () => _duplicateReceipt(receipt),
-                )),
+            ...receiptsInMonth.map(
+              (receipt) => ReceiptCardWidget(
+                receipt: receipt,
+                isSelected: _selectedReceipts.contains(receipt.id),
+                bulkMode: _bulkMode,
+                onTap: () => _bulkMode
+                    ? _toggleReceiptSelection(receipt.id)
+                    : _showReceiptDetail(receipt),
+                onToggleSelect: () => _toggleReceiptSelection(receipt.id),
+                onViewPdf: () => _viewReceiptPdf(receipt),
+                onSendEmail: () => _sendReceiptEmail(receipt),
+                onDuplicate: () => _duplicateReceipt(receipt),
+                onDelete: _isAdmin ? () => _deleteReceipt(receipt) : null,
+              ),
+            ),
             SizedBox(height: 24.h),
           ],
         );
@@ -760,7 +954,7 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
             ),
             SizedBox(height: 16.h),
             Text(
-              'Nessuna ricevuta personale trovata',
+              'receipt.personal_receipts_empty'.tr(),
               style: GoogleFonts.inter(
                 fontSize: 16.sp,
                 color: Colors.grey.shade600,
@@ -824,7 +1018,9 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
 
               // Receipt detail content
               Text(
-                'Dettagli Ricevuta ${receipt.receiptNumber}',
+                'receipt.receipt_details_title'.tr(
+                  namedArgs: {'number': '${receipt.receiptNumber}'},
+                ),
                 style: GoogleFonts.inter(
                   fontSize: 20.sp,
                   fontWeight: FontWeight.w600,
@@ -840,18 +1036,57 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
 
   Future<void> _viewReceiptPdf(ReceiptModel receipt) async {
     try {
-      final pdf = pw.Document();
-      pdf.addPage(await _generateReceiptPage(receipt));
+      // 🎯 CRITICAL FIX: Use the SAME service as User App
+      // This ensures Admin sees EXACT same PDF with "Longiano" address and correct logo
+
+      // Step 1: Fetch full receipt data from database (with organization_info)
+      final receiptData = await _italianReceiptService.getReceiptById(
+        receipt.id,
+      );
+
+      if (receiptData == null) {
+        throw Exception('Ricevuta non trovata nel database');
+      }
+
+      // Step 2: Generate PDF using the SAME beautiful service as User App
+      final pdf = await _italianReceiptService.generateBeautifulReceiptPDF(
+        receiptData,
+      );
       final pdfBytes = await pdf.save();
 
+      // 🎯 FIX: Direct download with improved browser compatibility
+      final filename = 'ricevuta_${receiptData['receipt_number']}.pdf';
+
       if (kIsWeb) {
-        await Printing.layoutPdf(onLayout: (format) async => pdfBytes);
+        // Web: Enhanced download trigger with better browser support
+        final blob = html.Blob([pdfBytes], 'application/pdf');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final anchor = html.document.createElement('a') as html.AnchorElement
+          ..href = url
+          ..style.display = 'none'
+          ..download = filename;
+
+        // Append to body, click, and remove (ensures click event fires correctly)
+        html.document.body?.append(anchor);
+        anchor.click();
+        anchor.remove();
+
+        // Clean up blob URL after a short delay to ensure download completes
+        Future.delayed(const Duration(milliseconds: 100), () {
+          html.Url.revokeObjectUrl(url);
+        });
       } else {
-        await Printing.sharePdf(
-          bytes: pdfBytes,
-          filename: 'ricevuta_${receipt.receiptNumber}.pdf',
-        );
+        // Mobile: Save to device documents directory
+        final directory = await getApplicationDocumentsDirectory();
+        final file = File('${directory.path}/$filename');
+        await file.writeAsBytes(pdfBytes);
       }
+
+      Fluttertoast.showToast(
+        msg: "Ricevuta PDF scaricata con successo",
+        backgroundColor: Colors.green,
+        textColor: Colors.white,
+      );
     } catch (error) {
       Fluttertoast.showToast(
         msg: "Errore nella visualizzazione PDF: $error",
@@ -872,6 +1107,80 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
     );
   }
 
+  Future<void> _deleteReceipt(ReceiptModel receipt) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red.shade600),
+            SizedBox(width: 8.w),
+            Text(
+              'Elimina Ricevuta',
+              style: GoogleFonts.inter(
+                fontSize: 18.sp,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Sei sicuro di voler eliminare la ricevuta N.${receipt.receiptNumber} di ${receipt.user?.fullName ?? 'cliente'}?\n\nQuesta azione è irreversibile e rimuoverà la ricevuta anche dalla cronologia pagamenti dell\'utente.',
+          style: GoogleFonts.inter(fontSize: 14.sp),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'common.cancel'.tr(),
+              style: GoogleFonts.inter(color: Colors.grey.shade600),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade600,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text(
+              'Elimina',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        // Admin delete: hard delete receipt + associated payment_confirmations
+        await _italianReceiptService.deleteReceipt(
+          receipt.id,
+          deleteSubscription: true,
+        );
+
+        Fluttertoast.showToast(
+          msg: 'Ricevuta eliminata con successo',
+          backgroundColor: Colors.green,
+          textColor: Colors.white,
+        );
+
+        await _loadReceipts(); // Refresh list
+      } catch (error) {
+        Fluttertoast.showToast(
+          msg: 'Errore nell\'eliminazione: $error',
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+        );
+      }
+    }
+  }
+
   Future<void> _duplicateReceipt(ReceiptModel receipt) async {
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
@@ -889,8 +1198,10 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Annulla',
-                style: GoogleFonts.inter(color: Colors.grey.shade600)),
+            child: Text(
+              'common.cancel'.tr(),
+              style: GoogleFonts.inter(color: Colors.grey.shade600),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -898,10 +1209,13 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
               backgroundColor: Colors.blue.shade600,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
-            child: Text('Duplica',
-                style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+            child: Text(
+              'Duplica',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),

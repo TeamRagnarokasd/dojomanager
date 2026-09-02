@@ -13,7 +13,9 @@ class EnhancedInstructorDashboardService {
   /// Get instructor profile with user data
   Future<Map<String, dynamic>?> getInstructorProfile(String userId) async {
     try {
-      final response = await _supabase.from('instructor_profiles').select('''
+      final response = await _supabase
+          .from('instructor_profiles')
+          .select('''
             *,
             user_profiles!instructor_profiles_user_id_fkey(
               id,
@@ -23,7 +25,10 @@ class EnhancedInstructorDashboardService {
               profile_image_url,
               role
             )
-          ''').eq('user_id', userId).eq('is_active', true).maybeSingle();
+          ''')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .maybeSingle();
 
       return response;
     } catch (error) {
@@ -34,7 +39,8 @@ class EnhancedInstructorDashboardService {
 
   /// Get today's schedule instances for instructor
   Future<List<Map<String, dynamic>>> getTodaySchedule(
-      String instructorId) async {
+    String instructorId,
+  ) async {
     try {
       final today = DateTime.now();
       final todayDateString =
@@ -67,7 +73,8 @@ class EnhancedInstructorDashboardService {
 
   /// Get upcoming classes (next 7 days)
   Future<List<Map<String, dynamic>>> getUpcomingClasses(
-      String instructorId) async {
+    String instructorId,
+  ) async {
     try {
       final today = DateTime.now();
       final nextWeek = today.add(const Duration(days: 7));
@@ -175,11 +182,7 @@ class EnhancedInstructorDashboardService {
       };
     } catch (error) {
       print('Error fetching revenue analytics: $error');
-      return {
-        'monthly_revenue': 0.0,
-        'total_payments': 0,
-        'currency': '€',
-      };
+      return {'monthly_revenue': 0.0, 'total_payments': 0, 'currency': '€'};
     }
   }
 
@@ -190,7 +193,7 @@ class EnhancedInstructorDashboardService {
       final activeStudentsData = await _supabase
           .from('user_profiles')
           .select('id')
-          .eq('role', 'student')
+          .inFilter('role', ['student', 'instructor_student'])
           .eq('is_active', true)
           .eq('status', 'approved')
           .count();
@@ -208,16 +211,15 @@ class EnhancedInstructorDashboardService {
       };
     } catch (error) {
       print('Error fetching student progress: $error');
-      return {
-        'active_students': 0,
-        'active_subscriptions': 0,
-      };
+      return {'active_students': 0, 'active_subscriptions': 0};
     }
   }
 
   /// Get instructor's class history
-  Future<List<Map<String, dynamic>>> getClassHistory(String instructorId,
-      {int limit = 10}) async {
+  Future<List<Map<String, dynamic>>> getClassHistory(
+    String instructorId, {
+    int limit = 10,
+  }) async {
     try {
       final today = DateTime.now();
       final todayString =
@@ -250,8 +252,10 @@ class EnhancedInstructorDashboardService {
   }
 
   /// Get instructor notifications/activities
-  Future<List<Map<String, dynamic>>> getInstructorNotifications(String userId,
-      {int limit = 5}) async {
+  Future<List<Map<String, dynamic>>> getInstructorNotifications(
+    String userId, {
+    int limit = 5,
+  }) async {
     try {
       final response = await _supabase
           .from('admin_activity_log')
@@ -278,11 +282,14 @@ class EnhancedInstructorDashboardService {
   /// Cancel a class
   Future<bool> cancelClass(String classId, String reason) async {
     try {
-      await _supabase.from('schedule_instances').update({
-        'is_cancelled': true,
-        'cancellation_reason': reason,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', classId);
+      await _supabase
+          .from('schedule_instances')
+          .update({
+            'is_cancelled': true,
+            'cancellation_reason': reason,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', classId);
 
       return true;
     } catch (error) {
@@ -293,12 +300,17 @@ class EnhancedInstructorDashboardService {
 
   /// Update instructor availability
   Future<bool> updateAvailability(
-      String instructorId, Map<String, dynamic> availabilitySchedule) async {
+    String instructorId,
+    Map<String, dynamic> availabilitySchedule,
+  ) async {
     try {
-      await _supabase.from('instructor_profiles').update({
-        'availability_schedule': availabilitySchedule,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('user_id', instructorId);
+      await _supabase
+          .from('instructor_profiles')
+          .update({
+            'availability_schedule': availabilitySchedule,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('user_id', instructorId);
 
       return true;
     } catch (error) {

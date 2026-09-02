@@ -50,7 +50,7 @@ class _DocumentPreviewWidgetState extends State<DocumentPreviewWidget> {
           IOSUiSettings(
             title: 'Ritaglia Certificato',
             doneButtonTitle: 'Fatto',
-            cancelButtonTitle: 'Annulla',
+            cancelButtonTitle: 'common.cancel'.tr(),
           ),
         ],
       );
@@ -267,7 +267,7 @@ class _DocumentPreviewWidgetState extends State<DocumentPreviewWidget> {
           _buildActionButton(
             onPressed: _showImageDetails,
             icon: 'info',
-            label: 'Dettagli',
+            label: 'receipt.details_label'.tr(),
             isEnabled: !_isProcessing,
           ),
         ],
@@ -288,28 +288,25 @@ class _DocumentPreviewWidgetState extends State<DocumentPreviewWidget> {
           onPressed: isEnabled ? onPressed : null,
           icon: CustomIconWidget(
             iconName: icon,
-            color:
-                isEnabled
-                    ? AppTheme.lightTheme.colorScheme.primary
-                    : AppTheme.lightTheme.colorScheme.outline,
+            color: isEnabled
+                ? AppTheme.lightTheme.colorScheme.primary
+                : AppTheme.lightTheme.colorScheme.outline,
             size: 16,
           ),
           label: Text(
             label,
             style: AppTheme.lightTheme.textTheme.labelMedium?.copyWith(
-              color:
-                  isEnabled
-                      ? AppTheme.lightTheme.colorScheme.primary
-                      : AppTheme.lightTheme.colorScheme.outline,
+              color: isEnabled
+                  ? AppTheme.lightTheme.colorScheme.primary
+                  : AppTheme.lightTheme.colorScheme.outline,
             ),
           ),
           style: OutlinedButton.styleFrom(
             padding: EdgeInsets.symmetric(vertical: 1.h),
             side: BorderSide(
-              color:
-                  isEnabled
-                      ? AppTheme.lightTheme.colorScheme.primary
-                      : AppTheme.lightTheme.colorScheme.outline,
+              color: isEnabled
+                  ? AppTheme.lightTheme.colorScheme.primary
+                  : AppTheme.lightTheme.colorScheme.outline,
               width: 1,
             ),
           ),
@@ -321,51 +318,50 @@ class _DocumentPreviewWidgetState extends State<DocumentPreviewWidget> {
   void _showImageDetails() {
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: AppTheme.lightTheme.colorScheme.surface,
-            title: Text(
-              'Dettagli Immagine',
-              style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
-                color: AppTheme.lightTheme.colorScheme.onSurface,
-              ),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildDetailRow('Nome:', widget.capturedImage!.name),
-                SizedBox(height: 1.h),
-                _buildDetailRow(
-                  'Percorso:',
-                  widget.capturedImage!.path.split('/').last,
-                ),
-                SizedBox(height: 1.h),
-                FutureBuilder<int>(
-                  future: widget.capturedImage!.length(),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasData) {
-                      final sizeInMB = (snapshot.data! / (1024 * 1024))
-                          .toStringAsFixed(2);
-                      return _buildDetailRow('Dimensione:', '$sizeInMB MB');
-                    }
-                    return _buildDetailRow('Dimensione:', 'Calcolando...');
-                  },
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: Text(
-                  'Chiudi',
-                  style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
-                    color: AppTheme.lightTheme.colorScheme.primary,
-                  ),
-                ),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+        title: Text(
+          'Dettagli Immagine',
+          style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+            color: AppTheme.lightTheme.colorScheme.onSurface,
           ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildDetailRow('Nome:', widget.capturedImage!.name),
+            SizedBox(height: 1.h),
+            _buildDetailRow(
+              'Percorso:',
+              widget.capturedImage!.path.split('/').last,
+            ),
+            SizedBox(height: 1.h),
+            FutureBuilder<int>(
+              future: widget.capturedImage!.length(),
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  final sizeInMB =
+                      (snapshot.data! / (1024 * 1024)).toStringAsFixed(2);
+                  return _buildDetailRow('Dimensione:', '$sizeInMB MB');
+                }
+                return _buildDetailRow('Dimensione:', 'Calcolando...');
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              'class_schedule.close_modal'.tr(),
+              style: AppTheme.lightTheme.textTheme.labelLarge?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.primary,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

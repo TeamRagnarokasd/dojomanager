@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/app_export.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
@@ -46,13 +47,13 @@ class _ManualReceiptCreationDialogState
   DateTime? _validityStartDate;
   DateTime? _validityEndDate;
 
-  final List<Map<String, String>> _paymentMethods = [
-    {'value': 'cash', 'label': 'Contanti'},
-    {'value': 'satispay', 'label': 'Satispay'},
-    {'value': 'sumup', 'label': 'SumUp'},
-    {'value': 'bank_transfer', 'label': 'Bonifico Bancario'},
-    {'value': 'credit_card', 'label': 'Carta di Credito'},
-  ];
+  List<Map<String, String>> get _paymentMethods => [
+        {'value': 'cash', 'label': 'payment.cash'.tr()},
+        {'value': 'satispay', 'label': 'payment.satispay'.tr()},
+        {'value': 'sumup', 'label': 'payment.sumup'.tr()},
+        {'value': 'bank_transfer', 'label': 'payment.bank_transfer'.tr()},
+        {'value': 'credit_card', 'label': 'payment.credit_card'.tr()},
+      ];
 
   final List<Map<String, String>> _vatRates = [
     {'value': '0', 'label': '0% (Esente)'},
@@ -126,7 +127,7 @@ class _ManualReceiptCreationDialogState
                     children: [
                       // Customer Information Section
                       Text(
-                        'Informazioni Cliente',
+                        'receipt.customer_info'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 16.sp,
                           fontWeight: FontWeight.w600,
@@ -139,8 +140,8 @@ class _ManualReceiptCreationDialogState
                       TextFormField(
                         controller: _customerNameController,
                         decoration: InputDecoration(
-                          labelText: 'Nome Cliente',
-                          hintText: 'Inserisci il nome del cliente',
+                          labelText: 'receipt.manual_client_name'.tr(),
+                          hintText: 'receipt.customer_name_hint'.tr(),
                           prefixIcon: Icon(Icons.person_outline),
                           border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8)),
@@ -183,7 +184,7 @@ class _ManualReceiptCreationDialogState
 
                       // Receipt Details Section
                       Text(
-                        'Dettagli Ricevuta',
+                        'receipt.receipt_details'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 16.sp,
                           fontWeight: FontWeight.w600,
@@ -295,7 +296,7 @@ class _ManualReceiptCreationDialogState
                           SizedBox(width: 16.w),
                           Expanded(
                             child: DropdownButtonFormField<String>(
-                              value: _selectedVatRate,
+                              initialValue: _selectedVatRate,
                               decoration: InputDecoration(
                                 labelText: 'Aliquota IVA',
                                 prefixIcon: Icon(Icons.account_balance),
@@ -321,7 +322,7 @@ class _ManualReceiptCreationDialogState
 
                       // Payment Method
                       DropdownButtonFormField<String>(
-                        value: _selectedPaymentMethod,
+                        initialValue: _selectedPaymentMethod,
                         decoration: InputDecoration(
                           labelText: 'Metodo di Pagamento',
                           prefixIcon: Icon(Icons.payment),
@@ -344,7 +345,7 @@ class _ManualReceiptCreationDialogState
 
                       // Validity Period
                       Text(
-                        'Periodo di Validità (Opzionale)',
+                        'receipt.validity_period_optional'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 14.sp,
                           fontWeight: FontWeight.w500,
@@ -463,7 +464,7 @@ class _ManualReceiptCreationDialogState
                         side: BorderSide(color: Colors.grey.shade400),
                       ),
                       child: Text(
-                        'Annulla',
+                        'common.cancel'.tr(),
                         style: GoogleFonts.inter(
                           fontSize: 14.sp,
                           fontWeight: FontWeight.w600,
@@ -496,7 +497,7 @@ class _ManualReceiptCreationDialogState
                               ),
                             )
                           : Text(
-                              'Crea Ricevuta',
+                              'receipt.create_receipt'.tr(),
                               style: GoogleFonts.inter(
                                 fontSize: 14.sp,
                                 fontWeight: FontWeight.w600,
