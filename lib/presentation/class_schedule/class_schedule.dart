@@ -61,19 +61,18 @@ class _ClassScheduleState extends State<ClassSchedule>
   void _subscribeToRealtimeChanges() {
     RealtimeNotificationService.instance.subscribeToAdminDataChanges();
 
-    _realtimeSubscription = RealtimeNotificationService
-        .instance
-        .dataChangeStream
-        .where(
-          (event) =>
-              event.type == RealtimeDataChangeType.scheduleTemplates ||
-              event.type == RealtimeDataChangeType.scheduleInstances,
-        )
-        .listen((_) {
-          if (mounted && !_isLoading) {
-            _loadClassSchedule();
-          }
-        });
+    _realtimeSubscription =
+        RealtimeNotificationService.instance.dataChangeStream
+            .where(
+      (event) =>
+          event.type == RealtimeDataChangeType.scheduleTemplates ||
+          event.type == RealtimeDataChangeType.scheduleInstances,
+    )
+            .listen((_) {
+      if (mounted && !_isLoading) {
+        _loadClassSchedule();
+      }
+    });
   }
 
   @override
@@ -91,8 +90,8 @@ class _ClassScheduleState extends State<ClassSchedule>
 
   Future<void> _loadDisciplines() async {
     try {
-      final disciplines = await DisciplineService.instance
-          .getActiveDisciplines();
+      final disciplines =
+          await DisciplineService.instance.getActiveDisciplines();
       if (!mounted) return;
       final names = disciplines
           .map((d) => (d['name'] as String?) ?? (d['id'] as String?) ?? '')
@@ -313,8 +312,8 @@ class _ClassScheduleState extends State<ClassSchedule>
     final displayName = rawDisplayName.isNotEmpty
         ? rawDisplayName
         : model.discipline.isNotEmpty
-        ? model.discipline.toUpperCase()
-        : 'BJJ';
+            ? model.discipline.toUpperCase()
+            : 'BJJ';
 
     return {
       'id': model.id,
@@ -368,8 +367,7 @@ class _ClassScheduleState extends State<ClassSchedule>
         return true;
       } else {
         if (mounted) {
-          final error =
-              result['error'] as String? ??
+          final error = result['error'] as String? ??
               'class_schedule.booking_failed_detail'.tr();
           Fluttertoast.showToast(
             msg: error,
@@ -446,9 +444,8 @@ class _ClassScheduleState extends State<ClassSchedule>
   }
 
   void _showQuickBookingModal() {
-    final availableClasses = _allClasses
-        .where((c) => c.hasAvailableSpots && !c.isBooked)
-        .toList();
+    final availableClasses =
+        _allClasses.where((c) => c.hasAvailableSpots && !c.isBooked).toList();
 
     if (availableClasses.isEmpty) {
       Fluttertoast.showToast(
@@ -619,8 +616,7 @@ class _ClassScheduleState extends State<ClassSchedule>
                           Text(
                             '${_entryBasedInfo!['entries_remaining']} ingressi rimasti',
                             style: theme.textTheme.bodySmall!.copyWith(
-                              color:
-                                  (_entryBasedInfo!['entries_remaining']
+                              color: (_entryBasedInfo!['entries_remaining']
                                           as int) ==
                                       0
                                   ? theme.colorScheme.error
@@ -677,46 +673,46 @@ class _ClassScheduleState extends State<ClassSchedule>
                     ),
                   )
                 : _myBookings.isEmpty
-                ? Padding(
-                    padding: EdgeInsets.only(
-                      left: 4.w,
-                      right: 4.w,
-                      bottom: 2.h,
-                    ),
-                    child: Row(
-                      children: [
-                        CustomIconWidget(
-                          iconName: 'info_outline',
-                          color: theme.colorScheme.onSurfaceVariant,
-                          size: 18,
+                    ? Padding(
+                        padding: EdgeInsets.only(
+                          left: 4.w,
+                          right: 4.w,
+                          bottom: 2.h,
                         ),
-                        SizedBox(width: 2.w),
-                        Text(
-                          'Nessuna prenotazione attiva',
-                          style: theme.textTheme.bodySmall!.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
+                        child: Row(
+                          children: [
+                            CustomIconWidget(
+                              iconName: 'info_outline',
+                              color: theme.colorScheme.onSurfaceVariant,
+                              size: 18,
+                            ),
+                            SizedBox(width: 2.w),
+                            Text(
+                              'Nessuna prenotazione attiva',
+                              style: theme.textTheme.bodySmall!.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  )
-                : ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    padding: EdgeInsets.only(
-                      left: 4.w,
-                      right: 4.w,
-                      bottom: 2.h,
-                    ),
-                    itemCount: _myBookings.length,
-                    separatorBuilder: (_, __) => Divider(
-                      height: 1,
-                      color: theme.dividerColor.withValues(alpha: 0.5),
-                    ),
-                    itemBuilder: (context, index) {
-                      return _buildBookingItem(theme, _myBookings[index]);
-                    },
-                  ),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: EdgeInsets.only(
+                          left: 4.w,
+                          right: 4.w,
+                          bottom: 2.h,
+                        ),
+                        itemCount: _myBookings.length,
+                        separatorBuilder: (_, __) => Divider(
+                          height: 1,
+                          color: theme.dividerColor.withValues(alpha: 0.5),
+                        ),
+                        itemBuilder: (context, index) {
+                          return _buildBookingItem(theme, _myBookings[index]);
+                        },
+                      ),
         ],
       ),
     );
@@ -727,9 +723,8 @@ class _ClassScheduleState extends State<ClassSchedule>
     if (instance == null) return const SizedBox.shrink();
 
     final discipline = instance['discipline']?.toString() ?? '';
-    final displayDiscipline = discipline.isNotEmpty
-        ? discipline.toUpperCase()
-        : 'Classe';
+    final displayDiscipline =
+        discipline.isNotEmpty ? discipline.toUpperCase() : 'Classe';
     final startTime = instance['start_time']?.toString() ?? '';
     final endTime = instance['end_time']?.toString() ?? '';
     final timeRange = (startTime.isNotEmpty && endTime.isNotEmpty)
@@ -739,8 +734,8 @@ class _ClassScheduleState extends State<ClassSchedule>
     final formattedDate = _formatBookingDate(classDate);
     final instructorName =
         (instance['user_profiles'] as Map<String, dynamic>?)?['full_name']
-            ?.toString() ??
-        '';
+                ?.toString() ??
+            '';
 
     // Schedule instance ID for cancellation
     final instanceId = instance['id']?.toString() ?? '';
@@ -889,11 +884,12 @@ class _ClassScheduleState extends State<ClassSchedule>
               int.parse(timeParts[0]),
               int.parse(timeParts[1]),
             );
-            final deadline = classDateTime.subtract(const Duration(hours: 1));
+            final deadline =
+                classDateTime.subtract(const Duration(minutes: 30));
             if (DateTime.now().isAfter(deadline)) {
               Fluttertoast.showToast(
                 msg:
-                    'Non è possibile disdire la prenotazione a meno di 1 ora dall\'inizio della classe.',
+                    'Non è possibile disdire la prenotazione a meno di 30 minuti dall\'inizio della classe.',
                 toastLength: Toast.LENGTH_LONG,
                 gravity: ToastGravity.BOTTOM,
                 backgroundColor: theme.colorScheme.error,

@@ -1,10 +1,13 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
+import '../services/child_profile_service.dart';
 
 class PaymentService {
   static final SupabaseClient _client = SupabaseService.instance.client;
 
-  /// Get or create receipt ID for a payment confirmation
+  /// Get or create receipt ID for a payment confirmation.
+  /// Always resolves via batch_transaction_id → non_fiscal_receipts.id directly.
+  /// Never uses ambiguous notes/plan/amount search to avoid returning the wrong receipt.
   static Future<String?> getReceiptIdForPayment(String paymentId) async {
     try {
       final paymentRow = await _client
@@ -19,6 +22,9 @@ class PaymentService {
 
       final batchTxId = paymentRow['batch_transaction_id'] as String?;
 
+      // PRIMARY: Always resolve via batch_transaction_id — this is the only
+      // reliable 1:1 link between a payment_confirmation and its receipt.
+      // Never fall back to notes/plan/amount search (causes Bug 1: wrong receipt shown).
       if (batchTxId != null && batchTxId.isNotEmpty) {
         final byBatch = await _client
             .from('non_fiscal_receipts')
@@ -29,14 +35,20 @@ class PaymentService {
         if (byBatch != null) return byBatch['id'] as String?;
       }
 
-      final byNotes = await _client
+      // FALLBACK: Only if no batch_transaction_id exists (legacy/manual payments),
+      // search by the exact payment confirmation ID stored in fiscal_notes.
+      // This is still unambiguous because it references the specific row ID.
+      final byFiscalNotes = await _client
           .from('non_fiscal_receipts')
           .select('id')
-          .or('notes.ilike.%$paymentId%,fiscal_notes.ilike.%$paymentId%')
+          .ilike('fiscal_notes', '%$paymentId%')
           .limit(1)
           .maybeSingle();
-      if (byNotes != null) return byNotes['id'] as String?;
+      if (byFiscalNotes != null) return byFiscalNotes['id'] as String?;
 
+      // SECONDARY FALLBACK: Search by customer_name + issue_date + amount.
+      // This finds admin-created receipts that were generated for this payment
+      // but not linked via batch_transaction_id or fiscal_notes.
       final userId = paymentRow['user_id'] as String?;
       if (userId == null) return null;
 
@@ -48,6 +60,45 @@ class PaymentService {
           .eq('id', userId)
           .single();
 
+      final customerName = userProfile['full_name'] as String?;
+      final paymentAmount = paymentRow['amount'];
+      final confirmedAtStr = paymentRow['confirmed_at'] as String?;
+      final issueDate = confirmedAtStr?.split('T')[0];
+
+      if (customerName != null &&
+          customerName.isNotEmpty &&
+          issueDate != null) {
+        // Try to find an existing admin-created receipt for this customer on this date
+        final byCustomerDate = await _client
+            .from('non_fiscal_receipts')
+            .select('id')
+            .ilike('customer_name', customerName)
+            .eq('issue_date', issueDate)
+            .limit(1)
+            .maybeSingle();
+        if (byCustomerDate != null) return byCustomerDate['id'] as String?;
+
+        // Also try within ±1 day range in case of timezone differences
+        if (confirmedAtStr != null) {
+          final confirmedDate = DateTime.tryParse(confirmedAtStr);
+          if (confirmedDate != null) {
+            final dayBefore = confirmedDate.subtract(const Duration(days: 1));
+            final dayAfter = confirmedDate.add(const Duration(days: 1));
+            final byCustomerRange = await _client
+                .from('non_fiscal_receipts')
+                .select('id')
+                .ilike('customer_name', customerName)
+                .gte('issue_date', dayBefore.toIso8601String().split('T')[0])
+                .lte('issue_date', dayAfter.toIso8601String().split('T')[0])
+                .limit(1)
+                .maybeSingle();
+            if (byCustomerRange != null)
+              return byCustomerRange['id'] as String?;
+          }
+        }
+      }
+
+      // No existing receipt found — create one only for legacy payments without batch_transaction_id
       final addressParts = <String>[];
       if (userProfile['address_line'] != null)
         addressParts.add(userProfile['address_line']);
@@ -59,8 +110,7 @@ class PaymentService {
       final customPlan =
           paymentRow['custom_subscription_plans'] as Map<String, dynamic>?;
       final planName = customPlan?['name'] as String? ?? 'Abbonamento';
-      final taxCode =
-          userProfile['tax_code'] ??
+      final taxCode = userProfile['tax_code'] ??
           userProfile['codice_fiscale'] ??
           'NON DISPONIBILE';
 
@@ -69,7 +119,29 @@ class PaymentService {
         receiptNumber =
             await _client.rpc('generate_italian_receipt_number') as String;
       } catch (e) {
-        receiptNumber = 'RIC-${DateTime.now().millisecondsSinceEpoch}';
+        // Fallback: compute MAX+1 directly in number/year format (NNN/YYYY)
+        try {
+          final currentYear = DateTime.now().year;
+          final maxResult = await _client
+              .from('non_fiscal_receipts')
+              .select('receipt_number')
+              .like('receipt_number', '%/$currentYear');
+          int maxNum = 0;
+          for (final row in maxResult) {
+            final rn = row['receipt_number'] as String? ?? '';
+            final parts = rn.split('/');
+            if (parts.length == 2) {
+              final n =
+                  int.tryParse(parts[0].replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+              if (n > maxNum) maxNum = n;
+            }
+          }
+          final nextNum = maxNum + 1;
+          receiptNumber = '${nextNum.toString().padLeft(3, '0')}/$currentYear';
+        } catch (_) {
+          final currentYear = DateTime.now().year;
+          receiptNumber = '001/$currentYear';
+        }
       }
 
       final newReceipt = await _client
@@ -77,9 +149,8 @@ class PaymentService {
           .insert({
             'customer_name': userProfile['full_name'] ?? 'Cliente',
             'customer_tax_code': taxCode,
-            'customer_address': addressParts.isNotEmpty
-                ? addressParts.join(', ')
-                : null,
+            'customer_address':
+                addressParts.isNotEmpty ? addressParts.join(', ') : null,
             'description': planName,
             'amount': paymentRow['amount'],
             'quantity': 1,
@@ -92,7 +163,7 @@ class PaymentService {
             'receipt_number': receiptNumber,
             'issue_date':
                 (paymentRow['confirmed_at'] as String?)?.split('T')[0] ??
-                DateTime.now().toIso8601String().split('T')[0],
+                    DateTime.now().toIso8601String().split('T')[0],
             'created_by': userId,
             'batch_transaction_id': batchTxId,
             'fiscal_notes': 'Payment confirmation ID: $paymentId',
@@ -157,8 +228,8 @@ class PaymentService {
           issueDate = issueDateStr != null
               ? DateTime.parse(issueDateStr.toString())
               : (createdAtStr != null
-                    ? DateTime.parse(createdAtStr.toString())
-                    : DateTime.now());
+                  ? DateTime.parse(createdAtStr.toString())
+                  : DateTime.now());
         } catch (_) {
           issueDate = DateTime.now();
         }
@@ -206,7 +277,10 @@ class PaymentService {
     String? userId,
   ]) async {
     try {
-      final currentUserId = userId ?? _client.auth.currentUser?.id;
+      // 🔥 ACTIVE PROFILE FIX: use active profile ID (child or adult)
+      final currentUserId = userId ??
+          ChildProfileService.getActiveUserId() ??
+          _client.auth.currentUser?.id;
       if (currentUserId == null) throw Exception('User not authenticated');
 
       final dashboardData = await getSubscriptionDashboardData(currentUserId);
@@ -234,12 +308,14 @@ class PaymentService {
   /// Dedicated enrollment gate check.
   /// Uses a SECURITY DEFINER RPC function that runs server-side and bypasses
   /// all RLS complexity. Falls back to a direct query if the RPC fails.
-  /// Returns true ONLY if the user has a confirmed payment_confirmation
-  /// linked to a custom_subscription_plan whose name contains
-  /// "iscrizione annuale" (case-insensitive).
+  /// Returns true ONLY if the ACTIVE PROFILE (child or adult) has a confirmed
+  /// annual registration where they are the beneficiary.
   static Future<bool> checkHasAnnualRegistration([String? userId]) async {
     try {
-      final currentUserId = userId ?? _client.auth.currentUser?.id;
+      // 🔥 ACTIVE PROFILE FIX: use active profile ID (child or adult)
+      final currentUserId = userId ??
+          ChildProfileService.getActiveUserId() ??
+          _client.auth.currentUser?.id;
       if (currentUserId == null) return false;
 
       // PRIMARY: Use SECURITY DEFINER RPC function — bypasses all RLS issues
@@ -256,14 +332,17 @@ class PaymentService {
         // Fall through to direct query
       }
 
-      // FALLBACK: Direct query on payment_confirmations
-      // Uses the FK join to custom_subscription_plans to check plan name
+      // FALLBACK: Direct query on payment_confirmations filtered by beneficiary_profile_id.
+      // STRICT: only rows where this profile is the explicit beneficiary,
+      // OR legacy rows where beneficiary_profile_id IS NULL and user_id matches.
       final rows = await _client
           .from('payment_confirmations')
           .select(
             'id, status, custom_plan_id, custom_subscription_plans!payment_confirmations_custom_plan_id_fkey(name)',
           )
-          .eq('user_id', currentUserId)
+          .or(
+            'beneficiary_profile_id.eq.$currentUserId,and(beneficiary_profile_id.is.null,user_id.eq.$currentUserId)',
+          )
           .eq('status', 'confirmed')
           .not('custom_plan_id', 'is', null);
 
@@ -290,12 +369,15 @@ class PaymentService {
   }
 
   /// Get comprehensive subscription dashboard data including annual registration.
-  /// Reads from payment_confirmations joined with custom_subscription_plans.
+  /// When called without userId, uses the ACTIVE PROFILE (child or adult).
   static Future<Map<String, dynamic>> getSubscriptionDashboardData([
     String? userId,
   ]) async {
     try {
-      final currentUserId = userId ?? _client.auth.currentUser?.id;
+      // 🔥 ACTIVE PROFILE FIX: use active profile ID (child or adult)
+      final currentUserId = userId ??
+          ChildProfileService.getActiveUserId() ??
+          _client.auth.currentUser?.id;
       if (currentUserId == null) throw Exception('User not authenticated');
 
       // Try SECURITY DEFINER RPC first
@@ -313,8 +395,7 @@ class PaymentService {
           final row = rows.first;
           final hasAnnual = row['has_annual_registration'] as bool? ?? false;
           final hasActiveSub = row['has_active_subscription'] as bool? ?? false;
-          final currentPlanName =
-              row['current_plan_name'] as String? ??
+          final currentPlanName = row['current_plan_name'] as String? ??
               'Nessun abbonamento attivo';
           final annualExpiryDate = row['annual_expiry_date'];
           final confirmedAt = row['current_plan_confirmed_at'];
@@ -333,17 +414,15 @@ class PaymentService {
           String annualExpiryStr = '';
           if (hasAnnual && annualExpiryDate != null) {
             final expiry = DateTime.parse(annualExpiryDate.toString());
-            annualExpiryStr =
-                'scad. ${expiry.day.toString().padLeft(2, '0')}/'
+            annualExpiryStr = 'scad. ${expiry.day.toString().padLeft(2, '0')}/'
                 '${expiry.month.toString().padLeft(2, '0')}/${expiry.year}';
           }
 
           return {
             'currentPlanName': currentPlanName,
             'renewalDate': renewalDate,
-            'annualRegistrationStatus': hasAnnual
-                ? 'Effettuata'
-                : 'Da acquistare',
+            'annualRegistrationStatus':
+                hasAnnual ? 'Effettuata' : 'Da acquistare',
             'annualRegistrationExpiry': annualExpiryStr,
             'hasAnnualRegistration': hasAnnual,
             'hasActiveSubscription': hasActiveSub,
@@ -357,7 +436,9 @@ class PaymentService {
         );
       }
 
-      // Fallback: direct query on payment_confirmations
+      // Fallback: direct query on payment_confirmations filtered by beneficiary_profile_id.
+      // This ensures the dashboard shows only subscriptions FOR this specific profile
+      // (adult or child), not all subscriptions paid by the adult payer.
       final paymentConfirmations = await _client
           .from('payment_confirmations')
           .select('''
@@ -370,7 +451,9 @@ class PaymentService {
               id, name, amount, duration_months
             )
           ''')
-          .eq('user_id', currentUserId)
+          .or(
+            'beneficiary_profile_id.eq.$currentUserId,and(beneficiary_profile_id.is.null,user_id.eq.$currentUserId)',
+          )
           .eq('status', 'confirmed')
           .not('custom_plan_id', 'is', null)
           .order('confirmed_at', ascending: false);
@@ -405,8 +488,7 @@ class PaymentService {
           if (annualRegistrationExpiry == null) {
             final now = DateTime.now();
             final august28ThisYear = DateTime(now.year, 8, 28);
-            final expiryYear =
-                now.isBefore(august28ThisYear) ||
+            final expiryYear = now.isBefore(august28ThisYear) ||
                     now.isAtSameMomentAs(august28ThisYear)
                 ? now.year
                 : now.year + 1;
@@ -438,8 +520,8 @@ class PaymentService {
           );
 
           for (final receipt in userReceipts) {
-            final desc = (receipt['description'] as String? ?? '')
-                .toLowerCase();
+            final desc =
+                (receipt['description'] as String? ?? '').toLowerCase();
             final issueDateStr = receipt['issue_date'];
             if (issueDateStr == null) continue;
 
@@ -450,8 +532,7 @@ class PaymentService {
               hasAnnualRegistration = true;
               final now = DateTime.now();
               final august28ThisYear = DateTime(now.year, 8, 28);
-              final expiryYear =
-                  now.isBefore(august28ThisYear) ||
+              final expiryYear = now.isBefore(august28ThisYear) ||
                       now.isAtSameMomentAs(august28ThisYear)
                   ? now.year
                   : now.year + 1;
@@ -462,8 +543,7 @@ class PaymentService {
                   receipt['description'] as String? ?? 'Abbonamento';
               otherPlans.add({
                 'name': planName,
-                'created_at':
-                    receipt['created_at'] as String? ??
+                'created_at': receipt['created_at'] as String? ??
                     DateTime.now().toIso8601String(),
                 'amount': receipt['amount'],
                 'duration_months': 1,
@@ -495,9 +575,8 @@ class PaymentService {
         currentPlanExpiry = createdAt.add(Duration(days: 30 * durationMonths));
       }
 
-      final annualRegistrationStatus = hasAnnualRegistration
-          ? 'Effettuata'
-          : 'Da acquistare';
+      final annualRegistrationStatus =
+          hasAnnualRegistration ? 'Effettuata' : 'Da acquistare';
 
       String annualRegistrationExpiryStr = '';
       if (hasAnnualRegistration && annualRegistrationExpiry != null) {
@@ -507,9 +586,8 @@ class PaymentService {
             '${annualRegistrationExpiry.year}';
       }
 
-      final renewalDate = currentPlanExpiry != null
-          ? _formatDate(currentPlanExpiry)
-          : '';
+      final renewalDate =
+          currentPlanExpiry != null ? _formatDate(currentPlanExpiry) : '';
 
       return {
         'currentPlanName': currentPlanName,
@@ -539,9 +617,8 @@ class PaymentService {
 
       final transactions = await getPaymentTransactions(currentUserId);
 
-      final completedTransactions = transactions
-          .where((t) => t['status'] == 'completato')
-          .toList();
+      final completedTransactions =
+          transactions.where((t) => t['status'] == 'completato').toList();
 
       double totalSpent = 0;
       for (final transaction in completedTransactions) {
@@ -576,9 +653,8 @@ class PaymentService {
         'completedTransactions': completedTransactions.length,
         'totalSpent': totalSpent,
         'monthlyStats': monthlyStats,
-        'lastTransactionDate': transactions.isNotEmpty
-            ? transactions.first['date']
-            : null,
+        'lastTransactionDate':
+            transactions.isNotEmpty ? transactions.first['date'] : null,
       };
     } catch (e) {
       throw Exception('Failed to fetch payment statistics: $e');

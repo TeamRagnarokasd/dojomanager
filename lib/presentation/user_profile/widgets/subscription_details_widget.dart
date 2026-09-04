@@ -48,24 +48,33 @@ class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
         return;
       }
 
-      // PRIMARY SOURCE: payment_confirmations with custom_plan_id join
-      // This is the definitive record of what was purchased and confirmed.
+      // PRIMARY SOURCE: payment_confirmations filtered by beneficiary_profile_id.
+      // This is the definitive record of what was purchased FOR this specific profile.
+      // beneficiary_profile_id = adult's user_id for adult purchases,
+      //                          child_profiles.id for child purchases.
+      // Fallback: also match rows where beneficiary_profile_id IS NULL and user_id = targetUserId
+      // (legacy rows before this migration).
       final paymentsResponse = await client
           .from('payment_confirmations')
           .select('''
             id,
             user_id,
+            beneficiary_profile_id,
+            beneficiary_type,
             custom_plan_id,
             amount,
             payment_method,
             status,
             confirmed_at,
             created_at,
+            batch_transaction_id,
             custom_subscription_plans!payment_confirmations_custom_plan_id_fkey(
               id, name, amount, duration_months, entry_count, is_unlimited
             )
           ''')
-          .eq('user_id', targetUserId)
+          .or(
+            'beneficiary_profile_id.eq.$targetUserId,and(beneficiary_profile_id.is.null,user_id.eq.$targetUserId)',
+          )
           .eq('status', 'confirmed')
           .not('custom_plan_id', 'is', null)
           .order('confirmed_at', ascending: false);
@@ -79,6 +88,34 @@ class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
             _isLoading = false;
           });
         return;
+      }
+
+      // ── SYNC CHECK: Verify each payment_confirmation has a live receipt ──
+      // Collect all batch_transaction_ids from payments
+      final batchIds = payments
+          .map((p) => p['batch_transaction_id'] as String?)
+          .where((id) => id != null && id.isNotEmpty)
+          .cast<String>()
+          .toSet()
+          .toList();
+
+      // Fetch non_fiscal_receipts that are NOT soft-deleted for these batch IDs
+      Set<String> validBatchIds = {};
+      if (batchIds.isNotEmpty) {
+        try {
+          final receiptsCheck = await client
+              .from('non_fiscal_receipts')
+              .select('batch_transaction_id')
+              .inFilter('batch_transaction_id', batchIds)
+              .eq('deleted_by_user', false);
+          for (final row in receiptsCheck) {
+            final bid = row['batch_transaction_id'] as String?;
+            if (bid != null) validBatchIds.add(bid);
+          }
+        } catch (_) {
+          // If the column doesn't exist or query fails, fall back to showing all
+          validBatchIds = batchIds.toSet();
+        }
       }
 
       // Also fetch user_subscriptions to get expiry dates and entry counts
@@ -113,6 +150,19 @@ class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
 
         // Skip duplicates (same plan purchased multiple times — show most recent)
         if (seenPlanIds.contains(customPlanId)) continue;
+
+        // ── SYNC GATE: Only show subscription if a valid receipt exists ──
+        // If this payment has a batch_transaction_id, verify the receipt exists
+        // and is not soft-deleted. If no batch_transaction_id, allow through
+        // (manual/legacy payments without a receipt link).
+        final batchId = payment['batch_transaction_id'] as String?;
+        if (batchId != null && batchId.isNotEmpty) {
+          if (!validBatchIds.contains(batchId)) {
+            // Receipt was deleted or soft-deleted — skip this subscription
+            continue;
+          }
+        }
+
         seenPlanIds.add(customPlanId);
 
         final customPlan =

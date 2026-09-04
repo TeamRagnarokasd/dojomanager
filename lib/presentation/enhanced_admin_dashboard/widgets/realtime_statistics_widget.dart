@@ -48,13 +48,11 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
       );
 
       // MEMBRI REGISTRATI: ALL users in user_profiles (all roles: student, instructor, staff, etc.) + active child profiles
-      final registeredResponse = await client
-          .from('user_profiles')
-          .select('id')
-          .neq(
-            'role',
-            'principal_admin',
-          ); // exclude only the main admin account
+      final registeredResponse =
+          await client.from('user_profiles').select('id').neq(
+                'role',
+                'principal_admin',
+              ); // exclude only the main admin account
       final adultUsersCount = (registeredResponse as List).length;
 
       // Count active child profiles
@@ -85,6 +83,7 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
           .from('non_fiscal_receipts')
           .select('customer_tax_code')
           .ilike('description', '%Iscrizione Annuale%')
+          .eq('deleted_by_user', false)
           .gte(
             'issue_date',
             mostRecentAugust28.toIso8601String().split('T')[0],
@@ -118,6 +117,7 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
           .from('non_fiscal_receipts')
           .select('customer_tax_code')
           .not('description', 'ilike', '%Iscrizione Annuale%')
+          .eq('deleted_by_user', false)
           .gte(
             'issue_date',
             mostRecentAugust28.toIso8601String().split('T')[0],
@@ -147,8 +147,8 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
       if (mounted) {
         setState(() {
           _statistics = {
-            'monthly_revenue': (receiptStats['total_revenue'] ?? 0.0)
-                .toDouble(),
+            'monthly_revenue':
+                (receiptStats['total_revenue'] ?? 0.0).toDouble(),
             'registered_members': registeredMembersCount,
             'subscribed_members': subscribedMembersCount,
             'course_subscribers': courseSubscribersCount,
@@ -303,16 +303,16 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
                 Text(
                   label,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                 ),
                 SizedBox(height: 0.5.h),
                 Text(
                   value,
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: color,
-                  ),
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                      ),
                 ),
               ],
             ),

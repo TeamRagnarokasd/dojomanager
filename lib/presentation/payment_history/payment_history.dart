@@ -1,16 +1,15 @@
-import 'dart:io' if (dart.library.io) 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 import 'package:universal_html/html.dart' as html;
 
 import '../../core/app_export.dart';
+import '../../services/child_profile_service.dart';
 import '../../services/italian_receipt_service.dart';
 import '../../services/payment_service.dart';
 import '../../services/supabase_service.dart';
@@ -203,18 +202,16 @@ class _PaymentHistoryState extends State<PaymentHistory>
 
   List<Map<String, dynamic>> _getFilteredTransactions() {
     var filtered = _paymentTransactions.where((transaction) {
-      final matchesFilter =
-          _selectedFilter == 'all' ||
+      final matchesFilter = _selectedFilter == 'all' ||
           (transaction['type'] as String) == _selectedFilter;
 
-      final matchesSearch =
-          _searchQuery.isEmpty ||
+      final matchesSearch = _searchQuery.isEmpty ||
           (transaction['description'] as String).toLowerCase().contains(
-            _searchQuery.toLowerCase(),
-          ) ||
+                _searchQuery.toLowerCase(),
+              ) ||
           (transaction['amount'] as String).toLowerCase().contains(
-            _searchQuery.toLowerCase(),
-          );
+                _searchQuery.toLowerCase(),
+              );
 
       return matchesFilter && matchesSearch;
     }).toList();
@@ -266,7 +263,13 @@ class _PaymentHistoryState extends State<PaymentHistory>
     });
 
     try {
-      final dashboardData = await PaymentService.getSubscriptionDashboardData();
+      // 🔥 ACTIVE PROFILE FIX: pass the active profile ID so the dashboard
+      // data reflects the currently active profile (child or adult), not
+      // always the adult payer.
+      final activeProfileId = ChildProfileService.getActiveUserId();
+      final dashboardData = await PaymentService.getSubscriptionDashboardData(
+        activeProfileId,
+      );
       final transactions = await PaymentService.getPaymentTransactions();
 
       if (!mounted) return;
@@ -394,7 +397,9 @@ class _PaymentHistoryState extends State<PaymentHistory>
                       Expanded(
                         child: Text(
                           'payment.transaction_details'.tr(),
-                          style: Theme.of(context).textTheme.headlineSmall
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
                               ?.copyWith(
                                 fontWeight: FontWeight.w600,
                                 color: Theme.of(context).colorScheme.onSurface,
@@ -423,7 +428,9 @@ class _PaymentHistoryState extends State<PaymentHistory>
                       ),
                       label: Text(
                         'payment.download_receipt_pdf'.tr(),
-                        style: Theme.of(context).textTheme.titleMedium
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
                             ?.copyWith(
                               color: Theme.of(context).colorScheme.onPrimary,
                               fontWeight: FontWeight.w600,
@@ -486,18 +493,18 @@ class _PaymentHistoryState extends State<PaymentHistory>
             child: Text(
               label,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w500,
-              ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                  ),
             ),
           ),
           Expanded(
             child: Text(
               value,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
             ),
           ),
         ],
@@ -534,17 +541,14 @@ class _PaymentHistoryState extends State<PaymentHistory>
 
     return {
       'id': payment['id'],
-      'receipt_number':
-          payment['external_payment_id'] ??
+      'receipt_number': payment['external_payment_id'] ??
           'PAY-${payment['id'].substring(0, 8)}',
-      'issue_date':
-          payment['confirmed_at']?.split('T')[0] ??
+      'issue_date': payment['confirmed_at']?.split('T')[0] ??
           DateTime.now().toIso8601String().split('T')[0],
       'customer_name': userProfile['full_name'] ?? 'payment.customer'.tr(),
       'customer_tax_code': userProfile['codice_fiscale'],
-      'customer_address': addressParts.isNotEmpty
-          ? addressParts.join(', ')
-          : null,
+      'customer_address':
+          addressParts.isNotEmpty ? addressParts.join(', ') : null,
       'description': 'payment.subscription_payment_desc'.tr(
         namedArgs: {'method': _getPaymentMethodText(payment['payment_method'])},
       ),
@@ -660,11 +664,14 @@ class _PaymentHistoryState extends State<PaymentHistory>
         );
       }
 
-      final receiptNumber =
-          receiptData['receipt_number']?.toString() ??
+      final receiptNumber = receiptData['receipt_number']?.toString() ??
           receiptData['id']?.toString().substring(0, 8) ??
           'ricevuta';
-      final filename = 'ricevuta_$receiptNumber.pdf';
+      // Sanitize filename: replace '/' with '_' to prevent PathNotFoundException on Android
+      // e.g. '002/2026' → '002_2026'
+      final sanitizedReceiptNumber =
+          receiptNumber.replaceAll('/', '_').replaceAll('\\', '_');
+      final filename = 'ricevuta_$sanitizedReceiptNumber.pdf';
 
       try {
         if (kIsWeb) {
@@ -686,10 +693,8 @@ class _PaymentHistoryState extends State<PaymentHistory>
             html.Url.revokeObjectUrl(url);
           });
         } else {
-          // Mobile: Save to device
-          final directory = await getApplicationDocumentsDirectory();
-          final file = File('${directory.path}/$filename');
-          await file.writeAsBytes(pdfBytes);
+          // Mobile: use native share sheet so user can save/open/view the PDF
+          await Printing.sharePdf(bytes: pdfBytes, filename: filename);
         }
 
         Fluttertoast.showToast(
@@ -791,8 +796,8 @@ class _PaymentHistoryState extends State<PaymentHistory>
             child: Text(
               'common.cancel'.tr(),
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
             ),
           ),
           ElevatedButton(
@@ -807,9 +812,9 @@ class _PaymentHistoryState extends State<PaymentHistory>
             child: Text(
               'payment.contact'.tr(),
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onPrimary,
-                fontWeight: FontWeight.w600,
-              ),
+                    color: Theme.of(context).colorScheme.onPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
           ),
         ],
@@ -849,8 +854,8 @@ class _PaymentHistoryState extends State<PaymentHistory>
             child: Text(
               'common.cancel'.tr(),
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
             ),
           ),
           ElevatedButton(
@@ -861,9 +866,9 @@ class _PaymentHistoryState extends State<PaymentHistory>
             child: Text(
               'payment.proceed'.tr(),
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onPrimary,
-                fontWeight: FontWeight.w600,
-              ),
+                    color: Theme.of(context).colorScheme.onPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
           ),
         ],
@@ -1003,7 +1008,9 @@ class _PaymentHistoryState extends State<PaymentHistory>
                               Expanded(
                                 child: Text(
                                   'payment.selected_plan'.tr(),
-                                  style: Theme.of(context).textTheme.titleMedium
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
                                       ?.copyWith(
                                         fontWeight: FontWeight.w700,
                                         color: Color(
@@ -1014,7 +1021,9 @@ class _PaymentHistoryState extends State<PaymentHistory>
                               ),
                               Text(
                                 '€${_selectedPlan!['price']}/${_selectedPlan!['frequency']}',
-                                style: Theme.of(context).textTheme.titleMedium
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
                                     ?.copyWith(
                                       fontWeight: FontWeight.w700,
                                       color: Color(
@@ -1027,13 +1036,13 @@ class _PaymentHistoryState extends State<PaymentHistory>
                           SizedBox(height: 1.h),
                           Text(
                             _selectedPlan!['title'] as String,
-                            style: Theme.of(context).textTheme.bodyLarge
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurface,
-                                ),
+                            style:
+                                Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface,
+                                    ),
                           ),
                         ],
                       ),
@@ -1188,7 +1197,9 @@ class _PaymentHistoryState extends State<PaymentHistory>
                             Expanded(
                               child: Text(
                                 'payment.offline_mode'.tr(),
-                                style: Theme.of(context).textTheme.bodySmall
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
                                     ?.copyWith(color: const Color(0xFFF39C12)),
                               ),
                             ),
@@ -1270,9 +1281,9 @@ class _PaymentHistoryState extends State<PaymentHistory>
                 ? 'payment.title_history'.tr()
                 : 'nav.payments'.tr(),
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
           ),
           automaticallyImplyLeading: false,
           actions: [

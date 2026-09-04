@@ -1,9 +1,7 @@
-import 'dart:io' if (dart.library.io) 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:printing/printing.dart';
 import 'package:sizer/sizer.dart';
 import 'package:universal_html/html.dart' as html;
 
@@ -534,10 +532,8 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
           html.Url.revokeObjectUrl(url);
         });
       } else {
-        // Mobile: Save to device documents directory
-        final directory = await getApplicationDocumentsDirectory();
-        final file = File('${directory.path}/$filename');
-        await file.writeAsBytes(pdfBytes);
+        // Mobile: use native share sheet so user can save/open/view the PDF
+        await Printing.sharePdf(bytes: pdfBytes, filename: filename);
       }
 
       Fluttertoast.showToast(

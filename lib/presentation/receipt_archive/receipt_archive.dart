@@ -32,7 +32,7 @@ import './widgets/receipt_statistics_widget.dart';
 
 class ReceiptArchive extends StatefulWidget {
   const ReceiptArchive({Key? key})
-    : super(key: key); //Fix constructor parameter
+      : super(key: key); //Fix constructor parameter
 
   @override
   State<ReceiptArchive> createState() => _ReceiptArchiveState();
@@ -81,8 +81,7 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
       if (user != null) {
         setState(() {
           _currentUser = user.id;
-          _isAdmin =
-              user.userMetadata?['role'] == 'admin' ||
+          _isAdmin = user.userMetadata?['role'] == 'admin' ||
               user.appMetadata['role'] == 'admin';
         });
         await _loadReceipts();
@@ -276,9 +275,7 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
               style: GoogleFonts.inter(fontSize: 14.sp),
             ),
             SizedBox(height: 16.h),
-            ...selectedReceiptList
-                .take(3)
-                .map(
+            ...selectedReceiptList.take(3).map(
                   (receipt) => Padding(
                     padding: EdgeInsets.only(bottom: 4.h),
                     child: Text(
@@ -373,8 +370,7 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
 
         if (receiptData != null) {
           // Extract receipt data
-          final issueDate =
-              receiptData['issue_date'] ??
+          final issueDate = receiptData['issue_date'] ??
               DateTime.now().toIso8601String().split('T')[0];
           final receiptNumber = receiptData['receipt_number'] ?? '';
           final customerName = receiptData['customer_name'] ?? '';
@@ -1055,7 +1051,13 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
       final pdfBytes = await pdf.save();
 
       // 🎯 FIX: Direct download with improved browser compatibility
-      final filename = 'ricevuta_${receiptData['receipt_number']}.pdf';
+      final rawReceiptNumber =
+          receiptData['receipt_number']?.toString() ?? 'ricevuta';
+      // Sanitize filename: replace '/' with '_' to prevent PathNotFoundException on Android
+      // e.g. '002/2026' → '002_2026'
+      final sanitizedReceiptNumber =
+          rawReceiptNumber.replaceAll('/', '_').replaceAll('\\', '_');
+      final filename = 'ricevuta_$sanitizedReceiptNumber.pdf';
 
       if (kIsWeb) {
         // Web: Enhanced download trigger with better browser support
@@ -1076,10 +1078,8 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
           html.Url.revokeObjectUrl(url);
         });
       } else {
-        // Mobile: Save to device documents directory
-        final directory = await getApplicationDocumentsDirectory();
-        final file = File('${directory.path}/$filename');
-        await file.writeAsBytes(pdfBytes);
+        // Mobile: use native share sheet so user can save/open/view the PDF
+        await Printing.sharePdf(bytes: pdfBytes, filename: filename);
       }
 
       Fluttertoast.showToast(

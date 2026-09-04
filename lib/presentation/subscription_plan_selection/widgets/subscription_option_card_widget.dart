@@ -19,9 +19,8 @@ class SubscriptionOptionCardWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final planColor = isLocked
-        ? Colors.grey.shade700
-        : Color(plan['color'] as int);
+    final planColor =
+        isLocked ? Colors.grey.shade700 : Color(plan['color'] as int);
     final isEntryBased = plan['entryBased'] ?? false;
     final entryCount = plan['entryCount'] ?? 0;
 
@@ -50,7 +49,7 @@ class SubscriptionOptionCardWidget extends StatelessWidget {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: isLoading ? null : onTap,
+            onTap: onTap,
             borderRadius: BorderRadius.circular(16),
             child: Container(
               padding: EdgeInsets.all(3.w),
@@ -95,9 +94,9 @@ class SubscriptionOptionCardWidget extends StatelessWidget {
                           '€${plan['price']}',
                           style: AppTheme.darkTheme.textTheme.titleMedium
                               ?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                              ),
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ],
@@ -117,12 +116,12 @@ class SubscriptionOptionCardWidget extends StatelessWidget {
                       ),
                       child: Text(
                         'NUOVO',
-                        style: AppTheme.darkTheme.textTheme.labelSmall
-                            ?.copyWith(
-                              color: Colors.black,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 10,
-                            ),
+                        style:
+                            AppTheme.darkTheme.textTheme.labelSmall?.copyWith(
+                          color: Colors.black,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 10,
+                        ),
                       ),
                     ),
                   ],
@@ -156,8 +155,8 @@ class SubscriptionOptionCardWidget extends StatelessWidget {
                     child: Text(
                       isEntryBased
                           ? (entryCount > 1
-                                ? '$entryCount ingressi'
-                                : '1 ingresso')
+                              ? '$entryCount ingressi'
+                              : '1 ingresso')
                           : plan['frequency'] as String,
                       style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
                         color: planColor,
@@ -182,11 +181,9 @@ class SubscriptionOptionCardWidget extends StatelessWidget {
                             'Nessuna scadenza',
                             style: AppTheme.darkTheme.textTheme.bodySmall
                                 ?.copyWith(
-                                  color: AppTheme
-                                      .darkTheme
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                ),
+                              color: AppTheme
+                                  .darkTheme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ),
                       ],
@@ -208,11 +205,9 @@ class SubscriptionOptionCardWidget extends StatelessWidget {
                               '${plan['classesPerWeek']} lezioni/settimana',
                               style: AppTheme.darkTheme.textTheme.bodySmall
                                   ?.copyWith(
-                                    color: AppTheme
-                                        .darkTheme
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
+                                color: AppTheme
+                                    .darkTheme.colorScheme.onSurfaceVariant,
+                              ),
                             ),
                           ),
                         ],
@@ -227,7 +222,7 @@ class SubscriptionOptionCardWidget extends StatelessWidget {
                     child: Material(
                       color: Colors.transparent,
                       child: InkWell(
-                        onTap: isLoading ? null : onTap,
+                        onTap: onTap,
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
                           padding: EdgeInsets.symmetric(vertical: 1.h),
@@ -253,50 +248,50 @@ class SubscriptionOptionCardWidget extends StatelessWidget {
                                   ),
                                 )
                               : isLocked
-                              ? Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.lock,
-                                      color: Colors.grey.shade500,
-                                      size: 14,
-                                    ),
-                                    SizedBox(width: 1.w),
-                                    Text(
-                                      'Bloccato',
-                                      style: AppTheme
-                                          .darkTheme
-                                          .textTheme
-                                          .titleSmall
-                                          ?.copyWith(
+                                  ? Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.lock,
+                                          color: Colors.grey.shade500,
+                                          size: 14,
+                                        ),
+                                        SizedBox(width: 1.w),
+                                        Text(
+                                          'Bloccato',
+                                          style: AppTheme
+                                              .darkTheme.textTheme.titleSmall
+                                              ?.copyWith(
                                             color: Colors.grey.shade500,
                                             fontWeight: FontWeight.w700,
                                           ),
-                                    ),
-                                  ],
-                                )
-                              : Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      isEntryBased ? 'Acquista' : 'Sottoscrivi',
-                                      style: AppTheme
-                                          .darkTheme
-                                          .textTheme
-                                          .titleSmall
-                                          ?.copyWith(
+                                        ),
+                                      ],
+                                    )
+                                  : Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          isEntryBased
+                                              ? 'Acquista'
+                                              : 'Sottoscrivi',
+                                          style: AppTheme
+                                              .darkTheme.textTheme.titleSmall
+                                              ?.copyWith(
                                             color: planColor,
                                             fontWeight: FontWeight.w700,
                                           ),
+                                        ),
+                                        SizedBox(width: 1.w),
+                                        CustomIconWidget(
+                                          iconName: 'arrow_forward',
+                                          color: planColor,
+                                          size: 16,
+                                        ),
+                                      ],
                                     ),
-                                    SizedBox(width: 1.w),
-                                    CustomIconWidget(
-                                      iconName: 'arrow_forward',
-                                      color: planColor,
-                                      size: 16,
-                                    ),
-                                  ],
-                                ),
                         ),
                       ),
                     ),

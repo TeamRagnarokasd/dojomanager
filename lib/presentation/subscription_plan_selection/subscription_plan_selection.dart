@@ -9,13 +9,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_export.dart';
-import '../../routes/app_routes.dart';
 import '../../services/auth_service.dart';
 import '../../services/child_profile_service.dart';
 import '../../services/payment_service.dart';
 import '../../services/realtime_notification_service.dart';
-import '../../theme/app_theme.dart';
-import '../../widgets/custom_icon_widget.dart';
 import './widgets/subscription_option_card_widget.dart';
 
 class SubscriptionPlanSelection extends StatefulWidget {
@@ -1417,79 +1414,56 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   }
 
   Future<void> _launchSumUpUrl(String url, String planTitle) async {
-    if (url.isEmpty) {
-      Fluttertoast.showToast(
-        msg: 'Link di pagamento non disponibile',
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.red,
-        textColor: Colors.white,
-      );
-      return;
-    }
+    setState(() {
+      _isLoading = true;
+    });
 
     try {
-      // Wrap HapticFeedback in its own try-catch — on Android APK release
-      // builds this can throw a PlatformException that would abort the launch.
-      try {
-        HapticFeedback.lightImpact();
-      } catch (_) {}
-
-      // Find the selected plan from all plans (standard + custom)
       final selectedPlan = _allPlans.firstWhere(
         (plan) => plan['title'] == planTitle,
         orElse: () => <String, dynamic>{},
       );
 
-      // Parse and normalise the URI — add https scheme if missing.
-      String resolvedUrl = url.trim();
-      if (!resolvedUrl.startsWith('http://') &&
-          !resolvedUrl.startsWith('https://')) {
-        resolvedUrl = 'https://$resolvedUrl';
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isPaymentPending', true);
+      await prefs.setString(
+        'pendingPlanId',
+        (selectedPlan['id'] ?? '').toString(),
+      );
+      await prefs.setString('pendingPlanTitle', planTitle);
+      await prefs.setDouble(
+        'pendingPlanAmount',
+        (selectedPlan['price'] as num?)?.toDouble() ?? 0.0,
+      );
+      await prefs.setString('pendingPaymentMethod', 'sumup');
+
+      HapticFeedback.lightImpact();
+
+      // Clean the URL from hidden spaces
+      final String sanitizedUrl = url.trim();
+      final Uri uri = Uri.parse(sanitizedUrl);
+
+      // BYPASS canLaunchUrl and force launch directly
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!launched) {
+        throw Exception('Launch returned false');
       }
-      final Uri uri = Uri.parse(resolvedUrl);
-
-      // Launch FIRST — do not let SharedPreferences writes block or abort it.
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-
-      // Only write prefs after a successful launch.
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('isPaymentPending', true);
-        await prefs.setString(
-          'pendingPlanId',
-          (selectedPlan['id'] ?? '').toString(),
-        );
-        await prefs.setString('pendingPlanTitle', planTitle);
-        await prefs.setDouble(
-          'pendingPlanAmount',
-          (selectedPlan['price'] as num?)?.toDouble() ?? 0.0,
-        );
-        await prefs.setString('pendingPaymentMethod', 'sumup');
-      } catch (_) {}
+    } catch (error) {
+      print('Error launching SumUp URL: $error');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isPaymentPending', false);
 
       if (mounted) {
-        Fluttertoast.showToast(
-          msg: 'Reindirizzamento al pagamento per $planTitle',
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.BOTTOM,
-          backgroundColor: AppTheme.lightTheme.colorScheme.primary,
-          textColor: Colors.white,
-        );
-      }
-    } catch (e) {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('isPaymentPending', false);
-      } catch (_) {}
-
-      if (mounted) {
-        Fluttertoast.showToast(
-          msg: 'Impossibile aprire il link di pagamento',
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.BOTTOM,
-          backgroundColor: Colors.red,
-          textColor: Colors.white,
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore: $error'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
         );
       }
     } finally {
@@ -1504,67 +1478,84 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
 
   // MODIFIED: Add enrollment check logic for SumUp
   Future<void> _handlePlanSelection(Map<String, dynamic> plan) async {
-    if (_isPrincipalAdmin) {
-      final isCustomPlan = !(plan['isStandardFromDb'] == true);
-      _showEditPlanDialog(plan: plan, isCustomPlan: isCustomPlan);
-      return;
-    }
-
-    final planTitle = plan['title'] as String? ?? '';
-    final planType = plan['planType'] as String? ?? '';
-    final isAnnualRegistration =
-        planType == 'annual' ||
-        planTitle.toLowerCase().contains('iscrizione annuale');
-
-    // RULE 1: If buying Annual Registration, skip checks and proceed
-    if (isAnnualRegistration) {
-      setState(() {
-        _selectedPlanId = plan['id'];
-      });
-      _launchSumUpUrl(plan['sumupUrl'] as String? ?? '', planTitle);
-      return;
-    }
-
-    // RULE 2: HARD GATE — perform a FRESH direct Supabase check every time.
-    // Do NOT rely on cached _hasAnnualRegistration.
-    // Show loading indicator while checking.
-    if (mounted) {
-      setState(() => _isLoading = true);
-    }
-
-    bool hasAnnual = false;
     try {
-      hasAnnual = await PaymentService.checkHasAnnualRegistration();
+      if (_isPrincipalAdmin) {
+        final isCustomPlan = !(plan['isStandardFromDb'] == true);
+        _showEditPlanDialog(plan: plan, isCustomPlan: isCustomPlan);
+        return;
+      }
+
+      final planTitle = plan['title'] as String? ?? '';
+      final planType = plan['planType'] as String? ?? '';
+      final isAnnualRegistration =
+          planType == 'annual' ||
+          planTitle.toLowerCase().contains('iscrizione annuale');
+
+      // RULE 1: If buying Annual Registration, skip checks and proceed
+      if (isAnnualRegistration) {
+        setState(() {
+          _selectedPlanId = int.tryParse(plan['id'].toString());
+        });
+        _launchSumUpUrl(plan['sumupUrl'] as String? ?? '', planTitle);
+        return;
+      }
+
+      // RULE 2: HARD GATE — perform a FRESH direct Supabase check every time.
+      if (mounted) {
+        setState(() => _isLoading = true);
+      }
+
+      bool hasAnnual = false;
+      try {
+        hasAnnual = await PaymentService.checkHasAnnualRegistration();
+        if (mounted) {
+          setState(() {
+            _hasAnnualRegistration = hasAnnual;
+            _isLoading = false;
+          });
+        }
+      } catch (e) {
+        print('ERROR _handlePlanSelection gate check: $e');
+        hasAnnual = false;
+        if (mounted) {
+          setState(() {
+            _hasAnnualRegistration = false;
+            _isLoading = false;
+          });
+        }
+      }
+
+      // BLOCK: If no annual registration, show dialog and STOP.
+      if (!hasAnnual) {
+        _showAnnualRegistrationRequiredDialog();
+        return;
+      }
+
+      // User has annual registration — proceed with payment
       if (mounted) {
         setState(() {
-          _hasAnnualRegistration = hasAnnual;
+          _selectedPlanId = int.tryParse(plan['id'].toString());
+        });
+      }
+      _launchSumUpUrl(plan['sumupUrl'] as String? ?? '', planTitle);
+    } catch (error) {
+      print('ERROR _handlePlanSelection: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore: $error'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
           _isLoading = false;
         });
       }
-    } catch (e) {
-      print('ERROR _handlePlanSelection gate check: $e');
-      hasAnnual = false;
-      if (mounted) {
-        setState(() {
-          _hasAnnualRegistration = false;
-          _isLoading = false;
-        });
-      }
     }
-
-    // BLOCK: If no annual registration, show dialog and STOP.
-    if (!hasAnnual) {
-      _showAnnualRegistrationRequiredDialog();
-      return;
-    }
-
-    // User has annual registration — proceed with payment
-    if (mounted) {
-      setState(() {
-        _selectedPlanId = plan['id'];
-      });
-    }
-    _launchSumUpUrl(plan['sumupUrl'] as String? ?? '', planTitle);
   }
 
   // DIALOG: Show when annual registration is required

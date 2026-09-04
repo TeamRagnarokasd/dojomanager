@@ -703,9 +703,10 @@ class SubscriptionService {
         final finalDbDiscipline = itemDbDiscipline ?? dbDiscipline;
         final finalDbDiscipline2 = itemDbDiscipline2 ?? dbDiscipline2;
 
-        // payment_confirmations: user_id is the BENEFICIARY (child or adult)
+        // payment_confirmations: user_id is the ADULT PAYER (always a valid user_profiles FK).
+        // For child purchases, the child context is stored in the receipt notes field.
         final confirmationData = <String, dynamic>{
-          'user_id': beneficiaryUserId,
+          'user_id': adultUserId,
           'amount': amount,
           'payment_method': paymentMethod,
           'status': 'confirmed',
@@ -737,7 +738,31 @@ class SubscriptionService {
           receiptNumber =
               await _supabase.rpc('generate_italian_receipt_number') as String;
         } catch (e) {
-          receiptNumber = 'RIC-${DateTime.now().millisecondsSinceEpoch}';
+          // Fallback: compute MAX+1 directly in number/year format (NNN/YYYY)
+          try {
+            final currentYear = DateTime.now().year;
+            final maxResult = await _supabase
+                .from('non_fiscal_receipts')
+                .select('receipt_number')
+                .like('receipt_number', '%/$currentYear');
+            int maxNum = 0;
+            for (final row in maxResult) {
+              final rn = row['receipt_number'] as String? ?? '';
+              final parts = rn.split('/');
+              if (parts.length == 2) {
+                final n =
+                    int.tryParse(parts[0].replaceAll(RegExp(r'[^0-9]'), '')) ??
+                    0;
+                if (n > maxNum) maxNum = n;
+              }
+            }
+            final nextNum = maxNum + 1;
+            receiptNumber =
+                '${nextNum.toString().padLeft(3, '0')}/$currentYear';
+          } catch (_) {
+            final currentYear = DateTime.now().year;
+            receiptNumber = '001/$currentYear';
+          }
         }
 
         receiptsBatch.add({
@@ -766,6 +791,16 @@ class SubscriptionService {
         // Use SECURITY DEFINER RPC to bypass RLS on payment_confirmations
         for (final confirmation in confirmationsBatch) {
           try {
+            // Determine beneficiary fields:
+            // - For child purchases: beneficiary_profile_id = child_profiles.id, type = 'child'
+            // - For adult purchases: beneficiary_profile_id = adult user_id, type = 'adult'
+            final String? beneficiaryProfileId =
+                isChildActive && childProfileId != null
+                ? childProfileId
+                : adultUserId;
+            final String beneficiaryType =
+                isChildActive && childProfileId != null ? 'child' : 'adult';
+
             await _supabase.rpc(
               'create_payment_confirmation',
               params: {
@@ -779,14 +814,29 @@ class SubscriptionService {
                 'p_subscription_plan_id': confirmation['subscription_plan_id'],
                 'p_target_discipline': confirmation['target_discipline'],
                 'p_target_discipline_2': confirmation['target_discipline_2'],
+                // Pass adult payer ID so the RPC stores a valid user_profiles FK
+                // even when the purchase is for a child profile
+                'p_payer_id': adultUserId,
+                // NEW: structured beneficiary reference — fixes Bug 2
+                'p_beneficiary_profile_id': beneficiaryProfileId,
+                'p_beneficiary_type': beneficiaryType,
               },
             );
           } catch (rpcError) {
             print(
               '⚠️ RPC create_payment_confirmation failed, falling back to direct insert: $rpcError',
             );
-            // Fallback to direct insert in case RPC is not yet deployed
-            await _supabase.from('payment_confirmations').insert(confirmation);
+            // Fallback: ensure user_id is always the adult (valid user_profiles FK)
+            final fallbackData = Map<String, dynamic>.from(confirmation);
+            fallbackData['user_id'] = adultUserId;
+            // Also store beneficiary fields in the fallback direct insert
+            fallbackData['beneficiary_profile_id'] =
+                isChildActive && childProfileId != null
+                ? childProfileId
+                : adultUserId;
+            fallbackData['beneficiary_type'] =
+                isChildActive && childProfileId != null ? 'child' : 'adult';
+            await _supabase.from('payment_confirmations').insert(fallbackData);
           }
         }
       }

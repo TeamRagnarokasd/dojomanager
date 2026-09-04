@@ -119,6 +119,7 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
   final AppRouteObserver _routeObserver = AppRouteObserver();
   String? _initialRoute;
   bool _isRestoringState = false;
+  bool _routeResolved = false;
 
   // Auth state stream subscription — cancelled on dispose to prevent leaks
   StreamSubscription<AuthState>? _authStateSub;
@@ -133,6 +134,17 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
     _determineInitialRoute();
     // Wire real-time notifications (wrapped in try-catch to prevent startup crash)
     _initRealtimeSubscription();
+
+    // Hard fallback: if route is not resolved within 10 seconds, force login
+    Future.delayed(const Duration(seconds: 10), () {
+      if (mounted && !_routeResolved) {
+        debugPrint('⚠️ Hard fallback triggered — forcing login route');
+        setState(() {
+          _initialRoute = AppRoutes.login;
+          _routeResolved = true;
+        });
+      }
+    });
   }
 
   @override
@@ -184,7 +196,10 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
     if (!mounted) return;
     // If _doRouteResolution didn't set _initialRoute, default to login
     if (_initialRoute == null) {
-      setState(() => _initialRoute = AppRoutes.login);
+      setState(() {
+        _initialRoute = AppRoutes.login;
+        _routeResolved = true;
+      });
     }
   }
 
@@ -196,7 +211,10 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
         if (!isAllowed) {
           await _authService.signOut();
           if (!mounted) return;
-          setState(() => _initialRoute = AppRoutes.login);
+          setState(() {
+            _initialRoute = AppRoutes.login;
+            _routeResolved = true;
+          });
           return;
         }
 
@@ -210,6 +228,7 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
             setState(() {
               _initialRoute = savedRoute;
               _isRestoringState = true;
+              _routeResolved = true;
             });
             return;
           } else {
@@ -222,7 +241,10 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
         // No valid saved route — determine default route by role
         final defaultRoute = await _getDefaultRouteForRole();
         if (!mounted) return;
-        setState(() => _initialRoute = defaultRoute);
+        setState(() {
+          _initialRoute = defaultRoute;
+          _routeResolved = true;
+        });
         return;
       }
     } catch (e) {
@@ -230,7 +252,10 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
     }
 
     if (!mounted) return;
-    setState(() => _initialRoute = AppRoutes.login);
+    setState(() {
+      _initialRoute = AppRoutes.login;
+      _routeResolved = true;
+    });
   }
 
   /// Returns the default dashboard route for the current user's role.
@@ -405,8 +430,14 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
           locale: context.locale,
           supportedLocales: context.supportedLocales,
           localizationsDelegates: context.localizationDelegates,
-          initialRoute: _initialRoute ?? AppRoutes.login,
-          routes: AppRoutes.routes,
+          initialRoute: AppRoutes.initial,
+          routes: {
+            ...AppRoutes.routes,
+            AppRoutes.initial: (context) => _SplashGate(
+                  resolved: _routeResolved,
+                  targetRoute: _initialRoute ?? AppRoutes.login,
+                ),
+          },
           navigatorObservers: [_routeObserver, AppRoutes.routeObserver],
           builder: (context, child) {
             return MediaQuery(
@@ -452,5 +483,72 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
     } catch (e) {
       debugPrint('❌ Failed to initialize realtime subscription: $e');
     }
+  }
+}
+
+/// Splash gate widget: shows a loading indicator until the route is resolved,
+/// then immediately navigates to the target route.
+class _SplashGate extends StatefulWidget {
+  final bool resolved;
+  final String targetRoute;
+
+  const _SplashGate({required this.resolved, required this.targetRoute});
+
+  @override
+  State<_SplashGate> createState() => _SplashGateState();
+}
+
+class _SplashGateState extends State<_SplashGate> {
+  bool _navigated = false;
+
+  @override
+  void didUpdateWidget(_SplashGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.resolved && !_navigated) {
+      _navigated = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed(widget.targetRoute);
+        }
+      });
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.resolved && !_navigated) {
+      _navigated = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed(widget.targetRoute);
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset(
+              'assets/images/team_ragnarok_icon.png',
+              width: 100,
+              height: 100,
+              errorBuilder: (_, __, ___) => const SizedBox(
+                width: 100,
+                height: 100,
+              ),
+            ),
+            const SizedBox(height: 32),
+            const CircularProgressIndicator(),
+          ],
+        ),
+      ),
+    );
   }
 }

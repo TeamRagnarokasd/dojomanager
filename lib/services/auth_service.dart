@@ -34,8 +34,8 @@ class AuthService {
       print('🔐 Initializing authentication system...');
 
       // Verify admin system is properly set up
-      final adminVerification = await _adminVerificationService
-          .performCompleteVerification();
+      final adminVerification =
+          await _adminVerificationService.performCompleteVerification();
 
       if (adminVerification.success) {
         print('✅ Admin verification successful: ${adminVerification.message}');
@@ -44,8 +44,8 @@ class AuthService {
 
         // Attempt emergency admin reset
         print('Attempting emergency admin reset...');
-        final resetSuccess = await _adminVerificationService
-            .emergencyAdminReset();
+        final resetSuccess =
+            await _adminVerificationService.emergencyAdminReset();
 
         if (resetSuccess) {
           print('✅ Emergency admin reset successful');
@@ -251,10 +251,17 @@ class AuthService {
   /// Sign out current user and clear remember me data if requested
   Future<void> signOut({bool clearRememberMe = false}) async {
     try {
-      await _client.auth.signOut();
-
       final prefs = await SharedPreferences.getInstance();
+
+      // Clear user-specific last visited route BEFORE signing out (while userId is still available)
+      final userId = currentUser?.id;
+      if (userId != null) {
+        await prefs.remove('${_keyLastVisitedRoute}_$userId');
+      }
+      // Also clear the legacy key
       await prefs.remove(_keyLastVisitedRoute);
+
+      await _client.auth.signOut();
 
       if (clearRememberMe) {
         await prefs.remove('remember_me');
@@ -642,9 +649,8 @@ class AuthService {
       final lastActiveDate = DateTime.fromMillisecondsSinceEpoch(
         lastActiveTimestamp,
       );
-      final inactiveMinutes = DateTime.now()
-          .difference(lastActiveDate)
-          .inMinutes;
+      final inactiveMinutes =
+          DateTime.now().difference(lastActiveDate).inMinutes;
 
       print('📊 Hourly inactivity check:');
       print('  - Last active: $lastActiveDate');
@@ -749,8 +755,7 @@ class AuthService {
       if (email.isEmpty) return false;
 
       // Resolve full name from profile or user metadata
-      String fullName =
-          user.userMetadata?['full_name'] ??
+      String fullName = user.userMetadata?['full_name'] ??
           (await getUserProfile(user.id))?['full_name'] ??
           email.split('@').first;
 
@@ -814,16 +819,16 @@ class AuthService {
         default:
           // ENHANCED: Better handling of specific auth error messages
           if (error.message.toLowerCase().contains(
-            'invalid login credentials',
-          )) {
+                'invalid login credentials',
+              )) {
             return 'Credenziali non valide. Verifica email e password.';
           } else if (error.message.toLowerCase().contains(
-            'invalid email or password',
-          )) {
+                'invalid email or password',
+              )) {
             return 'Credenziali non valide. Verifica email e password.';
           } else if (error.message.toLowerCase().contains(
-            'email not confirmed',
-          )) {
+                'email not confirmed',
+              )) {
             return 'Email non confermata. Controlla la tua casella di posta.';
           }
           return error.message;

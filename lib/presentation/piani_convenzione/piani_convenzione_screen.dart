@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
@@ -168,21 +169,35 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
     }
   }
 
-  Future<void> _launchSumUpUrl(String url, String planTitle) async {
+  Future<void> _launchSumUpUrl(
+    String url,
+    String planTitle, {
+    String? planId,
+    double? planAmount,
+  }) async {
     setState(() => _isLoading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isPaymentPending', true);
       await prefs.setString('pendingPlanTitle', planTitle);
+      if (planId != null && planId.isNotEmpty) {
+        await prefs.setString('pendingPlanId', planId);
+      }
+      if (planAmount != null && planAmount > 0) {
+        await prefs.setDouble('pendingPlanAmount', planAmount);
+      }
+      await prefs.setString('pendingPaymentMethod', 'sumup');
+
+      HapticFeedback.lightImpact();
 
       final Uri uri = Uri.parse(url);
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
         await prefs.setBool('isPaymentPending', false);
         if (mounted) {
           Fluttertoast.showToast(
-            msg: 'Impossibile aprire il link di pagamento',
+            msg: 'common.link_open_error'.tr(),
             toastLength: Toast.LENGTH_SHORT,
             gravity: ToastGravity.BOTTOM,
             backgroundColor: Colors.red,
@@ -190,12 +205,13 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
           );
         }
       }
-    } catch (e) {
+    } catch (error) {
+      print('Error launching SumUp URL: $error');
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isPaymentPending', false);
       if (mounted) {
         Fluttertoast.showToast(
-          msg: 'Errore durante il reindirizzamento',
+          msg: 'common.link_open_failed'.tr(),
           toastLength: Toast.LENGTH_SHORT,
           gravity: ToastGravity.BOTTOM,
           backgroundColor: Colors.red,
@@ -222,44 +238,25 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
       _showAnnualRegistrationRequiredDialog();
       return;
     }
-    // User has annual registration — show "Come procedere" to go to Paga section
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.darkTheme.cardColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Icon(Icons.info_outline, color: Colors.teal.shade300),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Come procedere all\'acquisto',
-                style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          'Per procedere con l\'acquisto di questo abbonamento, recati nella sezione "Paga" dove potrai completare la transazione in modo sicuro e veloce.',
-          style: AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(
-              'Ho capito',
-              style: TextStyle(
-                color: Colors.teal.shade300,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    // User has annual registration — launch the payment URL directly
+    final url =
+        plan['sumupUrl'] as String? ?? plan['external_url'] as String? ?? '';
+    final title = plan['title'] as String? ?? plan['name'] as String? ?? '';
+    final planId = (plan['id'] ?? plan['dbId'] ?? '').toString();
+    final planAmount = (plan['price'] as num?)?.toDouble() ??
+        (plan['amount'] as num?)?.toDouble() ??
+        0.0;
+    if (url.isNotEmpty) {
+      _launchSumUpUrl(url, title, planId: planId, planAmount: planAmount);
+    } else {
+      Fluttertoast.showToast(
+        msg: 'Nessun link di pagamento disponibile per questo piano.',
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: Colors.red,
+        textColor: Colors.white,
+      );
+    }
   }
 
   // DIALOG: "Non sei ancora iscritto!" — identical to subscription_plan_selection

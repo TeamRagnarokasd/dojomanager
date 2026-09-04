@@ -5,6 +5,7 @@ import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/app_export.dart';
+import '../../../services/child_profile_service.dart';
 import '../../../services/payment_service.dart';
 
 class SumUpPaymentOptionsWidget extends StatefulWidget {
@@ -28,10 +29,14 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
     _checkEnrollmentStatus(); // 🆕 CHECK ENROLLMENT ON INIT
   }
 
-  // 🆕 CHECK ENROLLMENT STATUS
+  // 🆕 CHECK ENROLLMENT STATUS — uses active profile (child or adult)
   Future<void> _checkEnrollmentStatus() async {
     try {
-      final dashboardData = await PaymentService.getSubscriptionDashboardData();
+      // 🔥 ACTIVE PROFILE FIX: pass the active profile ID explicitly
+      final activeProfileId = ChildProfileService.getActiveUserId();
+      final dashboardData = await PaymentService.getSubscriptionDashboardData(
+        activeProfileId,
+      );
       if (!mounted) return;
       setState(() {
         _hasAnnualRegistration =
@@ -143,9 +148,9 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                   child: Text(
                     'admin_discipline.attention_title'.tr(),
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFFF39C12),
-                        ),
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFFF39C12),
+                    ),
                   ),
                 ),
               ],
@@ -153,9 +158,9 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
             content: Text(
               'payment.annual_registration_reminder'.tr(),
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    height: 1.4,
-                  ),
+                color: Theme.of(context).colorScheme.onSurface,
+                height: 1.4,
+              ),
             ),
             actions: [
               TextButton(
@@ -163,8 +168,8 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                 child: Text(
                   'common.cancel'.tr(),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               ElevatedButton(
@@ -172,9 +177,9 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                 child: Text(
                   'payment.proceed'.tr(),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.secondary,
@@ -225,9 +230,9 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                     child: Text(
                       'payment.payment_methods'.tr(),
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ),
                   ),
                 ],
@@ -236,8 +241,8 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
               Text(
                 'payment.payment_methods_intro'.tr(),
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               SizedBox(height: 3.h),
 
@@ -382,9 +387,7 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                           SizedBox(height: 2.h),
                           Text(
                             'payment.sumup_description'.tr(),
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
+                            style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(
                                   color: Theme.of(
                                     context,
@@ -531,9 +534,7 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                           SizedBox(height: 2.h),
                           Text(
                             'payment.satispay_description'.tr(),
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
+                            style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(
                                   color: Theme.of(
                                     context,
@@ -575,9 +576,9 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
                       child: Text(
                         'payment.security_footer'.tr(),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.primary,
-                              fontWeight: FontWeight.w500,
-                            ),
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ],

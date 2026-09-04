@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:universal_html/html.dart' as html;
@@ -186,9 +187,8 @@ Il genitore/tutore legale dichiara di aver letto, compreso e accettato integralm
         ..click();
       html.Url.revokeObjectUrl(url);
     } else {
-      // On mobile, upload to a temp signed URL and open
-      // For simplicity, we open the stored document URL
-      debugPrint('PDF download on mobile: $fileName');
+      // On mobile: use native share sheet so user can save/open/view the PDF
+      await Printing.sharePdf(bytes: pdfBytes, filename: fileName);
     }
   }
 

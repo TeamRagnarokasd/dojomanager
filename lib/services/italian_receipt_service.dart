@@ -650,14 +650,62 @@ Data: ${issueDate}
     bool deleteSubscription = false,
   }) async {
     try {
-      // First fetch the receipt to get its batch_transaction_id
+      // Fetch the receipt — NOTE: non_fiscal_receipts has NO user_id column.
+      // We get user_id later via payment_confirmations.
       final receiptData = await client
           .from('non_fiscal_receipts')
-          .select('id, batch_transaction_id')
+          .select('id, batch_transaction_id, description')
           .eq('id', receiptId)
           .maybeSingle();
 
       final batchTxId = receiptData?['batch_transaction_id'] as String?;
+      final receiptDescription =
+          ((receiptData?['description'] as String?) ?? '').toLowerCase();
+
+      // Determine if this receipt is for an annual registration
+      final bool isAnnualRegistration =
+          receiptDescription.contains('iscrizione annuale') ||
+          receiptDescription.contains('iscrizione  annuale');
+
+      // ─── Resolve user_id via payment_confirmations ───────────────────────
+      // Try to find the associated user_id from payment_confirmations using
+      // batch_transaction_id or the MANUAL_RECEIPT_<id> patterns.
+      String? receiptUserId;
+      try {
+        Map<String, dynamic>? pcRow;
+
+        if (batchTxId != null && batchTxId.isNotEmpty) {
+          final rows = await client
+              .from('payment_confirmations')
+              .select('user_id')
+              .eq('batch_transaction_id', batchTxId)
+              .limit(1);
+          if (rows.isNotEmpty) {
+            pcRow = rows.first;
+          }
+        }
+
+        // Fallback: try MANUAL_RECEIPT patterns
+        if (pcRow == null) {
+          final rows = await client
+              .from('payment_confirmations')
+              .select('user_id')
+              .or(
+                'batch_transaction_id.eq.MANUAL_RECEIPT_$receiptId,'
+                'batch_transaction_id.eq.MANUAL_RECEIPT_${receiptId}_D2,'
+                'batch_transaction_id.eq.MANUAL_RECEIPT_${receiptId}_PREP',
+              )
+              .limit(1);
+          if (rows.isNotEmpty) {
+            pcRow = rows.first;
+          }
+        }
+
+        receiptUserId = pcRow?['user_id'] as String?;
+      } catch (_) {
+        // Non-fatal: proceed without user_id
+      }
+      // ─────────────────────────────────────────────────────────────────────
 
       // Always delete associated payment_confirmations so the receipt
       // disappears from the user's payment history as well
@@ -681,6 +729,57 @@ Data: ${issueDate}
       } catch (_) {
         // Ignore if no matching records
       }
+
+      // ─── ANNUAL REGISTRATION RESET ───────────────────────────────────────
+      // If the receipt is for an annual registration, we must also delete ALL
+      // payment_confirmations for this user that are linked to annual plans.
+      // This ensures check_user_has_annual_registration() returns false and
+      // the user is correctly asked to pay the annual fee again.
+      if (isAnnualRegistration && receiptUserId != null) {
+        try {
+          // Fetch all custom_plan_ids whose name contains 'iscrizione annuale'
+          final annualPlans = await client
+              .from('custom_subscription_plans')
+              .select('id')
+              .or(
+                'name.ilike.%iscrizione annuale%,'
+                'name.ilike.%iscrizione  annuale%',
+              );
+
+          if (annualPlans.isNotEmpty) {
+            final annualPlanIds = (annualPlans as List)
+                .map((p) => p['id'] as String)
+                .toList();
+
+            // Delete all payment_confirmations for this user linked to annual plans
+            for (final planId in annualPlanIds) {
+              try {
+                await client
+                    .from('payment_confirmations')
+                    .delete()
+                    .eq('user_id', receiptUserId)
+                    .eq('custom_plan_id', planId);
+              } catch (_) {
+                // Continue even if one deletion fails
+              }
+            }
+          }
+        } catch (_) {
+          // Non-fatal: continue with receipt deletion
+        }
+
+        // Also delete user_subscriptions of type 'annual' for this user
+        try {
+          await client
+              .from('user_subscriptions')
+              .delete()
+              .eq('user_id', receiptUserId)
+              .eq('type', 'annual');
+        } catch (_) {
+          // Column/table may differ, ignore
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────────
 
       if (deleteSubscription) {
         // Also try to delete by matching receipt_id directly if column exists
