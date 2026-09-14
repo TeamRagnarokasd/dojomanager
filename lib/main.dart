@@ -128,6 +128,7 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
   String? _defaultDashboardRoute;
   bool _isRestoringState = false;
   bool _routeResolved = false;
+  bool _updateChecked = false;
 
   // Auth state stream subscription — cancelled on dispose to prevent leaks
   StreamSubscription<AuthState>? _authStateSub;
@@ -324,7 +325,8 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
         AppRoutes.instructorMainDashboard,
       ];
 
-      final isAdminUser = isPrincipalAdmin ||
+      final isAdminUser =
+          isPrincipalAdmin ||
           isPrincipalByEmail ||
           ['admin', 'instructor_admin'].contains(userRole);
       final isInstructorUser = userRole == 'instructor';
@@ -356,14 +358,14 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
           .eq('id', userId)
           .maybeSingle()
           .timeout(
-        const Duration(seconds: 4),
-        onTimeout: () {
-          debugPrint(
-            '⚠️ _isUserApprovedAndActive timed out — allowing user through',
+            const Duration(seconds: 4),
+            onTimeout: () {
+              debugPrint(
+                '⚠️ _isUserApprovedAndActive timed out — allowing user through',
+              );
+              return null;
+            },
           );
-          return null;
-        },
-      );
 
       if (profileData == null)
         return true; // timeout or missing profile — allow through
@@ -453,12 +455,12 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
           routes: {
             ...AppRoutes.routes,
             AppRoutes.initial: (context) => _SplashGate(
-                  resolved: _routeResolved,
-                  targetRoute: _initialRoute ?? AppRoutes.login,
-                  defaultDashboardRoute: _defaultDashboardRoute ??
-                      _initialRoute ??
-                      AppRoutes.login,
-                ),
+              resolved: _routeResolved,
+              targetRoute: _initialRoute ?? AppRoutes.login,
+              defaultDashboardRoute:
+                  _defaultDashboardRoute ?? _initialRoute ?? AppRoutes.login,
+              onCheckMandatoryUpdate: _checkForMandatoryUpdate,
+            ),
           },
           navigatorObservers: [_routeObserver, AppRoutes.routeObserver],
           builder: (context, child) {
@@ -506,6 +508,64 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
       debugPrint('❌ Failed to initialize realtime subscription: $e');
     }
   }
+
+  /// Called by _SplashGate after navigation has completed (non-blocking path).
+  /// Runs from the root state so `mounted` is always true after navigation.
+  Future<void> _checkForUpdateAfterNav() async {
+    if (kIsWeb || _updateChecked) return;
+    _updateChecked = true;
+    try {
+      final updateInfo = await AppUpdateService.instance.checkForUpdate();
+      if (updateInfo == null) return;
+      // 800 ms delay so the destination screen finishes rendering first.
+      await Future.delayed(const Duration(milliseconds: 800));
+      final ctx = appNavigatorKey.currentContext;
+      if (ctx != null) {
+        await showAppUpdateDialog(ctx, updateInfo);
+      }
+    } catch (e) {
+      debugPrint('⚠️ Update check failed: $e');
+    }
+  }
+
+  /// Called by _SplashGate BEFORE navigation when a mandatory update is
+  /// detected. Returns true if the update was installed (navigation may
+  /// proceed), false if the check found no update (navigation may proceed),
+  /// or loops until the user installs (mandatory = true, never returns false
+  /// while an update is pending).
+  ///
+  /// For the mandatory path the dialog is shown over the splash screen itself,
+  /// so we pass the splash context directly.
+  Future<bool> _checkForMandatoryUpdate(BuildContext splashContext) async {
+    if (kIsWeb) return true;
+    try {
+      final updateInfo = await AppUpdateService.instance.checkForUpdate();
+      if (updateInfo == null) return true; // no update — proceed
+      if (!updateInfo.mandatory) {
+        // Non-mandatory: let navigation happen first, then show dialog from root.
+        _updateChecked = true;
+        Future.microtask(() async {
+          await Future.delayed(const Duration(milliseconds: 800));
+          final ctx = appNavigatorKey.currentContext;
+          if (ctx != null) {
+            await showAppUpdateDialog(ctx, updateInfo);
+          }
+        });
+        return true; // allow navigation to proceed immediately
+      }
+      // Mandatory: show dialog over the splash screen and do NOT return until
+      // the user has installed the update (dialog is not dismissible).
+      if (splashContext.mounted) {
+        await showAppUpdateDialog(splashContext, updateInfo);
+      }
+      // After the dialog closes (only possible once install intent fires),
+      // allow navigation.
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ Mandatory update check failed: $e');
+      return true; // on error, allow navigation rather than blocking forever
+    }
+  }
 }
 
 /// Splash gate widget: shows a loading indicator until the route is resolved,
@@ -514,11 +574,13 @@ class _SplashGate extends StatefulWidget {
   final bool resolved;
   final String targetRoute;
   final String defaultDashboardRoute;
+  final Future<bool> Function(BuildContext) onCheckMandatoryUpdate;
 
   const _SplashGate({
     required this.resolved,
     required this.targetRoute,
     required this.defaultDashboardRoute,
+    required this.onCheckMandatoryUpdate,
   });
 
   @override
@@ -528,8 +590,18 @@ class _SplashGate extends StatefulWidget {
 class _SplashGateState extends State<_SplashGate> {
   bool _navigated = false;
 
-  void _navigate() {
+  Future<void> _navigate() async {
     if (!mounted) return;
+
+    // Run the update check BEFORE navigating away.
+    // For mandatory updates this will block here (dialog shown over splash)
+    // until the user installs. For non-mandatory updates it schedules the
+    // dialog to appear after navigation and returns immediately.
+    final canProceed = await widget.onCheckMandatoryUpdate(context);
+    if (!canProceed) return; // safety — currently always true
+
+    if (!mounted) return;
+
     final target = widget.targetRoute;
     final defaultDashboard = widget.defaultDashboardRoute;
     if (target == defaultDashboard) {
@@ -541,26 +613,6 @@ class _SplashGateState extends State<_SplashGate> {
       // push the restored route on top of it.
       Navigator.of(context).pushReplacementNamed(defaultDashboard);
       Navigator.of(context).pushNamed(target);
-    }
-
-    // Check for APK updates — Android only, never on web.
-    if (!kIsWeb) {
-      _checkForUpdate();
-    }
-  }
-
-  Future<void> _checkForUpdate() async {
-    try {
-      final updateInfo = await AppUpdateService.instance.checkForUpdate();
-      if (updateInfo != null && mounted) {
-        // Small delay to let the target screen finish rendering first.
-        await Future.delayed(const Duration(milliseconds: 800));
-        if (mounted) {
-          await showAppUpdateDialog(context, updateInfo);
-        }
-      }
-    } catch (e) {
-      debugPrint('⚠️ Update check failed: $e');
     }
   }
 
