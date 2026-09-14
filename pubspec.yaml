@@ -48,6 +48,8 @@ dependencies:
 
   intl: ^0.20.2               # Required for date formatting and internationalization
   easy_localization: ^3.0.8
+  package_info_plus: ^8.2.1   # Read app version code for update comparison
+  android_intent_plus: ^6.1.0 # Launch Android APK install intent for sideloaded updates
 
 dev_dependencies:
   flutter_test:    # CRITICAL: Required for Flutter project testing - DO NOT REMOVE

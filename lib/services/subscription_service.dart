@@ -541,6 +541,75 @@ class SubscriptionService {
               .trim();
       final customerName = adultName.isEmpty ? 'Cliente' : adultName;
 
+      // 🔥 TEEN MINOR CHECK (14-17): if the purchasing user is 14-17 years old,
+      // the receipt must be addressed to the parent/guardian, not to the user.
+      // This mirrors the existing child-profile behaviour for under-14 purchases.
+      String effectiveCustomerName = customerName;
+      String effectiveTaxCode = finalTaxCode;
+      String? teenMinorNote;
+
+      if (!isChildActive) {
+        // Only applies when the adult user themselves is the purchaser (not a child profile purchase)
+        try {
+          final adultProfile = await _supabase
+              .from('user_profiles')
+              .select(
+                'birth_date, first_name, last_name, codice_fiscale, tax_code, '
+                'parent_guardian_name, parent_guardian_surname, parent_guardian_codice_fiscale',
+              )
+              .eq('id', adultUserId)
+              .maybeSingle();
+
+          if (adultProfile != null) {
+            final birthDateStr = adultProfile['birth_date'] as String?;
+            if (birthDateStr != null && _isMinorAge14to17(birthDateStr)) {
+              final guardianName =
+                  adultProfile['parent_guardian_name'] as String?;
+              final guardianSurname =
+                  adultProfile['parent_guardian_surname'] as String?;
+              final guardianCF =
+                  adultProfile['parent_guardian_codice_fiscale'] as String?;
+
+              final guardianFullName =
+                  '${guardianName ?? ''} ${guardianSurname ?? ''}'.trim();
+
+              // Only override if guardian fields are non-empty (fallback to current behaviour otherwise)
+              if (guardianFullName.isNotEmpty &&
+                  guardianCF != null &&
+                  guardianCF.isNotEmpty) {
+                effectiveCustomerName = guardianFullName;
+                effectiveTaxCode = guardianCF;
+
+                // Build minor note
+                final minorFirstName =
+                    adultProfile['first_name'] as String? ?? '';
+                final minorLastName =
+                    adultProfile['last_name'] as String? ?? '';
+                final minorFullName = '$minorFirstName $minorLastName'.trim();
+                final minorCF =
+                    (adultProfile['tax_code'] as String? ??
+                    adultProfile['codice_fiscale'] as String? ??
+                    '');
+                final noteParts = <String>[
+                  'Quota relativa al minore: $minorFullName',
+                ];
+                if (minorCF.isNotEmpty) {
+                  noteParts.add('Codice Fiscale: $minorCF');
+                }
+                noteParts.add('Data di nascita: $birthDateStr');
+                teenMinorNote = noteParts.join(' | ');
+
+                print(
+                  '🔍 DEBUG: Teen minor (14-17) detected. Receipt addressed to guardian: $effectiveCustomerName',
+                );
+              }
+            }
+          }
+        } catch (e) {
+          print('⚠️ DEBUG: Teen minor check failed, using default: $e');
+        }
+      }
+
       // 🔥 CHILD RECEIPT NOTE: If purchasing for a child, add minor note to receipt
       String? minorNote;
       if (isChildActive && childProfileId != null) {
@@ -730,45 +799,16 @@ class SubscriptionService {
         confirmationsBatch.add(confirmationData);
 
         // non_fiscal_receipts: always addressed to ADULT (payer), with minor note if child purchase
-        final receiptNotes = minorNote;
+        final receiptNotes = minorNote ?? teenMinorNote;
 
         // Generate receipt number for each receipt
-        String receiptNumber;
-        try {
-          receiptNumber =
-              await _supabase.rpc('generate_italian_receipt_number') as String;
-        } catch (e) {
-          // Fallback: compute MAX+1 directly in number/year format (NNN/YYYY)
-          try {
-            final currentYear = DateTime.now().year;
-            final maxResult = await _supabase
-                .from('non_fiscal_receipts')
-                .select('receipt_number')
-                .like('receipt_number', '%/$currentYear');
-            int maxNum = 0;
-            for (final row in maxResult) {
-              final rn = row['receipt_number'] as String? ?? '';
-              final parts = rn.split('/');
-              if (parts.length == 2) {
-                final n =
-                    int.tryParse(parts[0].replaceAll(RegExp(r'[^0-9]'), '')) ??
-                    0;
-                if (n > maxNum) maxNum = n;
-              }
-            }
-            final nextNum = maxNum + 1;
-            receiptNumber =
-                '${nextNum.toString().padLeft(3, '0')}/$currentYear';
-          } catch (_) {
-            final currentYear = DateTime.now().year;
-            receiptNumber = '001/$currentYear';
-          }
-        }
+        final receiptNumber =
+            await _supabase.rpc('generate_italian_receipt_number') as String;
 
         receiptsBatch.add({
           'created_by': adultUserId,
-          'customer_name': customerName,
-          'customer_tax_code': finalTaxCode,
+          'customer_name': effectiveCustomerName,
+          'customer_tax_code': effectiveTaxCode,
           'customer_address': fullAddress,
           'description': finalDescription,
           'amount': amount,
@@ -1002,12 +1042,54 @@ class SubscriptionService {
       // Get user profile with tax_code
       final userProfile = await _supabase
           .from('user_profiles')
-          .select('full_name, tax_code, address_line, city, cap, province')
+          .select(
+            'full_name, tax_code, codice_fiscale, address_line, city, cap, province, '
+            'birth_date, first_name, last_name, '
+            'parent_guardian_name, parent_guardian_surname, parent_guardian_codice_fiscale',
+          )
           .eq('id', userId)
           .single();
 
       // Use tax_code for linking
-      final taxCode = userProfile['tax_code'] ?? 'NON DISPONIBILE';
+      String taxCode =
+          userProfile['tax_code'] ??
+          userProfile['codice_fiscale'] ??
+          'NON DISPONIBILE';
+      String customerName = userProfile['full_name'] ?? 'Cliente';
+      String? receiptNotes;
+
+      // 🔥 TEEN MINOR CHECK (14-17): receipt addressed to parent/guardian
+      final birthDateStr = userProfile['birth_date'] as String?;
+      if (birthDateStr != null && _isMinorAge14to17(birthDateStr)) {
+        final guardianName = userProfile['parent_guardian_name'] as String?;
+        final guardianSurname =
+            userProfile['parent_guardian_surname'] as String?;
+        final guardianCF =
+            userProfile['parent_guardian_codice_fiscale'] as String?;
+        final guardianFullName =
+            '${guardianName ?? ''} ${guardianSurname ?? ''}'.trim();
+
+        if (guardianFullName.isNotEmpty &&
+            guardianCF != null &&
+            guardianCF.isNotEmpty) {
+          customerName = guardianFullName;
+          taxCode = guardianCF;
+
+          final minorFirstName = userProfile['first_name'] as String? ?? '';
+          final minorLastName = userProfile['last_name'] as String? ?? '';
+          final minorFullName = '$minorFirstName $minorLastName'.trim();
+          final minorCF =
+              (userProfile['tax_code'] as String? ??
+              userProfile['codice_fiscale'] as String? ??
+              '');
+          final noteParts = <String>[
+            'Quota relativa al minore: $minorFullName',
+          ];
+          if (minorCF.isNotEmpty) noteParts.add('Codice Fiscale: $minorCF');
+          noteParts.add('Data di nascita: $birthDateStr');
+          receiptNotes = noteParts.join(' | ');
+        }
+      }
 
       // Build complete address safely
       String? fullAddress;
@@ -1038,7 +1120,7 @@ class SubscriptionService {
           .from('non_fiscal_receipts')
           .insert({
             'created_by': userId,
-            'customer_name': userProfile['full_name'] ?? 'Cliente',
+            'customer_name': customerName,
             'customer_tax_code': taxCode,
             'customer_address': fullAddress,
             'description': finalDescription,
@@ -1050,7 +1132,7 @@ class SubscriptionService {
             'vat_rate': '0',
             'vat_amount': 0.0,
             'discount_percentage': 0.0,
-            'notes': 'Subscription payment',
+            'notes': receiptNotes ?? 'Subscription payment',
           })
           .select('id, receipt_number')
           .single();
@@ -1059,6 +1141,22 @@ class SubscriptionService {
     } catch (e) {
       print('⚠️ Receipt creation failed: $e');
       throw Exception('Failed to create receipt: $e');
+    }
+  }
+
+  /// Returns true if [birthDateStr] (yyyy-MM-dd) corresponds to an age of 14–17 today (inclusive).
+  static bool _isMinorAge14to17(String birthDateStr) {
+    try {
+      final birthDate = DateTime.parse(birthDateStr);
+      final today = DateTime.now();
+      int age = today.year - birthDate.year;
+      if (today.month < birthDate.month ||
+          (today.month == birthDate.month && today.day < birthDate.day)) {
+        age--;
+      }
+      return age >= 14 && age <= 17;
+    } catch (_) {
+      return false;
     }
   }
 }

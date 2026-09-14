@@ -75,11 +75,7 @@ class PrincipalAdminSectionWidget extends StatelessWidget {
                   color: Colors.green.withAlpha(26),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(
-                  Icons.security,
-                  color: Colors.green,
-                  size: 20.sp,
-                ),
+                child: Icon(Icons.security, color: Colors.green, size: 20.sp),
               ),
             ],
           ),
@@ -114,10 +110,9 @@ class PrincipalAdminSectionWidget extends StatelessWidget {
                 ),
                 SizedBox(height: 12.h),
                 _buildCredentialRow(
-                    'common.email'.tr(), 'lutadordeeliteravenna@gmail.com'),
-                SizedBox(height: 8.h),
-                _buildCredentialRow('Password', 'Magnus833cc',
-                    isPassword: true),
+                  'common.email'.tr(),
+                  'lutadordeeliteravenna@gmail.com',
+                ),
                 SizedBox(height: 16.h),
                 Container(
                   padding: EdgeInsets.all(12.w),
@@ -128,11 +123,7 @@ class PrincipalAdminSectionWidget extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.info_outline,
-                        color: Colors.blue,
-                        size: 16.sp,
-                      ),
+                      Icon(Icons.info_outline, color: Colors.blue, size: 16.sp),
                       SizedBox(width: 8.w),
                       Expanded(
                         child: Text(
@@ -189,8 +180,11 @@ class PrincipalAdminSectionWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildCredentialRow(String label, String value,
-      {bool isPassword = false}) {
+  Widget _buildCredentialRow(
+    String label,
+    String value, {
+    bool isPassword = false,
+  }) {
     return Row(
       children: [
         SizedBox(

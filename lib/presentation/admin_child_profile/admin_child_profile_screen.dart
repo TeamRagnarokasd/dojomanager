@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sizer/sizer.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/supabase_service.dart';
 import '../../services/child_profile_service.dart';
@@ -70,6 +72,24 @@ class _AdminChildProfileScreenState extends State<AdminChildProfileScreen> {
         _populateControllers(child);
         setState(() => _isLoading = false);
         _loadProfilePhoto(child);
+        // Fetch fresh row from Supabase to ensure all fields are populated
+        final childId = child['id'];
+        if (childId != null) {
+          SupabaseService.instance.client
+              .from('child_profiles')
+              .select('*')
+              .eq('id', childId)
+              .maybeSingle()
+              .then((freshData) {
+                if (freshData != null && mounted) {
+                  setState(() {
+                    _child = freshData;
+                  });
+                  _populateControllers(freshData);
+                  _loadProfilePhoto(freshData);
+                }
+              });
+        }
       }
     } else {
       setState(() => _isLoading = false);
@@ -335,22 +355,24 @@ class _AdminChildProfileScreenState extends State<AdminChildProfileScreen> {
     Navigator.pop(context);
 
     if (source == ImageSource.camera) {
-      final permission = await Permission.camera.request();
-      if (!permission.isGranted) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Permesso fotocamera necessario'),
-              backgroundColor: Colors.red,
-              action: SnackBarAction(
-                label: 'Impostazioni',
-                textColor: Colors.white,
-                onPressed: () => openAppSettings(),
+      if (!kIsWeb) {
+        final permission = await Permission.camera.request();
+        if (!permission.isGranted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Permesso fotocamera necessario'),
+                backgroundColor: Colors.red,
+                action: SnackBarAction(
+                  label: 'Impostazioni',
+                  textColor: Colors.white,
+                  onPressed: () => openAppSettings(),
+                ),
               ),
-            ),
-          );
+            );
+          }
+          return;
         }
-        return;
       }
     }
 
@@ -1193,6 +1215,32 @@ class _AdminChildProfileScreenState extends State<AdminChildProfileScreen> {
           ),
         ),
         SizedBox(height: 1.5.h),
+        // Open certificate button (only when certificate exists)
+        if (hasCert) ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _openCertificate(certUrl),
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: Text(
+                'Apri Certificato',
+                style: GoogleFonts.inter(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue.withValues(alpha: 0.8),
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(vertical: 1.5.h),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: 1.h),
+        ],
         // Upload button for medical certificate
         SizedBox(
           width: double.infinity,
@@ -1236,6 +1284,25 @@ class _AdminChildProfileScreenState extends State<AdminChildProfileScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _openCertificate(String fullPath) async {
+    try {
+      final signedUrl = await SupabaseService.instance.client.storage
+          .from('user_docs')
+          .createSignedUrl(fullPath, 86400);
+      final uri = Uri.parse(signedUrl);
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Impossibile aprire il certificato: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _uploadMedicalCertificate() async {
@@ -1296,17 +1363,19 @@ class _AdminChildProfileScreenState extends State<AdminChildProfileScreen> {
     if (source == null) return;
 
     if (source == ImageSource.camera) {
-      final permission = await Permission.camera.request();
-      if (!permission.isGranted) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Permesso fotocamera necessario'),
-              backgroundColor: Colors.red,
-            ),
-          );
+      if (!kIsWeb) {
+        final permission = await Permission.camera.request();
+        if (!permission.isGranted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Permesso fotocamera necessario'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
         }
-        return;
       }
     }
 
@@ -1484,17 +1553,19 @@ class _AdminChildProfileScreenState extends State<AdminChildProfileScreen> {
     if (source == null) return;
 
     if (source == ImageSource.camera) {
-      final permission = await Permission.camera.request();
-      if (!permission.isGranted) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Permesso fotocamera necessario'),
-              backgroundColor: Colors.red,
-            ),
-          );
+      if (!kIsWeb) {
+        final permission = await Permission.camera.request();
+        if (!permission.isGranted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Permesso fotocamera necessario'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
         }
-        return;
       }
     }
 

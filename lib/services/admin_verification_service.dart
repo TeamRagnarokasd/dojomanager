@@ -9,7 +9,6 @@ class AdminVerificationService {
 
   final SupabaseClient _client = Supabase.instance.client;
   static const String _principalAdminEmail = 'lutadordeeliteravenna@gmail.com';
-  static const String _principalAdminPassword = 'Magnus833cc';
   static const String _principalAdminName = 'Admin Principale Team Ragnarok';
 
   /// Complete admin system verification with proper error handling
@@ -63,8 +62,10 @@ class AdminVerificationService {
       }
 
       // Use the database function to verify admin status with correct parameter name
-      final response = await _client.rpc('get_admin_verification_status',
-          params: {'admin_email': _principalAdminEmail});
+      final response = await _client.rpc(
+        'get_admin_verification_status',
+        params: {'admin_email': _principalAdminEmail},
+      );
 
       if (response == null) {
         return AdminVerificationResult(
@@ -114,7 +115,8 @@ class AdminVerificationService {
 
   /// Fallback verification method when function calls fail
   Future<AdminVerificationResult> _fallbackAdminVerification(
-      String originalError) async {
+    String originalError,
+  ) async {
     try {
       print('Attempting fallback admin verification due to: $originalError');
 
@@ -142,11 +144,14 @@ class AdminVerificationService {
 
       if (role != 'principal_admin') {
         // Update role if incorrect
-        await _client.from('user_profiles').update({
-          'role': 'principal_admin',
-          'is_active': true,
-          'updated_at': DateTime.now().toIso8601String(),
-        }).eq('id', adminProfile['id']);
+        await _client
+            .from('user_profiles')
+            .update({
+              'role': 'principal_admin',
+              'is_active': true,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', adminProfile['id']);
 
         return AdminVerificationResult(
           success: true,
@@ -156,10 +161,13 @@ class AdminVerificationService {
 
       if (!isActive) {
         // Activate admin if inactive
-        await _client.from('user_profiles').update({
-          'is_active': true,
-          'updated_at': DateTime.now().toIso8601String(),
-        }).eq('id', adminProfile['id']);
+        await _client
+            .from('user_profiles')
+            .update({
+              'is_active': true,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', adminProfile['id']);
       }
 
       return AdminVerificationResult(
@@ -278,19 +286,23 @@ class AdminVerificationService {
 
       if (existingAdmin != null) {
         // Update existing admin
-        await _client.from('user_profiles').update({
-          'role': 'principal_admin',
-          'is_active': true,
-          'full_name': _principalAdminName,
-          'updated_at': DateTime.now().toIso8601String(),
-        }).eq('id', existingAdmin['id']);
+        await _client
+            .from('user_profiles')
+            .update({
+              'role': 'principal_admin',
+              'is_active': true,
+              'full_name': _principalAdminName,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', existingAdmin['id']);
 
         print('Manual emergency reset: updated existing admin profile');
         return true;
       }
 
       print(
-          'Manual emergency reset: admin profile not found, creation required');
+        'Manual emergency reset: admin profile not found, creation required',
+      );
       return false;
     } catch (error) {
       print('Manual emergency reset failed: $error');
@@ -336,15 +348,19 @@ class AdminVerificationService {
 
       if (existingAdmin != null) {
         // Update role and status if needed
-        final needsUpdate = existingAdmin['role'] != 'principal_admin' ||
+        final needsUpdate =
+            existingAdmin['role'] != 'principal_admin' ||
             existingAdmin['is_active'] != true;
 
         if (needsUpdate) {
-          await _client.from('user_profiles').update({
-            'role': 'principal_admin',
-            'is_active': true,
-            'updated_at': DateTime.now().toIso8601String(),
-          }).eq('id', existingAdmin['id']);
+          await _client
+              .from('user_profiles')
+              .update({
+                'role': 'principal_admin',
+                'is_active': true,
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('id', existingAdmin['id']);
         }
 
         print('Manual admin creation: updated existing profile');
@@ -352,7 +368,8 @@ class AdminVerificationService {
       }
 
       print(
-          'Manual admin creation: profile not found, auth user creation required');
+        'Manual admin creation: profile not found, auth user creation required',
+      );
       return false;
     } catch (error) {
       print('Manual admin creation failed: $error');
@@ -380,39 +397,6 @@ class AdminVerificationService {
       }
     } catch (error) {
       print('Error verifying principal admin: $error');
-      return false;
-    }
-  }
-
-  /// Verify admin credentials can login (legacy compatibility)
-  Future<bool> verifyAdminLogin() async {
-    try {
-      // Try to authenticate with admin credentials
-      final response = await _client.auth.signInWithPassword(
-        email: _principalAdminEmail,
-        password: _principalAdminPassword,
-      );
-
-      if (response.user != null) {
-        // Verify role is correct
-        final profile = await _client
-            .from('user_profiles')
-            .select('role, is_active')
-            .eq('id', response.user!.id)
-            .maybeSingle();
-
-        final isValidAdmin = profile != null &&
-            profile['role'] == 'principal_admin' &&
-            profile['is_active'] == true;
-
-        // Sign out after verification (this is just a test)
-        await _client.auth.signOut();
-
-        return isValidAdmin;
-      }
-      return false;
-    } catch (error) {
-      print('Admin login verification failed: $error');
       return false;
     }
   }

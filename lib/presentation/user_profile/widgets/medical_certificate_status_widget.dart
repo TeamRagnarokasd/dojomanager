@@ -1,11 +1,13 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../constants/app_constants.dart';
 import '../../../core/app_export.dart';
+import '../../../services/child_profile_service.dart';
 import '../../../services/supabase_service.dart';
 
 // Add this import for min function
@@ -13,9 +15,13 @@ import '../../../services/supabase_service.dart';
 
 class MedicalCertificateStatusWidget extends StatefulWidget {
   final String? userId; // NEW: Optional user ID parameter
+  final bool isChildProfile;
 
-  const MedicalCertificateStatusWidget({Key? key, this.userId})
-      : super(key: key);
+  const MedicalCertificateStatusWidget({
+    Key? key,
+    this.userId,
+    this.isChildProfile = false,
+  }) : super(key: key);
 
   @override
   State<MedicalCertificateStatusWidget> createState() =>
@@ -39,19 +45,47 @@ class _MedicalCertificateStatusWidgetState
 
       String? targetUserId = widget.userId;
 
-      final response = await client
-          .from('user_profiles')
-          .select(
-            'medical_certificate_url, medical_certificate_expiry, medical_certificate_start_date',
-          )
-          .eq('id', targetUserId ?? '')
-          .maybeSingle();
+      if (widget.isChildProfile) {
+        // READ from child_profiles table
+        final response = await client
+            .from('child_profiles')
+            .select(
+              'medical_certificate_url, medical_certificate_expiry_date, medical_certificate_uploaded_at',
+            )
+            .eq('id', targetUserId ?? '')
+            .maybeSingle();
 
-      if (!mounted) return;
-      setState(() {
-        _certificateData = response;
-        _isLoading = false;
-      });
+        if (!mounted) return;
+        // Normalise column names so the rest of the widget works unchanged
+        Map<String, dynamic>? normalised;
+        if (response != null) {
+          normalised = {
+            'medical_certificate_url': response['medical_certificate_url'],
+            'medical_certificate_expiry':
+                response['medical_certificate_expiry_date'],
+            'medical_certificate_start_date':
+                response['medical_certificate_uploaded_at'],
+          };
+        }
+        setState(() {
+          _certificateData = normalised;
+          _isLoading = false;
+        });
+      } else {
+        final response = await client
+            .from('user_profiles')
+            .select(
+              'medical_certificate_url, medical_certificate_expiry, medical_certificate_start_date',
+            )
+            .eq('id', targetUserId ?? '')
+            .maybeSingle();
+
+        if (!mounted) return;
+        setState(() {
+          _certificateData = response;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       debugPrint('Error loading certificate status: $e');
       if (!mounted) return;
@@ -196,27 +230,41 @@ class _MedicalCertificateStatusWidgetState
 
       try {
         final client = SupabaseService.instance.client;
-        final uri = Uri.parse(freshUrl!);
-        final pathSegments = uri.pathSegments;
 
-        // Extract filename from URL path
-        final fileName = pathSegments.lastWhere(
-          (segment) => segment.isNotEmpty && !segment.startsWith('sign'),
-          orElse: () => pathSegments.last.split('?').first,
-        );
+        if (widget.isChildProfile) {
+          // Child certificates are stored in 'user_docs' bucket at the full path.
+          // Use the complete stored path — do NOT strip it.
+          final String fullPath = freshUrl!;
+          debugPrint(
+            '📝 Regenerating child certificate URL for path: $fullPath',
+          );
+          freshUrl = await client.storage
+              .from('user_docs')
+              .createSignedUrl(fullPath, 86400); // 24 hours
+        } else {
+          final uri = Uri.parse(freshUrl!);
+          final pathSegments = uri.pathSegments;
 
-        debugPrint('📝 Regenerating URL for file: $fileName');
+          // Extract filename from URL path
+          final fileName = pathSegments.lastWhere(
+            (segment) => segment.isNotEmpty && !segment.startsWith('sign'),
+            orElse: () => pathSegments.last.split('?').first,
+          );
 
-        // Generate fresh signed URL (valid for 24 hours)
-        freshUrl = await client.storage
-            .from('medical-certificates')
-            .createSignedUrl(fileName, 86400); // 24 hours
+          debugPrint('📝 Regenerating URL for file: $fileName');
+
+          // Generate fresh signed URL (valid for 24 hours)
+          freshUrl = await client.storage
+              .from('medical-certificates')
+              .createSignedUrl(fileName, 86400); // 24 hours
+        }
 
         debugPrint('✅ Fresh signed URL generated');
 
         if (mounted) {
           setState(
-              () => _certificateData!['medical_certificate_url'] = freshUrl);
+            () => _certificateData!['medical_certificate_url'] = freshUrl,
+          );
         }
       } catch (urlError) {
         debugPrint('⚠️ Could not regenerate URL: $urlError');
@@ -285,8 +333,9 @@ class _MedicalCertificateStatusWidgetState
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'profile.certificate_error'
-                  .tr(namedArgs: {'error': e.toString()}),
+              'profile.certificate_error'.tr(
+                namedArgs: {'error': e.toString()},
+              ),
             ),
             backgroundColor: AppTheme.darkTheme.colorScheme.error,
             duration: Duration(seconds: 4),
@@ -319,8 +368,9 @@ class _MedicalCertificateStatusWidgetState
       statusIcon = Icons.error_outline;
     } else if (isExpiringSoon) {
       statusColor = AppTheme.darkTheme.colorScheme.tertiary;
-      statusMessage = 'profile.status_expiring_soon'
-          .tr(namedArgs: {'days': '$daysUntilExpiry'});
+      statusMessage = 'profile.status_expiring_soon'.tr(
+        namedArgs: {'days': '$daysUntilExpiry'},
+      );
       statusIcon = Icons.warning_amber;
     } else {
       statusColor = AppTheme.darkTheme.colorScheme.secondary;
@@ -399,7 +449,8 @@ class _MedicalCertificateStatusWidgetState
       );
     }
 
-    final hasCertificate = _certificateData != null &&
+    final hasCertificate =
+        _certificateData != null &&
         _certificateData!['medical_certificate_url'] != null &&
         _certificateData!['medical_certificate_url']!.isNotEmpty;
 
@@ -442,16 +493,21 @@ class _MedicalCertificateStatusWidgetState
   }
 
   Widget _buildUploadButton() {
-    final hasCertificate = _certificateData != null &&
+    final hasCertificate =
+        _certificateData != null &&
         _certificateData!['medical_certificate_url'] != null &&
         _certificateData!['medical_certificate_url']!.isNotEmpty;
 
     return GestureDetector(
       onTap: () {
-        Navigator.pushNamed(
-          context,
-          AppRoutes.medicalCertificateUpload,
-        ).then((_) => _loadCertificateStatus());
+        if (widget.isChildProfile) {
+          _uploadChildCertificate();
+        } else {
+          Navigator.pushNamed(
+            context,
+            AppRoutes.medicalCertificateUpload,
+          ).then((_) => _loadCertificateStatus());
+        }
       },
       child: Container(
         padding: EdgeInsets.all(4.w),
@@ -506,6 +562,69 @@ class _MedicalCertificateStatusWidgetState
           ],
         ),
       ),
+    );
+  }
+
+  /// Handles inline upload for child profiles using ChildProfileService.
+  Future<void> _uploadChildCertificate() async {
+    final childId = widget.userId;
+    if (childId == null) return;
+
+    // Ask for expiry date first
+    DateTime? expiryDate = await _pickExpiryDate();
+
+    // Pick image
+    final picker = ImagePicker();
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (image == null) return;
+
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      final bytes = await image.readAsBytes();
+      await ChildProfileService.uploadChildMedicalCertificate(
+        childProfileId: childId,
+        fileBytes: bytes,
+        fileName: image.name,
+        expiryDate: expiryDate,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('profile.certificate_uploaded_success'.tr()),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error uploading child certificate: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('profile.certificate_upload_error'.tr()),
+            backgroundColor: AppTheme.darkTheme.colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        await _loadCertificateStatus();
+      }
+    }
+  }
+
+  Future<DateTime?> _pickExpiryDate() async {
+    return showDatePicker(
+      context: context,
+      initialDate: DateTime.now().add(const Duration(days: 365)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+      helpText: 'profile.expiry_date'.tr(),
+      builder: (context, child) => Theme(data: ThemeData.dark(), child: child!),
     );
   }
 

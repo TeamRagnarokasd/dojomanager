@@ -1,12 +1,18 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
 
 import './routes/app_routes.dart';
+import './services/app_update_service.dart';
+import './services/android_install_intent.dart';
 import './services/auth_service.dart';
 import './services/locale_service.dart';
 import './services/realtime_notification_service.dart';
@@ -37,7 +43,8 @@ void main() async {
       const Duration(seconds: 8),
       onTimeout: () {
         debugPrint(
-            '⚠️ Auth system initialization timed out — continuing with current session state');
+          '⚠️ Auth system initialization timed out — continuing with current session state',
+        );
       },
     );
     print('✅ Auth system initialized successfully');
@@ -118,6 +125,7 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
   final AuthService _authService = AuthService.instance;
   final AppRouteObserver _routeObserver = AppRouteObserver();
   String? _initialRoute;
+  String? _defaultDashboardRoute;
   bool _isRestoringState = false;
   bool _routeResolved = false;
 
@@ -186,7 +194,8 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
         _doRouteResolution(),
         Future.delayed(const Duration(seconds: 6), () {
           debugPrint(
-              '⚠️ _determineInitialRoute timed out — defaulting to login');
+            '⚠️ _determineInitialRoute timed out — defaulting to login',
+          );
         }),
       ]);
     } catch (e) {
@@ -213,10 +222,14 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
           if (!mounted) return;
           setState(() {
             _initialRoute = AppRoutes.login;
+            _defaultDashboardRoute = AppRoutes.login;
             _routeResolved = true;
           });
           return;
         }
+
+        final defaultRoute = await _getDefaultRouteForRole();
+        if (!mounted) return;
 
         final savedRoute = await _authService.getLastVisitedRoute();
         if (!mounted) return;
@@ -227,6 +240,7 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
           if (isRouteAllowed) {
             setState(() {
               _initialRoute = savedRoute;
+              _defaultDashboardRoute = defaultRoute;
               _isRestoringState = true;
               _routeResolved = true;
             });
@@ -239,10 +253,10 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
         }
 
         // No valid saved route — determine default route by role
-        final defaultRoute = await _getDefaultRouteForRole();
         if (!mounted) return;
         setState(() {
           _initialRoute = defaultRoute;
+          _defaultDashboardRoute = defaultRoute;
           _routeResolved = true;
         });
         return;
@@ -254,6 +268,7 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
     if (!mounted) return;
     setState(() {
       _initialRoute = AppRoutes.login;
+      _defaultDashboardRoute = AppRoutes.login;
       _routeResolved = true;
     });
   }
@@ -340,11 +355,15 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
           .select('status, is_active')
           .eq('id', userId)
           .maybeSingle()
-          .timeout(const Duration(seconds: 4), onTimeout: () {
-        debugPrint(
-            '⚠️ _isUserApprovedAndActive timed out — allowing user through');
-        return null;
-      });
+          .timeout(
+        const Duration(seconds: 4),
+        onTimeout: () {
+          debugPrint(
+            '⚠️ _isUserApprovedAndActive timed out — allowing user through',
+          );
+          return null;
+        },
+      );
 
       if (profileData == null)
         return true; // timeout or missing profile — allow through
@@ -436,6 +455,9 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
             AppRoutes.initial: (context) => _SplashGate(
                   resolved: _routeResolved,
                   targetRoute: _initialRoute ?? AppRoutes.login,
+                  defaultDashboardRoute: _defaultDashboardRoute ??
+                      _initialRoute ??
+                      AppRoutes.login,
                 ),
           },
           navigatorObservers: [_routeObserver, AppRoutes.routeObserver],
@@ -491,8 +513,13 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
 class _SplashGate extends StatefulWidget {
   final bool resolved;
   final String targetRoute;
+  final String defaultDashboardRoute;
 
-  const _SplashGate({required this.resolved, required this.targetRoute});
+  const _SplashGate({
+    required this.resolved,
+    required this.targetRoute,
+    required this.defaultDashboardRoute,
+  });
 
   @override
   State<_SplashGate> createState() => _SplashGateState();
@@ -501,15 +528,49 @@ class _SplashGate extends StatefulWidget {
 class _SplashGateState extends State<_SplashGate> {
   bool _navigated = false;
 
+  void _navigate() {
+    if (!mounted) return;
+    final target = widget.targetRoute;
+    final defaultDashboard = widget.defaultDashboardRoute;
+    if (target == defaultDashboard) {
+      // Target IS the default dashboard — single replacement, existing behaviour
+      Navigator.of(context).pushReplacementNamed(target);
+    } else {
+      // Target is a restored route different from the default dashboard:
+      // push the default dashboard first so the back button works, then
+      // push the restored route on top of it.
+      Navigator.of(context).pushReplacementNamed(defaultDashboard);
+      Navigator.of(context).pushNamed(target);
+    }
+
+    // Check for APK updates — Android only, never on web.
+    if (!kIsWeb) {
+      _checkForUpdate();
+    }
+  }
+
+  Future<void> _checkForUpdate() async {
+    try {
+      final updateInfo = await AppUpdateService.instance.checkForUpdate();
+      if (updateInfo != null && mounted) {
+        // Small delay to let the target screen finish rendering first.
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) {
+          await showAppUpdateDialog(context, updateInfo);
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Update check failed: $e');
+    }
+  }
+
   @override
   void didUpdateWidget(_SplashGate oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.resolved && !_navigated) {
       _navigated = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          Navigator.of(context).pushReplacementNamed(widget.targetRoute);
-        }
+        _navigate();
       });
     }
   }
@@ -520,9 +581,7 @@ class _SplashGateState extends State<_SplashGate> {
     if (widget.resolved && !_navigated) {
       _navigated = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          Navigator.of(context).pushReplacementNamed(widget.targetRoute);
-        }
+        _navigate();
       });
     }
   }
@@ -536,13 +595,11 @@ class _SplashGateState extends State<_SplashGate> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Image.asset(
-              'assets/images/team_ragnarok_icon.png',
+              'assets/images/146804-1762122410365.jpg',
               width: 100,
               height: 100,
-              errorBuilder: (_, __, ___) => const SizedBox(
-                width: 100,
-                height: 100,
-              ),
+              errorBuilder: (_, __, ___) =>
+                  const SizedBox(width: 100, height: 100),
             ),
             const SizedBox(height: 32),
             const CircularProgressIndicator(),
@@ -550,5 +607,173 @@ class _SplashGateState extends State<_SplashGate> {
         ),
       ),
     );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// In-app update dialog — Android / non-web only
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Shows the update dialog. Must be called with a valid [BuildContext] that has
+/// a [Navigator] ancestor (i.e. after the initial route has been pushed).
+Future<void> showAppUpdateDialog(
+  BuildContext context,
+  AppUpdateInfo info,
+) async {
+  if (!context.mounted) return;
+  await showDialog(
+    context: context,
+    barrierDismissible: !info.mandatory,
+    builder: (ctx) => _AppUpdateDialog(info: info),
+  );
+}
+
+class _AppUpdateDialog extends StatefulWidget {
+  final AppUpdateInfo info;
+  const _AppUpdateDialog({required this.info});
+
+  @override
+  State<_AppUpdateDialog> createState() => _AppUpdateDialogState();
+}
+
+class _AppUpdateDialogState extends State<_AppUpdateDialog> {
+  bool _isDownloading = false;
+  double _downloadProgress = 0.0;
+  String? _errorMessage;
+
+  Future<void> _downloadAndInstall() async {
+    setState(() {
+      _isDownloading = true;
+      _downloadProgress = 0.0;
+      _errorMessage = null;
+    });
+
+    try {
+      // Request install-packages permission at runtime.
+      if (!kIsWeb && Platform.isAndroid) {
+        final status = await Permission.requestInstallPackages.request();
+        if (!status.isGranted) {
+          setState(() {
+            _isDownloading = false;
+            _errorMessage =
+                'Permesso di installazione negato. Abilitalo nelle impostazioni.';
+          });
+          return;
+        }
+      }
+
+      // Download APK to temp directory.
+      final tempDir = await getTemporaryDirectory();
+      final apkPath = '${tempDir.path}/update.apk';
+
+      final dio = Dio();
+      await dio.download(
+        widget.info.apkUrl,
+        apkPath,
+        onReceiveProgress: (received, total) {
+          if (total > 0) {
+            setState(() {
+              _downloadProgress = received / total;
+            });
+          }
+        },
+      );
+
+      // Launch install intent via android_intent_plus.
+      if (!kIsWeb && Platform.isAndroid) {
+        // Use android_intent_plus to fire ACTION_VIEW with the APK URI.
+        // We import it conditionally so it never compiles on web.
+        await _launchInstallIntent(apkPath);
+      }
+
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      debugPrint('❌ APK download/install error: $e');
+      setState(() {
+        _isDownloading = false;
+        _errorMessage = 'Download fallito. Controlla la connessione e riprova.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async => !widget.info.mandatory,
+      child: AlertDialog(
+        title: const Text('Aggiornamento disponibile'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(widget.info.releaseNotes),
+              if (_isDownloading) ...[
+                const SizedBox(height: 16),
+                LinearProgressIndicator(value: _downloadProgress),
+                const SizedBox(height: 8),
+                Text(
+                  'Download: ${(_downloadProgress * 100).toStringAsFixed(0)}%',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _errorMessage!,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          if (!widget.info.mandatory && !_isDownloading)
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Più tardi'),
+            ),
+          ElevatedButton(
+            onPressed: _isDownloading ? null : _downloadAndInstall,
+            child: const Text('Aggiorna ora'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Launches the Android install intent for the downloaded APK.
+/// Extracted to a separate function so it can be guarded at call-site.
+Future<void> _launchInstallIntent(String apkPath) async {
+  // android_intent_plus is only available on Android — this function is only
+  // ever called when Platform.isAndroid is true.
+  try {
+    // Use the android_intent_plus package to fire the install intent.
+    // We use a dynamic import workaround via a conditional import at the top.
+    final intent = _AndroidIntentHelper(apkPath);
+    await intent.launch();
+  } catch (e) {
+    debugPrint('❌ Install intent error: $e');
+    rethrow;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Thin wrapper so android_intent_plus is only referenced in non-web builds.
+// ─────────────────────────────────────────────────────────────────────────────
+class _AndroidIntentHelper {
+  final String apkPath;
+  _AndroidIntentHelper(this.apkPath);
+
+  Future<void> launch() async {
+    // android_intent_plus import — only compiled on non-web.
+    // We use a late import pattern via a helper to avoid web compilation issues.
+    if (kIsWeb) return;
+    await launchAndroidInstallIntent(apkPath);
   }
 }

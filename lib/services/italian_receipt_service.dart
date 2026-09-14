@@ -30,6 +30,10 @@ class ItalianReceiptService {
     DateTime? validityEndDate,
     String? notes,
     String? fiscalNotes,
+    // The student the receipt is FOR (may differ from the admin who creates it)
+    String? studentUserId,
+    // 'adult' for regular profiles, 'child' for minor profiles
+    String beneficiaryType = 'adult',
   }) async {
     try {
       // 🎯 STEP 1: Generate receipt number using existing function
@@ -48,11 +52,23 @@ class ItalianReceiptService {
       final vatAmount = subtotalAfterDiscount * (vatRateDouble / 100);
       final totalAmount = subtotalAfterDiscount + vatAmount;
 
+      // Use the student's user id as created_by so RLS allows the student to
+      // read their own receipt. Fall back to the caller's id when no student
+      // id is supplied (e.g. receipts not linked to a specific user account).
+      final effectiveCreatedBy = studentUserId ?? createdBy;
+
+      // Generate the batch_transaction_id upfront so it can be shared between
+      // the non_fiscal_receipts row and the payment_confirmations row.
+      // We use a UUID-like value derived from a temporary placeholder; the
+      // actual receipt UUID is not yet known, so we generate a random suffix.
+      final batchTransactionId =
+          'MANUAL_RECEIPT_${DateTime.now().millisecondsSinceEpoch}_${createdBy.substring(0, 8)}';
+
       // 🎯 STEP 3: Direct insert into non_fiscal_receipts table
       final response = await client
           .from('non_fiscal_receipts')
           .insert({
-            'created_by': createdBy,
+            'created_by': effectiveCreatedBy,
             'customer_name': customerName,
             'customer_tax_code': customerTaxCode,
             'customer_address': customerAddress,
@@ -75,12 +91,38 @@ class ItalianReceiptService {
             'notes': notes,
             'fiscal_notes': fiscalNotes,
             'status': 'issued',
+            'batch_transaction_id': batchTransactionId,
           })
           .select('id')
           .single();
 
       final receiptId = response['id'] as String;
       print('✅ Receipt created successfully with ID: $receiptId');
+
+      // 🎯 STEP 4: If this receipt is for a specific student, create a
+      // payment_confirmation row so the annual-registration check and the
+      // student's payment history both work correctly.
+      if (studentUserId != null) {
+        try {
+          await client.from('payment_confirmations').insert({
+            'user_id': studentUserId,
+            'amount': totalAmount,
+            'payment_method': paymentMethod,
+            'status': 'confirmed',
+            'confirmed_at': DateTime.now().toIso8601String(),
+            'batch_transaction_id': batchTransactionId,
+            'beneficiary_profile_id': studentUserId,
+            'beneficiary_type': beneficiaryType,
+          });
+          print(
+            '✅ payment_confirmation created for student $studentUserId '
+            '(beneficiary_type=$beneficiaryType, batch=$batchTransactionId)',
+          );
+        } catch (pcError) {
+          // Non-fatal: log but do not fail the whole receipt creation
+          print('⚠️ Could not create payment_confirmation: $pcError');
+        }
+      }
 
       return receiptId;
     } catch (error) {

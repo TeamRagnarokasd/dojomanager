@@ -180,13 +180,13 @@ class _CertificateDetailsFormWidgetState
             : DateTime.now().add(const Duration(days: 1095)), // 3 years
         builder: (context, child) {
           return Theme(
-            data: Theme.of(context).copyWith(
-              colorScheme: Theme.of(context).colorScheme.copyWith(
-                    primary: AppTheme.lightTheme.colorScheme.primary,
-                    onPrimary: Colors.white,
-                    surface: Colors.white,
-                    onSurface: Colors.black87,
-                  ),
+            data: ThemeData.dark().copyWith(
+              colorScheme: const ColorScheme.dark(
+                primary: Color(0xFFFF0000),
+                onPrimary: Colors.white,
+                surface: Color(0xFF2A2A2A),
+                onSurface: Colors.white,
+              ),
             ),
             child: child!,
           );

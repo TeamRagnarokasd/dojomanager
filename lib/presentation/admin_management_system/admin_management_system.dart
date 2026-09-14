@@ -65,8 +65,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   String _selectedStatus = 'approved';
   String _selectedRole = 'student';
   String _selectedMedicalCertificateStatus = 'pending';
-  String _selectedRoleTitle =
-      'profile.default_student_role'.tr(); // NEW: Role title state
+  String _selectedRoleTitle = 'profile.default_student_role'
+      .tr(); // NEW: Role title state
 
   Map<String, dynamic>? selectedUserForEdit;
 
@@ -81,10 +81,118 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   bool _isSavingTeamData = false;
   Map<String, dynamic>? _teamOrgInfo;
 
+  // --- Search & filter state for "Gestione Utenti Sistema" ---
+  final TextEditingController _userSearchController = TextEditingController();
+  String _userSearchText = '';
+  final Set<String> _activeFilterChips = {};
+
+  static const String _chipUnder14 = 'under14';
+  static const String _chip1417 = '14_17';
+  static const String _chipNoCert = 'no_cert';
+  static const String _chipPending = 'pending';
+  static const String _chipNoSub = 'no_sub';
+
+  Set<String> _subscribedTaxCodes = {};
+
+  // Compute age in years from a birth_date string (ISO-8601 or similar)
+  int? _ageFromBirthDate(dynamic birthDate) {
+    if (birthDate == null) return null;
+    try {
+      final dob = DateTime.parse(birthDate.toString());
+      final today = DateTime.now();
+      int age = today.year - dob.year;
+      if (today.month < dob.month ||
+          (today.month == dob.month && today.day < dob.day)) {
+        age--;
+      }
+      return age;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _userMatchesChips(Map<String, dynamic> user) {
+    if (_activeFilterChips.isEmpty) return true;
+
+    final children =
+        (user['child_profiles'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+    for (final chip in _activeFilterChips) {
+      bool chipMatch = false;
+
+      if (chip == _chipUnder14) {
+        final userAge = _ageFromBirthDate(user['birth_date']);
+        if (userAge != null && userAge < 14) {
+          chipMatch = true;
+        } else {
+          chipMatch = children.any((c) {
+            final a = _ageFromBirthDate(c['birth_date']);
+            return a != null && a < 14;
+          });
+        }
+      } else if (chip == _chip1417) {
+        final userAge = _ageFromBirthDate(user['birth_date']);
+        if (userAge != null && userAge >= 14 && userAge <= 17) {
+          chipMatch = true;
+        } else {
+          chipMatch = children.any((c) {
+            final a = _ageFromBirthDate(c['birth_date']);
+            return a != null && a >= 14 && a <= 17;
+          });
+        }
+      } else if (chip == _chipNoCert) {
+        final certUrl = user['medical_certificate_url']?.toString() ?? '';
+        final expiryStr = user['medical_certificate_expiry']?.toString() ?? '';
+        bool certMissing = certUrl.isEmpty;
+        bool certExpired = false;
+        if (!certMissing && expiryStr.isNotEmpty) {
+          try {
+            final expiry = DateTime.parse(expiryStr);
+            certExpired = expiry.isBefore(DateTime.now());
+          } catch (_) {}
+        }
+        chipMatch = certMissing || certExpired;
+      } else if (chip == _chipPending) {
+        chipMatch = (user['status']?.toString() ?? '') == 'pending';
+      } else if (chip == _chipNoSub) {
+        final taxCode =
+            (user['codice_fiscale']?.toString() ??
+                    user['tax_code']?.toString() ??
+                    '')
+                .trim()
+                .toUpperCase();
+        chipMatch = taxCode.isEmpty || !_subscribedTaxCodes.contains(taxCode);
+      }
+
+      if (!chipMatch) return false; // AND logic
+    }
+    return true;
+  }
+
+  bool _userMatchesSearch(Map<String, dynamic> user) {
+    if (_userSearchText.isEmpty) return true;
+    final q = _userSearchText.toLowerCase();
+    final name = (user['full_name']?.toString() ?? '').toLowerCase();
+    final email = (user['email']?.toString() ?? '').toLowerCase();
+    final phone = (user['phone']?.toString() ?? '').toLowerCase();
+    return name.contains(q) || email.contains(q) || phone.contains(q);
+  }
+
+  List<dynamic> get _filteredUsers {
+    return systemUsers.where((u) {
+      final user = u as Map<String, dynamic>;
+      return _userMatchesSearch(user) && _userMatchesChips(user);
+    }).toList();
+  }
+  // --- end search & filter state ---
+
   @override
   void initState() {
     super.initState();
     _initializeAdminSystem();
+    _userSearchController.addListener(() {
+      setState(() => _userSearchText = _userSearchController.text);
+    });
   }
 
   @override
@@ -130,6 +238,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
     _teamEmailController.dispose();
     _teamPecController.dispose();
 
+    _userSearchController.dispose();
+
     super.dispose();
   }
 
@@ -166,7 +276,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       currentUser = profileResponse;
 
       // Check if principal admin or regular admin
-      isPrincipalAdmin = user.email == 'lutadordeeliteravenna@gmail.com' ||
+      isPrincipalAdmin =
+          user.email == 'lutadordeeliteravenna@gmail.com' ||
           (currentUser?['role'] == 'principal_admin');
 
       // Allow access for admin or principal_admin roles
@@ -223,6 +334,38 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         systemUsers = [];
       }
 
+      // Load subscribed tax codes (non-annual active subscriptions)
+      try {
+        final now = DateTime.now();
+        DateTime mostRecentAug28;
+        if (now.month > 8 || (now.month == 8 && now.day >= 28)) {
+          mostRecentAug28 = DateTime(now.year, 8, 28);
+        } else {
+          mostRecentAug28 = DateTime(now.year - 1, 8, 28);
+        }
+        final aug28Str =
+            '${mostRecentAug28.year}-${mostRecentAug28.month.toString().padLeft(2, '0')}-28';
+
+        final receiptsResponse = await client
+            .from('non_fiscal_receipts')
+            .select('customer_tax_code')
+            .not('description', 'ilike', '%Iscrizione Annuale%')
+            .eq('deleted_by_user', false)
+            .gte('issue_date', aug28Str);
+
+        final codes = <String>{};
+        for (final row in (receiptsResponse as List)) {
+          final code = (row['customer_tax_code']?.toString() ?? '')
+              .trim()
+              .toUpperCase();
+          if (code.isNotEmpty) codes.add(code);
+        }
+        _subscribedTaxCodes = codes;
+      } catch (e) {
+        print('Error loading subscribed tax codes: $e');
+        _subscribedTaxCodes = {};
+      }
+
       // Load admin communications with error handling
       try {
         final communicationsResponse = await client
@@ -254,7 +397,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
 
       await client
           .from('user_profiles')
-          .update({'role': newRole}).eq('id', userId);
+          .update({'role': newRole})
+          .eq('id', userId);
 
       // Log the admin activity
       await client.from('admin_activity_log').insert({
@@ -860,6 +1004,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   }
 
   Widget _buildUsersTab() {
+    final filtered = _filteredUsers;
     return ListView(
       padding: EdgeInsets.all(16),
       children: [
@@ -869,9 +1014,9 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
               child: Text(
                 'admin_management.user_management_title'.tr(),
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -889,7 +1034,57 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
             ),
           ],
         ),
-        SizedBox(height: 16),
+        SizedBox(height: 12),
+        // Search field
+        TextField(
+          controller: _userSearchController,
+          decoration: InputDecoration(
+            hintText: 'Cerca per nome, email o telefono…',
+            prefixIcon: Icon(Icons.search, size: 20),
+            suffixIcon: _userSearchText.isNotEmpty
+                ? IconButton(
+                    icon: Icon(Icons.clear, size: 18),
+                    onPressed: () {
+                      _userSearchController.clear();
+                    },
+                  )
+                : null,
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10.0),
+            ),
+            filled: true,
+            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+          ),
+          style: TextStyle(fontSize: 14),
+        ),
+        SizedBox(height: 10),
+        // Filter chips
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          children: [
+            _buildFilterChip('Under 14', _chipUnder14),
+            _buildFilterChip('14-17 anni', _chip1417),
+            _buildFilterChip('Senza certificato medico', _chipNoCert),
+            _buildFilterChip('In attesa di approvazione', _chipPending),
+            _buildFilterChip('Senza abbonamento', _chipNoSub),
+          ],
+        ),
+        SizedBox(height: 10),
+        // Results counter
+        if (_userSearchText.isNotEmpty || _activeFilterChips.isNotEmpty)
+          Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text(
+              '${filtered.length} risultat${filtered.length == 1 ? 'o' : 'i'}',
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
         if (systemUsers.isEmpty)
           Center(
             child: Column(
@@ -911,9 +1106,55 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
               ],
             ),
           )
+        else if (filtered.isEmpty)
+          Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Text(
+                'Nessun utente corrisponde ai criteri di ricerca.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          )
         else
-          ...systemUsers.map((user) => _buildUserCard(user)).toList(),
+          ...filtered.map((user) => _buildUserCard(user)).toList(),
       ],
+    );
+  }
+
+  Widget _buildFilterChip(String label, String chipKey) {
+    final isSelected = _activeFilterChips.contains(chipKey);
+    return FilterChip(
+      label: Text(label, style: TextStyle(fontSize: 12)),
+      selected: isSelected,
+      onSelected: (_) {
+        setState(() {
+          if (isSelected) {
+            _activeFilterChips.remove(chipKey);
+          } else {
+            _activeFilterChips.add(chipKey);
+          }
+        });
+      },
+      selectedColor: Theme.of(context).colorScheme.primary.withAlpha(64),
+      checkmarkColor: Theme.of(context).colorScheme.primary,
+      labelStyle: TextStyle(
+        color: isSelected
+            ? Theme.of(context).colorScheme.primary
+            : Theme.of(context).colorScheme.onSurface,
+        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+      ),
+      side: BorderSide(
+        color: isSelected
+            ? Theme.of(context).colorScheme.primary
+            : Theme.of(context).colorScheme.outline,
+        width: isSelected ? 1.5 : 1.0,
+      ),
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     );
   }
 
@@ -929,7 +1170,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
 
     final needsAcceptance = userStatus != 'approved';
 
-    final childProfiles = (user['child_profiles'] as List<dynamic>?)
+    final childProfiles =
+        (user['child_profiles'] as List<dynamic>?)
             ?.cast<Map<String, dynamic>>() ??
         [];
 
@@ -1174,7 +1416,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                     final now = DateTime.now();
                     int a = now.year - bd.year;
                     if (now.month < bd.month ||
-                        (now.month == bd.month && now.day < bd.day)) a--;
+                        (now.month == bd.month && now.day < bd.day))
+                      a--;
                     age = '$a anni';
                   } catch (_) {}
                 }
@@ -1217,8 +1460,9 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                             width: 3,
                             height: 36,
                             decoration: BoxDecoration(
-                              color:
-                                  imageConsent ? Colors.green : Colors.orange,
+                              color: imageConsent
+                                  ? Colors.green
+                                  : Colors.orange,
                               borderRadius: BorderRadius.circular(2.0),
                             ),
                           ),
@@ -1864,23 +2108,24 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                       vertical: 16,
                     ),
                   ),
-                  items: [
-                    'profile.default_student_role'.tr(),
-                    'Pro',
-                    'Istruttore Fitness',
-                    'Coach',
-                    'Staff',
-                    'Headcoach',
-                    'Presidente',
-                  ].map((roleOption) {
-                    return DropdownMenuItem<String>(
-                      value: roleOption,
-                      child: Text(
-                        roleOption,
-                        style: GoogleFonts.inter(fontSize: 14),
-                      ),
-                    );
-                  }).toList(),
+                  items:
+                      [
+                        'profile.default_student_role'.tr(),
+                        'Pro',
+                        'Istruttore Fitness',
+                        'Coach',
+                        'Staff',
+                        'Headcoach',
+                        'Presidente',
+                      ].map((roleOption) {
+                        return DropdownMenuItem<String>(
+                          value: roleOption,
+                          child: Text(
+                            roleOption,
+                            style: GoogleFonts.inter(fontSize: 14),
+                          ),
+                        );
+                      }).toList(),
                   onChanged: (value) {
                     if (value != null) {
                       dialogSetState(() {
@@ -2261,14 +2506,6 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
               SizedBox(height: 12),
               Text(
                 'Email: lutadordeeliteravenna@gmail.com',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: AppTheme.textPrimaryLight,
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Password: Magnus833cc',
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   color: AppTheme.textPrimaryLight,
@@ -2661,7 +2898,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                               onTap: () async {
                                 final date = await showDatePicker(
                                   context: context,
-                                  initialDate: _selectedBirthDate ??
+                                  initialDate:
+                                      _selectedBirthDate ??
                                       DateTime.now().subtract(
                                         Duration(days: 365 * 20),
                                       ),
@@ -2797,8 +3035,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                                     child: _buildTextField(
                                       controller:
                                           _editParentGuardianNameController,
-                                      label:
-                                          'profile.parent_guardian_name'.tr(),
+                                      label: 'profile.parent_guardian_name'
+                                          .tr(),
                                       icon: Icons.person,
                                     ),
                                   ),
@@ -3117,8 +3355,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       if (_editCodiceFiscaleController.text != (user['codice_fiscale'] ?? '')) {
         updates['codice_fiscale'] =
             _editCodiceFiscaleController.text.trim().isEmpty
-                ? null
-                : _editCodiceFiscaleController.text.trim();
+            ? null
+            : _editCodiceFiscaleController.text.trim();
       }
 
       // Birth Date
@@ -3129,8 +3367,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         if (currentBirthDate == null ||
             !_selectedBirthDate!.isAtSameMomentAs(currentBirthDate)) {
           updates['birth_date'] = _selectedBirthDate!.toIso8601String().split(
-                'T',
-              )[0];
+            'T',
+          )[0];
         }
       }
 
@@ -3161,15 +3399,15 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
           (user['emergency_contact'] ?? '')) {
         updates['emergency_contact'] =
             _editEmergencyContactController.text.trim().isEmpty
-                ? null
-                : _editEmergencyContactController.text.trim();
+            ? null
+            : _editEmergencyContactController.text.trim();
       }
       if (_editEmergencyPhoneController.text !=
           (user['emergency_phone'] ?? '')) {
         updates['emergency_phone'] =
             _editEmergencyPhoneController.text.trim().isEmpty
-                ? null
-                : _editEmergencyPhoneController.text.trim();
+            ? null
+            : _editEmergencyPhoneController.text.trim();
       }
 
       // Minor status and Parent/Guardian Info
@@ -3182,43 +3420,43 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
             (user['parent_guardian_name'] ?? '')) {
           updates['parent_guardian_name'] =
               _editParentGuardianNameController.text.trim().isEmpty
-                  ? null
-                  : _editParentGuardianNameController.text.trim();
+              ? null
+              : _editParentGuardianNameController.text.trim();
         }
         if (_editParentGuardianSurnameController.text !=
             (user['parent_guardian_surname'] ?? '')) {
           updates['parent_guardian_surname'] =
               _editParentGuardianSurnameController.text.trim().isEmpty
-                  ? null
-                  : _editParentGuardianSurnameController.text.trim();
+              ? null
+              : _editParentGuardianSurnameController.text.trim();
         }
         if (_editParentGuardianEmailController.text !=
             (user['parent_guardian_email'] ?? '')) {
           updates['parent_guardian_email'] =
               _editParentGuardianEmailController.text.trim().isEmpty
-                  ? null
-                  : _editParentGuardianEmailController.text.trim();
+              ? null
+              : _editParentGuardianEmailController.text.trim();
         }
         if (_editParentGuardianPhoneController.text !=
             (user['parent_guardian_phone'] ?? '')) {
           updates['parent_guardian_phone'] =
               _editParentGuardianPhoneController.text.trim().isEmpty
-                  ? null
-                  : _editParentGuardianPhoneController.text.trim();
+              ? null
+              : _editParentGuardianPhoneController.text.trim();
         }
         if (_editParentGuardianCodiceFiscaleController.text !=
             (user['parent_guardian_codice_fiscale'] ?? '')) {
           updates['parent_guardian_codice_fiscale'] =
               _editParentGuardianCodiceFiscaleController.text.trim().isEmpty
-                  ? null
-                  : _editParentGuardianCodiceFiscaleController.text.trim();
+              ? null
+              : _editParentGuardianCodiceFiscaleController.text.trim();
         }
         if (_editParentGuardianRelationController.text !=
             (user['parent_guardian_relation'] ?? '')) {
           updates['parent_guardian_relation'] =
               _editParentGuardianRelationController.text.trim().isEmpty
-                  ? null
-                  : _editParentGuardianRelationController.text.trim();
+              ? null
+              : _editParentGuardianRelationController.text.trim();
         }
       } else {
         // Clear parent/guardian fields if not minor

@@ -70,8 +70,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     if (lower.contains('grappling')) return 0xFF9C27B0;
     if (lower.contains('fitness') ||
         lower.contains('atletica') ||
-        lower.contains('preparazione'))
-      return 0xFFFFC107;
+        lower.contains('preparazione')) return 0xFFFFC107;
     if (lower.contains('kickboxing') || lower.contains('kick'))
       return 0xFFE91E63;
     if (lower.contains('muay') || lower.contains('thai')) return 0xFFFF9800;
@@ -108,9 +107,8 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       final isUnlimited = cp['is_unlimited'] as bool? ?? false;
 
       // Use stored color from DB if available, otherwise auto-compute
-      final storedColor = cp['color'] != null
-          ? (cp['color'] as num).toInt()
-          : null;
+      final storedColor =
+          cp['color'] != null ? (cp['color'] as num).toInt() : null;
       final resolvedColor = storedColor ?? _getColorForPlanName(planName);
       final durationMonths = (cp['duration_months'] as num?)?.toInt() ?? 1;
       final entryCount = (cp['entry_count'] as num?)?.toInt();
@@ -119,9 +117,8 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       if (isAnnual) {
         frequency = 'Annuale';
       } else if (isUnlimited) {
-        frequency = entryCount != null
-            ? '$entryCount ingressi'
-            : 'Senza limite';
+        frequency =
+            entryCount != null ? '$entryCount ingressi' : 'Senza limite';
       } else {
         frequency = durationMonths == 1 ? 'Mensile' : '$durationMonths mesi';
       }
@@ -140,15 +137,13 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
         'entryCount': entryCount ?? 0,
         'benefits': <String>[],
         'sumupUrl': cp['external_url'] as String? ?? '',
-        'external_url':
-            cp['external_url'] as String? ??
+        'external_url': cp['external_url'] as String? ??
             '', // keep original key for edit dialog
         'color': resolvedColor,
         'isStandardFromDb': false,
         'isCustomPlan': true,
-        'planType': isAnnual
-            ? 'annual'
-            : (isUnlimited ? 'unlimited' : 'monthly'),
+        'planType':
+            isAnnual ? 'annual' : (isUnlimited ? 'unlimited' : 'monthly'),
         'duration_months': durationMonths,
         'is_unlimited': isUnlimited,
       });
@@ -206,20 +201,19 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     // Ensure admin-data channels are active
     RealtimeNotificationService.instance.subscribeToAdminDataChanges();
 
-    _realtimeSubscription = RealtimeNotificationService
-        .instance
-        .dataChangeStream
-        .where(
-          (event) =>
-              event.type == RealtimeDataChangeType.subscriptionPlans ||
-              event.type == RealtimeDataChangeType.customSubscriptionPlans,
-        )
-        .listen((_) {
-          if (mounted) {
-            _loadStandardPlans();
-            _loadCustomPlans();
-          }
-        });
+    _realtimeSubscription =
+        RealtimeNotificationService.instance.dataChangeStream
+            .where(
+      (event) =>
+          event.type == RealtimeDataChangeType.subscriptionPlans ||
+          event.type == RealtimeDataChangeType.customSubscriptionPlans,
+    )
+            .listen((_) {
+      if (mounted) {
+        _loadStandardPlans();
+        _loadCustomPlans();
+      }
+    });
   }
 
   @override
@@ -316,8 +310,8 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
           'frequency': planType == 'annual'
               ? 'Annuale'
               : isEntryBased
-              ? (entryCount == 1 ? 'Per ingresso' : '$entryCount ingressi')
-              : 'Mensile',
+                  ? (entryCount == 1 ? 'Per ingresso' : '$entryCount ingressi')
+                  : 'Mensile',
           'disciplines': [''],
           'classesPerWeek': 0,
           'entryBased': isEntryBased,
@@ -465,8 +459,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                     controller: nameController,
                     onChanged: (value) {
                       final lower = value.toLowerCase();
-                      final isAnnual =
-                          lower.contains('iscrizione') ||
+                      final isAnnual = lower.contains('iscrizione') ||
                           lower.contains('annuale');
                       if (isAnnual != _isAnnualPlan) {
                         setDialogState(() {
@@ -660,9 +653,8 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                               _isUnlimited
                                   ? Icons.all_inclusive
                                   : Icons.all_inclusive_outlined,
-                              color: _isUnlimited
-                                  ? Colors.white
-                                  : Colors.white54,
+                              color:
+                                  _isUnlimited ? Colors.white : Colors.white54,
                               size: 20,
                             ),
                             SizedBox(width: 2.w),
@@ -868,8 +860,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                     );
                     final planName = nameController.text.trim();
                     final lower = planName.toLowerCase();
-                    final isAnnual =
-                        lower.contains('iscrizione') ||
+                    final isAnnual = lower.contains('iscrizione') ||
                         lower.contains('annuale');
 
                     // Parse entry count for unlimited plans
@@ -884,19 +875,18 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                     await Supabase.instance.client
                         .from('custom_subscription_plans')
                         .insert({
-                          'name': planName,
-                          'external_url': urlController.text.trim(),
-                          'amount': amount,
-                          'is_active': true,
-                          'is_unlimited': _isUnlimited && !isAnnual,
-                          'entry_count': (_isUnlimited && !isAnnual)
-                              ? entryCount
-                              : null,
-                          'duration_months': isAnnual
-                              ? 0
-                              : (_isUnlimited ? 0 : _selectedDurationMonths),
-                          'is_convenzione': _isConvenzione,
-                        });
+                      'name': planName,
+                      'external_url': urlController.text.trim(),
+                      'amount': amount,
+                      'is_active': true,
+                      'is_unlimited': _isUnlimited && !isAnnual,
+                      'entry_count':
+                          (_isUnlimited && !isAnnual) ? entryCount : null,
+                      'duration_months': isAnnual
+                          ? 0
+                          : (_isUnlimited ? 0 : _selectedDurationMonths),
+                      'is_convenzione': _isConvenzione,
+                    });
 
                     if (mounted) {
                       Navigator.pop(context);
@@ -956,8 +946,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     final formKey = GlobalKey<FormState>();
 
     // Color picker state — initialise from current plan color
-    int _selectedColor =
-        (plan['color'] as int?) ??
+    int _selectedColor = (plan['color'] as int?) ??
         _getColorForPlanName(
           isCustomPlan
               ? (plan['name'] as String? ?? '')
@@ -1225,25 +1214,23 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                     await Supabase.instance.client
                         .from('custom_subscription_plans')
                         .update({
-                          'name': updatedName,
-                          'external_url': updatedUrl,
-                          'amount': updatedAmount,
-                          'color': _selectedColor,
-                          'updated_at': DateTime.now().toIso8601String(),
-                        })
-                        .eq('id', plan['id']);
+                      'name': updatedName,
+                      'external_url': updatedUrl,
+                      'amount': updatedAmount,
+                      'color': _selectedColor,
+                      'updated_at': DateTime.now().toIso8601String(),
+                    }).eq('id', plan['id']);
                   } else {
                     final dbId = plan['dbId'] ?? plan['id'];
                     await Supabase.instance.client
                         .from('subscription_plans')
                         .update({
-                          'name': updatedName,
-                          'price': updatedAmount,
-                          'sumup_url': updatedUrl,
-                          'color': _selectedColor,
-                          'updated_at': DateTime.now().toIso8601String(),
-                        })
-                        .eq('id', dbId.toString());
+                      'name': updatedName,
+                      'price': updatedAmount,
+                      'sumup_url': updatedUrl,
+                      'color': _selectedColor,
+                      'updated_at': DateTime.now().toIso8601String(),
+                    }).eq('id', dbId.toString());
                   }
 
                   if (!mounted) return;
@@ -1339,14 +1326,12 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                 if (isCustomPlan) {
                   await Supabase.instance.client
                       .from('custom_subscription_plans')
-                      .update({'is_active': false})
-                      .eq('id', plan['id']);
+                      .update({'is_active': false}).eq('id', plan['id']);
                 } else {
                   final dbId = plan['dbId'] ?? plan['id'];
                   await Supabase.instance.client
                       .from('subscription_plans')
-                      .update({'is_active': false})
-                      .eq('id', dbId.toString());
+                      .update({'is_active': false}).eq('id', dbId.toString());
                 }
 
                 if (!mounted) return;
@@ -1419,6 +1404,22 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     });
 
     try {
+      // 1. Parse the URL
+      final String sanitizedUrl = url.trim();
+      final Uri uri = Uri.parse(sanitizedUrl);
+
+      // 2. Call launchUrl immediately, before any await on SharedPreferences
+      HapticFeedback.lightImpact();
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!launched) {
+        throw Exception('Launch returned false');
+      }
+
+      // 3. Do SharedPreferences writes after launchUrl returns
       final selectedPlan = _allPlans.firstWhere(
         (plan) => plan['title'] == planTitle,
         orElse: () => <String, dynamic>{},
@@ -1436,22 +1437,6 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
         (selectedPlan['price'] as num?)?.toDouble() ?? 0.0,
       );
       await prefs.setString('pendingPaymentMethod', 'sumup');
-
-      HapticFeedback.lightImpact();
-
-      // Clean the URL from hidden spaces
-      final String sanitizedUrl = url.trim();
-      final Uri uri = Uri.parse(sanitizedUrl);
-
-      // BYPASS canLaunchUrl and force launch directly
-      final launched = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-
-      if (!launched) {
-        throw Exception('Launch returned false');
-      }
     } catch (error) {
       print('Error launching SumUp URL: $error');
       final prefs = await SharedPreferences.getInstance();
@@ -1487,46 +1472,22 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
 
       final planTitle = plan['title'] as String? ?? '';
       final planType = plan['planType'] as String? ?? '';
-      final isAnnualRegistration =
-          planType == 'annual' ||
+      final isAnnualRegistration = planType == 'annual' ||
           planTitle.toLowerCase().contains('iscrizione annuale');
 
       // RULE 1: If buying Annual Registration, skip checks and proceed
       if (isAnnualRegistration) {
         setState(() {
           _selectedPlanId = int.tryParse(plan['id'].toString());
+          _hasAnnualRegistration = true;
         });
         _launchSumUpUrl(plan['sumupUrl'] as String? ?? '', planTitle);
         return;
       }
 
-      // RULE 2: HARD GATE — perform a FRESH direct Supabase check every time.
-      if (mounted) {
-        setState(() => _isLoading = true);
-      }
-
-      bool hasAnnual = false;
-      try {
-        hasAnnual = await PaymentService.checkHasAnnualRegistration();
-        if (mounted) {
-          setState(() {
-            _hasAnnualRegistration = hasAnnual;
-            _isLoading = false;
-          });
-        }
-      } catch (e) {
-        print('ERROR _handlePlanSelection gate check: $e');
-        hasAnnual = false;
-        if (mounted) {
-          setState(() {
-            _hasAnnualRegistration = false;
-            _isLoading = false;
-          });
-        }
-      }
-
-      // BLOCK: If no annual registration, show dialog and STOP.
-      if (!hasAnnual) {
+      // RULE 2: Use already-loaded _hasAnnualRegistration state (avoids consuming
+      // the user-gesture permission on iOS Safari with an async await before launchUrl).
+      if (!_hasAnnualRegistration) {
         _showAnnualRegistrationRequiredDialog();
         return;
       }
@@ -1565,8 +1526,8 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       (plan) =>
           (plan['planType'] as String? ?? '') == 'annual' ||
           (plan['title'] as String? ?? '').toLowerCase().contains(
-            'iscrizione annuale',
-          ),
+                'iscrizione annuale',
+              ),
       orElse: () => <String, dynamic>{},
     );
 
@@ -1574,8 +1535,8 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     if (annualPlan.isEmpty) {
       final customAnnual = _customPlans.where(
         (p) => (p['name'] as String? ?? '').toLowerCase().contains(
-          'iscrizione annuale',
-        ),
+              'iscrizione annuale',
+            ),
       );
       if (customAnnual.isNotEmpty) {
         final cp = customAnnual.first;
@@ -1670,21 +1631,19 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     });
 
     // Refresh enrollment status in background so the lock UI stays up-to-date.
-    PaymentService.checkHasAnnualRegistration()
-        .then((hasAnnual) {
-          if (!mounted) return;
-          setState(() {
-            _hasAnnualRegistration = hasAnnual;
-            _isLoadingEnrollmentStatus = false;
-          });
-        })
-        .catchError((_) {
-          if (!mounted) return;
-          setState(() {
-            _hasAnnualRegistration = false;
-            _isLoadingEnrollmentStatus = false;
-          });
-        });
+    PaymentService.checkHasAnnualRegistration().then((hasAnnual) {
+      if (!mounted) return;
+      setState(() {
+        _hasAnnualRegistration = hasAnnual;
+        _isLoadingEnrollmentStatus = false;
+      });
+    }).catchError((_) {
+      if (!mounted) return;
+      setState(() {
+        _hasAnnualRegistration = false;
+        _isLoadingEnrollmentStatus = false;
+      });
+    });
   }
 
   @override
@@ -1839,9 +1798,9 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                               'Scegli Piano',
                               style: AppTheme.darkTheme.textTheme.titleLarge
                                   ?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                             SizedBox(width: 4.w),
                             CustomIconWidget(
@@ -1880,11 +1839,11 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                       Expanded(
                         child: Text(
                           'Pagamenti sicuri tramite SumUp con crittografia SSL',
-                          style: AppTheme.darkTheme.textTheme.bodyMedium
-                              ?.copyWith(
-                                color: AppTheme.darkTheme.colorScheme.primary,
-                                fontWeight: FontWeight.w500,
-                              ),
+                          style:
+                              AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
+                            color: AppTheme.darkTheme.colorScheme.primary,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
                     ],
@@ -1957,11 +1916,11 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                       Expanded(
                         child: Text(
                           'Stai acquistando per: ${_activeChildProfile!['full_name'] ?? '${_activeChildProfile!['first_name'] ?? ''} ${_activeChildProfile!['last_name'] ?? ''}'.trim()}',
-                          style: AppTheme.darkTheme.textTheme.bodyMedium
-                              ?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                              ),
+                          style:
+                              AppTheme.darkTheme.textTheme.bodyMedium?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
                         ),
@@ -2003,9 +1962,9 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                             '🎉 Sconto attivo: Total Submission Kids €45 invece di €50',
                             style: AppTheme.darkTheme.textTheme.bodySmall
                                 ?.copyWith(
-                                  color: Colors.green[300],
-                                  fontWeight: FontWeight.w600,
-                                ),
+                              color: Colors.green[300],
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ],
                       ),
@@ -2043,11 +2002,11 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                       Expanded(
                         child: Text(
                           'Iscrizione Annuale Richiesta',
-                          style: AppTheme.darkTheme.textTheme.titleSmall
-                              ?.copyWith(
-                                color: Colors.red,
-                                fontWeight: FontWeight.w800,
-                              ),
+                          style:
+                              AppTheme.darkTheme.textTheme.titleSmall?.copyWith(
+                            color: Colors.red,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
                     ],
@@ -2225,15 +2184,13 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                 final plan = _allPlans[index];
                 final isLoading = _isLoading && _selectedPlanId == plan['id'];
                 final planType = plan['planType'] as String? ?? '';
-                final planTitle = (plan['title'] as String? ?? '')
-                    .toLowerCase();
-                final isAnnualPlan =
-                    planType == 'annual' ||
+                final planTitle =
+                    (plan['title'] as String? ?? '').toLowerCase();
+                final isAnnualPlan = planType == 'annual' ||
                     planTitle.contains('iscrizione annuale');
                 // Lock non-annual plans when user has no annual registration
                 // (admin is never locked)
-                final isLocked =
-                    !_isPrincipalAdmin &&
+                final isLocked = !_isPrincipalAdmin &&
                     !_isLoadingEnrollmentStatus &&
                     !_hasAnnualRegistration &&
                     !isAnnualPlan;
@@ -2280,11 +2237,11 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                       SizedBox(height: 2.h),
                       Text(
                         'Aggiungi Piano',
-                        style: AppTheme.darkTheme.textTheme.titleMedium
-                            ?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: Colors.amber,
-                            ),
+                        style:
+                            AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.amber,
+                        ),
                       ),
                     ],
                   ),

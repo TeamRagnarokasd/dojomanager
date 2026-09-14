@@ -125,11 +125,13 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
       print('🔄 Starting dashboard statistics load...');
 
       // --- Registered members: count ALL users in user_profiles (all roles: student, instructor, staff, etc.) ---
-      final registeredResponse =
-          await client.from('user_profiles').select('id').neq(
-                'role',
-                'principal_admin',
-              ); // exclude only the main admin account
+      final registeredResponse = await client
+          .from('user_profiles')
+          .select('id')
+          .neq(
+            'role',
+            'principal_admin',
+          ); // exclude only the main admin account
       final adultUsersCount = (registeredResponse as List).length;
 
       // Also count active child profiles
@@ -173,23 +175,8 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
       // Count unique users in user_subscriptions that are active and linked to a course plan
       int courseSubscribersCount = 0;
       try {
-        final courseSubsResponse = await client
-            .from('user_subscriptions')
-            .select('user_id')
-            .eq('status', 'active');
-
-        // Get all active user_subscriptions, then filter out annual ones
-        // by checking subscription_plans or custom_subscription_plans for non-annual plans
-        final activeSubUserIds = <String>{};
-        for (final sub in courseSubsResponse) {
-          final userId = sub['user_id'];
-          if (userId != null) {
-            activeSubUserIds.add(userId.toString());
-          }
-        }
-
-        // Now exclude users whose ONLY active subscription is annual
-        // We check non_fiscal_receipts for course subscriptions (not Iscrizione Annuale)
+        // Count distinct non-empty customer_tax_code from non_fiscal_receipts
+        // excluding annual registrations
         final courseReceiptsResponse = await client
             .from('non_fiscal_receipts')
             .select('customer_tax_code')
@@ -210,19 +197,6 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
         courseSubscribersCount = uniqueCourseMembers.length;
       } catch (e) {
         print('⚠️ Course subscribers query error: $e');
-        // Fallback: count active user_subscriptions with non-null subscription_plan_id
-        try {
-          final fallbackResponse = await client
-              .from('user_subscriptions')
-              .select('user_id')
-              .eq('status', 'active');
-          final uniqueIds = <String>{};
-          for (final sub in fallbackResponse) {
-            final uid = sub['user_id'];
-            if (uid != null) uniqueIds.add(uid.toString());
-          }
-          courseSubscribersCount = uniqueIds.length;
-        } catch (_) {}
       }
 
       // --- Pending approvals: user_profiles with status='pending' (regardless of is_active) ---
@@ -434,28 +408,34 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
   Future<void> _handleSignOut() async {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
-          backgroundColor: Theme.of(context).dialogTheme.backgroundColor,
+          backgroundColor: Theme.of(dialogContext).dialogTheme.backgroundColor,
           title: Text(
             'Disconnetti Amministratore',
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+            style: TextStyle(
+              color: Theme.of(dialogContext).colorScheme.onSurface,
+            ),
           ),
           content: Text(
             'Confermi la disconnessione dal pannello amministrativo?',
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+            style: TextStyle(
+              color: Theme.of(dialogContext).colorScheme.onSurface,
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(dialogContext).pop(),
               child: Text(
                 'common.cancel'.tr(),
-                style: TextStyle(color: Theme.of(context).colorScheme.primary),
+                style: TextStyle(
+                  color: Theme.of(dialogContext).colorScheme.primary,
+                ),
               ),
             ),
             TextButton(
               onPressed: () async {
-                Navigator.of(context).pop();
+                Navigator.of(dialogContext).pop();
                 await AuthService.instance.signOut();
                 if (mounted) {
                   Navigator.pushNamedAndRemoveUntil(
@@ -467,7 +447,9 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
               },
               child: Text(
                 'Disconnetti',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+                style: TextStyle(
+                  color: Theme.of(dialogContext).colorScheme.error,
+                ),
               ),
             ),
           ],
@@ -577,17 +559,18 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
                   stats: _dashboardStats,
                   onPendingTap:
                       (_dashboardStats['pendingApprovals'] as int? ?? 0) > 0
-                          ? () => Navigator.pushNamed(
-                                context,
-                                '/admin-management-system',
-                              )
-                          : null,
-                  onSwitchToInstructor: _userRole == 'principal_admin' ||
+                      ? () => Navigator.pushNamed(
+                          context,
+                          '/admin-management-system',
+                        )
+                      : null,
+                  onSwitchToInstructor:
+                      _userRole == 'principal_admin' ||
                           _userRole == 'instructor_admin'
                       ? () => Navigator.pushNamed(
-                            context,
-                            '/instructor-main-dashboard',
-                          )
+                          context,
+                          '/instructor-main-dashboard',
+                        )
                       : null,
                   onPasswordResetTap: _showPasswordResetRequestsSheet,
                 ),
@@ -605,8 +588,10 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
 
               // Real-time Statistics
               SliverToBoxAdapter(
-                  child: RealtimeStatisticsWidget(
-                      key: ValueKey(_statsRefreshKey))),
+                child: RealtimeStatisticsWidget(
+                  key: ValueKey(_statsRefreshKey),
+                ),
+              ),
 
               // Notification Center
               SliverToBoxAdapter(child: NotificationCenterWidget()),
@@ -690,9 +675,7 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
                         SizedBox(height: 3.h),
                         Text(
                           'Azioni Rapide Admin',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleLarge
+                          style: Theme.of(context).textTheme.titleLarge
                               ?.copyWith(
                                 color: Theme.of(context).colorScheme.onSurface,
                                 fontWeight: FontWeight.w600,
@@ -795,9 +778,9 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
               Text(
                 title,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               const Spacer(),
               Icon(
@@ -1049,126 +1032,126 @@ class _PasswordResetRequestsSheetState
                         ),
                       )
                     : _requests.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.check_circle_outline,
+                              size: 48,
+                              color: theme.colorScheme.onSurfaceVariant
+                                  .withValues(alpha: 0.5),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Nessuna richiesta pendente',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        controller: scrollController,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        itemCount: _requests.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (_, index) {
+                          final req = _requests[index];
+                          final fullName =
+                              req['user_full_name'] as String? ??
+                              'Utente sconosciuto';
+                          final email = req['user_email'] as String? ?? '';
+                          final createdAt = _formatDate(
+                            req['requested_at'] as String?,
+                          );
+                          return Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surface.withValues(
+                                alpha: 0.7,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: theme.colorScheme.outline.withValues(
+                                  alpha: 0.2,
+                                ),
+                              ),
+                            ),
+                            child: Row(
                               children: [
-                                Icon(
-                                  Icons.check_circle_outline,
-                                  size: 48,
-                                  color: theme.colorScheme.onSurfaceVariant
-                                      .withValues(alpha: 0.5),
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'Nessuna richiesta pendente',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        : ListView.separated(
-                            controller: scrollController,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
-                            ),
-                            itemCount: _requests.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 8),
-                            itemBuilder: (_, index) {
-                              final req = _requests[index];
-                              final fullName =
-                                  req['user_full_name'] as String? ??
-                                      'Utente sconosciuto';
-                              final email = req['user_email'] as String? ?? '';
-                              final createdAt = _formatDate(
-                                req['requested_at'] as String?,
-                              );
-                              return Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.surface.withValues(
-                                    alpha: 0.7,
-                                  ),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: theme.colorScheme.outline.withValues(
-                                      alpha: 0.2,
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withValues(
+                                      alpha: 0.12,
                                     ),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.person,
+                                    color: Colors.orange,
+                                    size: 20,
                                   ),
                                 ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: Colors.orange.withValues(
-                                          alpha: 0.12,
-                                        ),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.person,
-                                        color: Colors.orange,
-                                        size: 20,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            fullName,
-                                            style: theme.textTheme.bodyMedium
-                                                ?.copyWith(
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        fullName,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
                                               fontWeight: FontWeight.w600,
                                               color:
                                                   theme.colorScheme.onSurface,
                                             ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          if (email.isNotEmpty)
-                                            Text(
-                                              email,
-                                              style: theme.textTheme.bodySmall
-                                                  ?.copyWith(
-                                                color: theme.colorScheme
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (email.isNotEmpty)
+                                        Text(
+                                          email,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: theme
+                                                    .colorScheme
                                                     .onSurfaceVariant,
                                               ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          Text(
-                                            createdAt,
-                                            style: theme.textTheme.bodySmall
-                                                ?.copyWith(
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      Text(
+                                        createdAt,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
                                               color: Colors.orange.withValues(
                                                 alpha: 0.8,
                                               ),
                                               fontSize: 11,
                                             ),
-                                          ),
-                                        ],
                                       ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.delete_outline,
-                                        color: Colors.red,
-                                      ),
-                                      tooltip: 'Elimina richiesta',
-                                      onPressed: () =>
-                                          _deleteRequest(req['id'].toString()),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              );
-                            },
-                          ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.red,
+                                  ),
+                                  tooltip: 'Elimina richiesta',
+                                  onPressed: () =>
+                                      _deleteRequest(req['id'].toString()),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
               ),
             ],
           ),

@@ -52,8 +52,9 @@ class _ItalianReceiptGenerationScreenState
     try {
       final receipts = await _receiptService.getAllReceipts();
       setState(() {
-        _receipts =
-            receipts.map((data) => ItalianReceiptModel.fromJson(data)).toList();
+        _receipts = receipts
+            .map((data) => ItalianReceiptModel.fromJson(data))
+            .toList();
         _error = null;
       });
     } catch (e) {
@@ -89,6 +90,11 @@ class _ItalianReceiptGenerationScreenState
         validityEndDate: receiptData['validityEndDate'],
         notes: receiptData['notes'],
         fiscalNotes: receiptData['fiscalNotes'],
+        // Save the receipt under the student's id so RLS allows them to read it
+        studentUserId: receiptData['userId'] as String?,
+        beneficiaryType: receiptData['isChildProfile'] == true
+            ? 'child'
+            : 'adult',
       );
 
       // Step 2: Activate subscription with discipline permissions
@@ -172,9 +178,13 @@ class _ItalianReceiptGenerationScreenState
         );
       } else {
         final pdfBytes = await pdfDocument.save();
+        final sanitizedReceiptNumber = receipt.receiptNumber
+            .toString()
+            .replaceAll('/', '_')
+            .replaceAll('\\', '_');
         await Printing.sharePdf(
           bytes: pdfBytes,
-          filename: 'Ricevuta_${receipt.receiptNumber}.pdf',
+          filename: 'Ricevuta_$sanitizedReceiptNumber.pdf',
         );
       }
     } catch (e) {
@@ -228,57 +238,56 @@ class _ItalianReceiptGenerationScreenState
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.error, size: 48, color: Colors.red),
-                      SizedBox(height: 16),
-                      Text(_error!, textAlign: TextAlign.center),
-                      SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadReceipts,
-                        child: Text('common.retry'.tr()),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error, size: 48, color: Colors.red),
+                  SizedBox(height: 16),
+                  Text(_error!, textAlign: TextAlign.center),
+                  SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _loadReceipts,
+                    child: Text('common.retry'.tr()),
                   ),
-                )
-              : TabBarView(
-                  controller: _tabController,
-                  children: [
-                    // New Receipt Form
-                    ReceiptFormWidget(
-                      onSubmit: _createReceipt,
-                      isLoading: _isLoading,
-                    ),
-
-                    // Receipt Preview
-                    _selectedReceipt != null
-                        ? ReceiptPreviewWidget(
-                            receipt: _selectedReceipt!,
-                            onGeneratePdf: () =>
-                                _generatePdf(_selectedReceipt!),
-                          )
-                        : Center(
-                            child: Text(
-                              'italian_receipt.preview_empty_hint'.tr(),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-
-                    // Receipt Archive
-                    ReceiptListWidget(
-                      receipts: _receipts,
-                      onReceiptTap: (receipt) {
-                        setState(() => _selectedReceipt = receipt);
-                        _tabController.animateTo(1);
-                      },
-                      onGeneratePdf: _generatePdf,
-                      onRefresh: _loadReceipts,
-                      onDeleteReceipts: _deleteReceipts,
-                    ),
-                  ],
+                ],
+              ),
+            )
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                // New Receipt Form
+                ReceiptFormWidget(
+                  onSubmit: _createReceipt,
+                  isLoading: _isLoading,
                 ),
+
+                // Receipt Preview
+                _selectedReceipt != null
+                    ? ReceiptPreviewWidget(
+                        receipt: _selectedReceipt!,
+                        onGeneratePdf: () => _generatePdf(_selectedReceipt!),
+                      )
+                    : Center(
+                        child: Text(
+                          'italian_receipt.preview_empty_hint'.tr(),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+
+                // Receipt Archive
+                ReceiptListWidget(
+                  receipts: _receipts,
+                  onReceiptTap: (receipt) {
+                    setState(() => _selectedReceipt = receipt);
+                    _tabController.animateTo(1);
+                  },
+                  onGeneratePdf: _generatePdf,
+                  onRefresh: _loadReceipts,
+                  onDeleteReceipts: _deleteReceipts,
+                ),
+              ],
+            ),
     );
   }
 }

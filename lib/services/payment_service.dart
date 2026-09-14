@@ -110,47 +110,22 @@ class PaymentService {
       final customPlan =
           paymentRow['custom_subscription_plans'] as Map<String, dynamic>?;
       final planName = customPlan?['name'] as String? ?? 'Abbonamento';
-      final taxCode = userProfile['tax_code'] ??
+      final taxCode =
+          userProfile['tax_code'] ??
           userProfile['codice_fiscale'] ??
           'NON DISPONIBILE';
 
-      String receiptNumber;
-      try {
-        receiptNumber =
-            await _client.rpc('generate_italian_receipt_number') as String;
-      } catch (e) {
-        // Fallback: compute MAX+1 directly in number/year format (NNN/YYYY)
-        try {
-          final currentYear = DateTime.now().year;
-          final maxResult = await _client
-              .from('non_fiscal_receipts')
-              .select('receipt_number')
-              .like('receipt_number', '%/$currentYear');
-          int maxNum = 0;
-          for (final row in maxResult) {
-            final rn = row['receipt_number'] as String? ?? '';
-            final parts = rn.split('/');
-            if (parts.length == 2) {
-              final n =
-                  int.tryParse(parts[0].replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-              if (n > maxNum) maxNum = n;
-            }
-          }
-          final nextNum = maxNum + 1;
-          receiptNumber = '${nextNum.toString().padLeft(3, '0')}/$currentYear';
-        } catch (_) {
-          final currentYear = DateTime.now().year;
-          receiptNumber = '001/$currentYear';
-        }
-      }
+      final receiptNumber =
+          await _client.rpc('generate_italian_receipt_number') as String;
 
       final newReceipt = await _client
           .from('non_fiscal_receipts')
           .insert({
             'customer_name': userProfile['full_name'] ?? 'Cliente',
             'customer_tax_code': taxCode,
-            'customer_address':
-                addressParts.isNotEmpty ? addressParts.join(', ') : null,
+            'customer_address': addressParts.isNotEmpty
+                ? addressParts.join(', ')
+                : null,
             'description': planName,
             'amount': paymentRow['amount'],
             'quantity': 1,
@@ -163,7 +138,7 @@ class PaymentService {
             'receipt_number': receiptNumber,
             'issue_date':
                 (paymentRow['confirmed_at'] as String?)?.split('T')[0] ??
-                    DateTime.now().toIso8601String().split('T')[0],
+                DateTime.now().toIso8601String().split('T')[0],
             'created_by': userId,
             'batch_transaction_id': batchTxId,
             'fiscal_notes': 'Payment confirmation ID: $paymentId',
@@ -228,8 +203,8 @@ class PaymentService {
           issueDate = issueDateStr != null
               ? DateTime.parse(issueDateStr.toString())
               : (createdAtStr != null
-                  ? DateTime.parse(createdAtStr.toString())
-                  : DateTime.now());
+                    ? DateTime.parse(createdAtStr.toString())
+                    : DateTime.now());
         } catch (_) {
           issueDate = DateTime.now();
         }
@@ -278,7 +253,8 @@ class PaymentService {
   ]) async {
     try {
       // 🔥 ACTIVE PROFILE FIX: use active profile ID (child or adult)
-      final currentUserId = userId ??
+      final currentUserId =
+          userId ??
           ChildProfileService.getActiveUserId() ??
           _client.auth.currentUser?.id;
       if (currentUserId == null) throw Exception('User not authenticated');
@@ -313,7 +289,8 @@ class PaymentService {
   static Future<bool> checkHasAnnualRegistration([String? userId]) async {
     try {
       // 🔥 ACTIVE PROFILE FIX: use active profile ID (child or adult)
-      final currentUserId = userId ??
+      final currentUserId =
+          userId ??
           ChildProfileService.getActiveUserId() ??
           _client.auth.currentUser?.id;
       if (currentUserId == null) return false;
@@ -375,7 +352,8 @@ class PaymentService {
   ]) async {
     try {
       // 🔥 ACTIVE PROFILE FIX: use active profile ID (child or adult)
-      final currentUserId = userId ??
+      final currentUserId =
+          userId ??
           ChildProfileService.getActiveUserId() ??
           _client.auth.currentUser?.id;
       if (currentUserId == null) throw Exception('User not authenticated');
@@ -395,7 +373,8 @@ class PaymentService {
           final row = rows.first;
           final hasAnnual = row['has_annual_registration'] as bool? ?? false;
           final hasActiveSub = row['has_active_subscription'] as bool? ?? false;
-          final currentPlanName = row['current_plan_name'] as String? ??
+          final currentPlanName =
+              row['current_plan_name'] as String? ??
               'Nessun abbonamento attivo';
           final annualExpiryDate = row['annual_expiry_date'];
           final confirmedAt = row['current_plan_confirmed_at'];
@@ -414,15 +393,17 @@ class PaymentService {
           String annualExpiryStr = '';
           if (hasAnnual && annualExpiryDate != null) {
             final expiry = DateTime.parse(annualExpiryDate.toString());
-            annualExpiryStr = 'scad. ${expiry.day.toString().padLeft(2, '0')}/'
+            annualExpiryStr =
+                'scad. ${expiry.day.toString().padLeft(2, '0')}/'
                 '${expiry.month.toString().padLeft(2, '0')}/${expiry.year}';
           }
 
           return {
             'currentPlanName': currentPlanName,
             'renewalDate': renewalDate,
-            'annualRegistrationStatus':
-                hasAnnual ? 'Effettuata' : 'Da acquistare',
+            'annualRegistrationStatus': hasAnnual
+                ? 'Effettuata'
+                : 'Da acquistare',
             'annualRegistrationExpiry': annualExpiryStr,
             'hasAnnualRegistration': hasAnnual,
             'hasActiveSubscription': hasActiveSub,
@@ -488,7 +469,8 @@ class PaymentService {
           if (annualRegistrationExpiry == null) {
             final now = DateTime.now();
             final august28ThisYear = DateTime(now.year, 8, 28);
-            final expiryYear = now.isBefore(august28ThisYear) ||
+            final expiryYear =
+                now.isBefore(august28ThisYear) ||
                     now.isAtSameMomentAs(august28ThisYear)
                 ? now.year
                 : now.year + 1;
@@ -520,8 +502,8 @@ class PaymentService {
           );
 
           for (final receipt in userReceipts) {
-            final desc =
-                (receipt['description'] as String? ?? '').toLowerCase();
+            final desc = (receipt['description'] as String? ?? '')
+                .toLowerCase();
             final issueDateStr = receipt['issue_date'];
             if (issueDateStr == null) continue;
 
@@ -532,7 +514,8 @@ class PaymentService {
               hasAnnualRegistration = true;
               final now = DateTime.now();
               final august28ThisYear = DateTime(now.year, 8, 28);
-              final expiryYear = now.isBefore(august28ThisYear) ||
+              final expiryYear =
+                  now.isBefore(august28ThisYear) ||
                       now.isAtSameMomentAs(august28ThisYear)
                   ? now.year
                   : now.year + 1;
@@ -543,7 +526,8 @@ class PaymentService {
                   receipt['description'] as String? ?? 'Abbonamento';
               otherPlans.add({
                 'name': planName,
-                'created_at': receipt['created_at'] as String? ??
+                'created_at':
+                    receipt['created_at'] as String? ??
                     DateTime.now().toIso8601String(),
                 'amount': receipt['amount'],
                 'duration_months': 1,
@@ -575,8 +559,9 @@ class PaymentService {
         currentPlanExpiry = createdAt.add(Duration(days: 30 * durationMonths));
       }
 
-      final annualRegistrationStatus =
-          hasAnnualRegistration ? 'Effettuata' : 'Da acquistare';
+      final annualRegistrationStatus = hasAnnualRegistration
+          ? 'Effettuata'
+          : 'Da acquistare';
 
       String annualRegistrationExpiryStr = '';
       if (hasAnnualRegistration && annualRegistrationExpiry != null) {
@@ -586,8 +571,9 @@ class PaymentService {
             '${annualRegistrationExpiry.year}';
       }
 
-      final renewalDate =
-          currentPlanExpiry != null ? _formatDate(currentPlanExpiry) : '';
+      final renewalDate = currentPlanExpiry != null
+          ? _formatDate(currentPlanExpiry)
+          : '';
 
       return {
         'currentPlanName': currentPlanName,
@@ -617,8 +603,9 @@ class PaymentService {
 
       final transactions = await getPaymentTransactions(currentUserId);
 
-      final completedTransactions =
-          transactions.where((t) => t['status'] == 'completato').toList();
+      final completedTransactions = transactions
+          .where((t) => t['status'] == 'completato')
+          .toList();
 
       double totalSpent = 0;
       for (final transaction in completedTransactions) {
@@ -653,8 +640,9 @@ class PaymentService {
         'completedTransactions': completedTransactions.length,
         'totalSpent': totalSpent,
         'monthlyStats': monthlyStats,
-        'lastTransactionDate':
-            transactions.isNotEmpty ? transactions.first['date'] : null,
+        'lastTransactionDate': transactions.isNotEmpty
+            ? transactions.first['date']
+            : null,
       };
     } catch (e) {
       throw Exception('Failed to fetch payment statistics: $e');

@@ -1051,13 +1051,7 @@ class _ReceiptArchiveState extends State<ReceiptArchive>
       final pdfBytes = await pdf.save();
 
       // 🎯 FIX: Direct download with improved browser compatibility
-      final rawReceiptNumber =
-          receiptData['receipt_number']?.toString() ?? 'ricevuta';
-      // Sanitize filename: replace '/' with '_' to prevent PathNotFoundException on Android
-      // e.g. '002/2026' → '002_2026'
-      final sanitizedReceiptNumber =
-          rawReceiptNumber.replaceAll('/', '_').replaceAll('\\', '_');
-      final filename = 'ricevuta_$sanitizedReceiptNumber.pdf';
+      final filename = 'ricevuta_${receiptData['receipt_number']}.pdf';
 
       if (kIsWeb) {
         // Web: Enhanced download trigger with better browser support

@@ -194,8 +194,7 @@ class _UserProfileState extends State<UserProfile> {
         '⚠️ No user_profiles row for ${currentUser.id}, creating minimal profile',
       );
       final email = currentUser.email ?? '';
-      final fullName =
-          currentUser.userMetadata?['full_name'] as String? ??
+      final fullName = currentUser.userMetadata?['full_name'] as String? ??
           email.split('@').first;
       try {
         await client.from('user_profiles').upsert({
@@ -219,8 +218,7 @@ class _UserProfileState extends State<UserProfile> {
 
       if (mounted) {
         setState(() {
-          _viewedUser =
-              retryData ??
+          _viewedUser = retryData ??
               {
                 'id': currentUser.id,
                 'email': email,
@@ -242,8 +240,7 @@ class _UserProfileState extends State<UserProfile> {
           _viewedUser = {
             'id': currentUser.id,
             'email': currentUser.email ?? '',
-            'full_name':
-                currentUser.userMetadata?['full_name'] as String? ??
+            'full_name': currentUser.userMetadata?['full_name'] as String? ??
                 (currentUser.email ?? '').split('@').first,
             'role': 'student',
             'status': 'approved',
@@ -327,14 +324,13 @@ class _UserProfileState extends State<UserProfile> {
             _isViewingOtherUser
                 ? 'profile.title_with_name'.tr(
                     namedArgs: {
-                      'name':
-                          _viewedUser?['full_name'] as String? ??
+                      'name': _viewedUser?['full_name'] as String? ??
                           'common.user'.tr(),
                     },
                   )
                 : _isChildProfile
-                ? 'Profilo Minore - ${_viewedUser?['full_name'] ?? ''}'
-                : 'profile.title'.tr(),
+                    ? 'Profilo Minore - ${_viewedUser?['full_name'] ?? ''}'
+                    : 'profile.title'.tr(),
             style: GoogleFonts.inter(
               color: Colors.white,
               fontSize: 20.sp < 18 ? 18 : 20.sp,
@@ -383,7 +379,8 @@ class _UserProfileState extends State<UserProfile> {
                 isChildProfile: _isChildProfile,
               ),
               SizedBox(height: 3.h),
-              MedicalCertificateStatusWidget(userId: effectiveUserId),
+              MedicalCertificateStatusWidget(
+                  userId: effectiveUserId, isChildProfile: _isChildProfile),
               SizedBox(height: 3.h),
               UserDocumentsWidget(userId: effectiveUserId),
               SizedBox(height: 3.h),
@@ -599,8 +596,7 @@ class _UserProfileState extends State<UserProfile> {
       final client = SupabaseService.instance.client;
       await client
           .from('user_profiles')
-          .update({'booking_passpartout': newValue})
-          .eq('id', _viewedUserId!);
+          .update({'booking_passpartout': newValue}).eq('id', _viewedUserId!);
       // Log activity
       try {
         await client.from('admin_activity_log').insert({

@@ -1,9 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sizer/sizer.dart';
-import 'dart:typed_data';
 
 import '../../services/child_profile_service.dart';
 import '../../services/terms_document_service.dart';
@@ -294,8 +294,7 @@ class _ChildProfilesScreenState extends State<ChildProfilesScreen> {
                     ..._children.map(
                       (child) => _ChildCard(
                         child: child,
-                        isActive:
-                            ChildProfileService.activeChildProfileId ==
+                        isActive: ChildProfileService.activeChildProfileId ==
                             child['id'],
                         onEdit: () => _showAddChildForm(existing: child),
                         onDelete: () => _deleteChild(child),
@@ -303,7 +302,7 @@ class _ChildProfilesScreenState extends State<ChildProfilesScreen> {
                         onSwitch: () async {
                           final isCurrentlyActive =
                               ChildProfileService.activeChildProfileId ==
-                              child['id'];
+                                  child['id'];
                           await ChildProfileService.setActiveProfile(
                             isCurrentlyActive ? null : child['id'] as String,
                           );
@@ -504,22 +503,24 @@ class _ChildCardState extends State<_ChildCard> {
     Navigator.pop(context);
 
     if (source == ImageSource.camera) {
-      final permission = await Permission.camera.request();
-      if (!permission.isGranted) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Permesso fotocamera necessario'),
-              backgroundColor: Colors.red,
-              action: SnackBarAction(
-                label: 'Impostazioni',
-                textColor: Colors.white,
-                onPressed: () => openAppSettings(),
+      if (!kIsWeb) {
+        final permission = await Permission.camera.request();
+        if (!permission.isGranted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Permesso fotocamera necessario'),
+                backgroundColor: Colors.red,
+                action: SnackBarAction(
+                  label: 'Impostazioni',
+                  textColor: Colors.white,
+                  onPressed: () => openAppSettings(),
+                ),
               ),
-            ),
-          );
+            );
+          }
+          return;
         }
-        return;
       }
     }
 
@@ -575,8 +576,7 @@ class _ChildCardState extends State<_ChildCard> {
   @override
   Widget build(BuildContext context) {
     final child = widget.child;
-    final name =
-        child['full_name'] as String? ??
+    final name = child['full_name'] as String? ??
         '${child['first_name'] ?? ''} ${child['last_name'] ?? ''}'.trim();
     final birthDate = child['birth_date'] as String? ?? '';
     final taxCode = child['tax_code'] as String? ?? '';
@@ -765,9 +765,8 @@ class _ChildCardState extends State<_ChildCard> {
                       ? 'Liberatoria immagini: ACCETTATA'
                       : 'Liberatoria immagini: NON ACCETTATA',
                   style: GoogleFonts.inter(
-                    color: imageConsent
-                        ? Colors.green[300]
-                        : Colors.orange[300],
+                    color:
+                        imageConsent ? Colors.green[300] : Colors.orange[300],
                     fontSize: 10.sp,
                     fontWeight: FontWeight.w600,
                   ),
@@ -784,9 +783,8 @@ class _ChildCardState extends State<_ChildCard> {
                   icon: Icon(
                     widget.isActive ? Icons.person : Icons.swap_horiz,
                     size: 14,
-                    color: widget.isActive
-                        ? Colors.grey
-                        : const Color(0xFFFF0000),
+                    color:
+                        widget.isActive ? Colors.grey : const Color(0xFFFF0000),
                   ),
                   label: Text(
                     widget.isActive ? 'Torna Adulto' : 'Passa a questo',
@@ -1040,8 +1038,7 @@ class _ChildProfileFormState extends State<_ChildProfileForm> {
         try {
           final guardianProfile =
               await ChildProfileService.getGuardianProfile();
-          final guardianId =
-              guardianProfile?['id'] as String? ??
+          final guardianId = guardianProfile?['id'] as String? ??
               guardianProfile?['user_id'] as String? ??
               '';
           final guardianName =
@@ -1052,9 +1049,8 @@ class _ChildProfileFormState extends State<_ChildProfileForm> {
           if (guardianId.isNotEmpty) {
             await TermsDocumentService().saveChildTermsAcceptanceDocument(
               guardianUserId: guardianId,
-              guardianName: guardianName.isNotEmpty
-                  ? guardianName
-                  : 'Genitore/Tutore',
+              guardianName:
+                  guardianName.isNotEmpty ? guardianName : 'Genitore/Tutore',
               guardianEmail: guardianEmail,
               childName: childFullName,
               imageConsent: imageConsent,
@@ -1195,7 +1191,7 @@ class _ChildProfileFormState extends State<_ChildProfileForm> {
         ),
         validator: required
             ? (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Campo obbligatorio' : null
+                (v == null || v.trim().isEmpty) ? 'Campo obbligatorio' : null
             : null,
       ),
     );

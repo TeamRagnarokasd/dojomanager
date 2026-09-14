@@ -117,76 +117,126 @@ class _StudentRegistrationTermsAndCompletionState
       }
 
       // 2. Upsert user profile via SECURITY DEFINER RPC (bypasses RLS during registration)
-      final isMinorFlag = RegistrationDataManager.isMinor1417() ||
+      final isMinorFlag =
+          RegistrationDataManager.isMinor1417() ||
           RegistrationDataManager.isUnder14();
-      final profileResult = await Supabase.instance.client.rpc(
-        'upsert_registration_profile',
-        params: {
-          'p_user_id': authRes.user!.id,
-          'p_email': email.toLowerCase().trim(),
-          'p_full_name': '$nome $cognome',
-          'p_first_name': nome,
-          'p_last_name': cognome,
-          'p_phone': telefono,
-          'p_birth_date': dataNascita != null
-              ? '${dataNascita.year.toString().padLeft(4, '0')}-${dataNascita.month.toString().padLeft(2, '0')}-${dataNascita.day.toString().padLeft(2, '0')}'
-              : null,
-          'p_birth_place': luogoNascita,
-          'p_codice_fiscale': codFisc.toUpperCase(),
-          'p_address_line': indirizzo,
-          'p_city': citta,
-          'p_province': provincia.toUpperCase(),
-          'p_cap': cap,
-          'p_emergency_contact': emergencyContact ?? '',
-          'p_emergency_phone': emergencyPhone ?? '',
-          'p_is_minor': isMinorFlag,
-          'p_parent_guardian_name': isMinorFlag ? parentGuardianName : null,
-          'p_parent_guardian_surname':
-              isMinorFlag ? parentGuardianSurname : null,
-          'p_parent_guardian_codice_fiscale':
-              isMinorFlag ? parentGuardianCodiceFiscale : null,
-          'p_parent_guardian_email': isMinorFlag ? parentGuardianEmail : null,
-          'p_parent_guardian_phone': isMinorFlag ? parentGuardianPhone : null,
-          'p_parent_guardian_relation':
-              isMinorFlag ? parentGuardianRelation : null,
-        },
-      );
-      if (profileResult is Map && profileResult['success'] == false) {
-        final errMsg = profileResult['error'] ?? 'Errore sconosciuto';
-        if (errMsg.toString().contains('già registrata')) {
-          throw Exception(errMsg);
+
+      // Retry loop: up to 3 attempts with 500ms delay between retries
+      // to handle the case where the auth.users row is not yet visible to the DB
+      // immediately after signUp().
+      bool profileUpsertSuccess = false;
+      dynamic profileUpsertError;
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        try {
+          final profileResult = await Supabase.instance.client.rpc(
+            'upsert_registration_profile',
+            params: {
+              'p_user_id': authRes.user!.id,
+              'p_email': email.toLowerCase().trim(),
+              'p_full_name': '$nome $cognome',
+              'p_first_name': nome,
+              'p_last_name': cognome,
+              'p_phone': telefono,
+              'p_birth_date': dataNascita != null
+                  ? '${dataNascita.year.toString().padLeft(4, '0')}-${dataNascita.month.toString().padLeft(2, '0')}-${dataNascita.day.toString().padLeft(2, '0')}'
+                  : null,
+              'p_birth_place': luogoNascita,
+              'p_codice_fiscale': codFisc.toUpperCase(),
+              'p_address_line': indirizzo,
+              'p_city': citta,
+              'p_province': provincia.toUpperCase(),
+              'p_cap': cap,
+              'p_emergency_contact': emergencyContact ?? '',
+              'p_emergency_phone': emergencyPhone ?? '',
+              'p_is_minor': isMinorFlag,
+              'p_parent_guardian_name': isMinorFlag ? parentGuardianName : null,
+              'p_parent_guardian_surname': isMinorFlag
+                  ? parentGuardianSurname
+                  : null,
+              'p_parent_guardian_codice_fiscale': isMinorFlag
+                  ? parentGuardianCodiceFiscale
+                  : null,
+              'p_parent_guardian_email': isMinorFlag
+                  ? parentGuardianEmail
+                  : null,
+              'p_parent_guardian_phone': isMinorFlag
+                  ? parentGuardianPhone
+                  : null,
+              'p_parent_guardian_relation': isMinorFlag
+                  ? parentGuardianRelation
+                  : null,
+            },
+          );
+          if (profileResult is Map && profileResult['success'] == false) {
+            final errMsg = profileResult['error'] ?? 'Errore sconosciuto';
+            if (errMsg.toString().contains('già registrata')) {
+              throw Exception(errMsg);
+            }
+            print('upsert_registration_profile warning: $errMsg');
+          }
+          profileUpsertSuccess = true;
+          break;
+        } catch (e) {
+          profileUpsertError = e;
+          print('REGISTRATION STEP 2 attempt $attempt failed: $e');
+          if (attempt < 3) {
+            await Future.delayed(const Duration(milliseconds: 500));
+          }
         }
-        debugPrint('upsert_registration_profile warning: $errMsg');
+      }
+
+      if (!profileUpsertSuccess) {
+        // All retries exhausted — show specific error and do NOT proceed
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Si è verificato un errore durante il salvataggio del tuo profilo. '
+              'Il tuo account è stato creato ma i dati non sono stati salvati. '
+              'Contatta il supporto indicando la tua email: $email',
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 10),
+          ),
+        );
+        setState(() => _isSubmitting = false);
+        return;
       }
 
       // 3. Save terms document
-      if (_isMinor1417 &&
-          parentGuardianName != null &&
-          parentGuardianSurname != null &&
-          parentGuardianCodiceFiscale != null &&
-          parentGuardianDocumentNumber != null) {
-        // Generate the 14-17 specific PDF form
-        final birthDateStr = dataNascita != null
-            ? '${dataNascita.day.toString().padLeft(2, '0')}/${dataNascita.month.toString().padLeft(2, '0')}/${dataNascita.year}'
-            : '';
-        await TermsDocumentService().saveMinor1417TermsDocument(
-          userId: authRes.user!.id,
-          minorFullName: '$nome $cognome',
-          minorTaxCode: codFisc,
-          minorBirthDate: birthDateStr,
-          parentFullName: '$parentGuardianName $parentGuardianSurname',
-          parentTaxCode: parentGuardianCodiceFiscale,
-          parentDocumentNumber:
-              '${parentGuardianDocumentType ?? ''} N. $parentGuardianDocumentNumber',
-          userEmail: email,
-        );
-      } else {
-        // Standard terms document for adults / under-14
-        await TermsDocumentService().saveTermsAcceptanceDocument(
-          userId: authRes.user!.id,
-          userName: '$nome $cognome',
-          userEmail: email,
-        );
+      bool termsDocSaved = true;
+      try {
+        if (_isMinor1417 &&
+            parentGuardianName != null &&
+            parentGuardianSurname != null &&
+            parentGuardianCodiceFiscale != null &&
+            parentGuardianDocumentNumber != null) {
+          // Generate the 14-17 specific PDF form
+          final birthDateStr = dataNascita != null
+              ? '${dataNascita.day.toString().padLeft(2, '0')}/${dataNascita.month.toString().padLeft(2, '0')}/${dataNascita.year}'
+              : '';
+          await TermsDocumentService().saveMinor1417TermsDocument(
+            userId: authRes.user!.id,
+            minorFullName: '$nome $cognome',
+            minorTaxCode: codFisc,
+            minorBirthDate: birthDateStr,
+            parentFullName: '$parentGuardianName $parentGuardianSurname',
+            parentTaxCode: parentGuardianCodiceFiscale,
+            parentDocumentNumber:
+                '${parentGuardianDocumentType ?? ''} N. $parentGuardianDocumentNumber',
+            userEmail: email,
+          );
+        } else {
+          // Standard terms document for adults / under-14
+          await TermsDocumentService().saveTermsAcceptanceDocument(
+            userId: authRes.user!.id,
+            userName: '$nome $cognome',
+            userEmail: email,
+          );
+        }
+      } catch (termsError) {
+        termsDocSaved = false;
+        print('REGISTRATION STEP 3 (terms document) failed: $termsError');
       }
 
       // 4. Insert into pending_registrations via SECURITY DEFINER RPC
@@ -216,6 +266,19 @@ class _StudentRegistrationTermsAndCompletionState
       RegistrationDataManager.reset();
 
       if (!mounted) return;
+
+      // Show warning if terms document failed (registration still succeeded)
+      if (!termsDocSaved) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Registrazione completata. Il documento dei termini non è stato salvato e verrà ri-richiesto al prossimo accesso.',
+            ),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 8),
+          ),
+        );
+      }
 
       // 6. Show success dialog (with 7-day warning for 14-17 minors)
       if (_isMinor1417) {
@@ -294,7 +357,8 @@ class _StudentRegistrationTermsAndCompletionState
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFFF0000),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             child: Text('student_registration.go_to_login'.tr()),
           ),
@@ -337,16 +401,21 @@ class _StudentRegistrationTermsAndCompletionState
                 decoration: BoxDecoration(
                   color: const Color(0xFFFF8C00).withAlpha(20),
                   borderRadius: BorderRadius.circular(10),
-                  border:
-                      Border.all(color: const Color(0xFFFF8C00), width: 1.5),
+                  border: Border.all(
+                    color: const Color(0xFFFF8C00),
+                    width: 1.5,
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.warning_amber_rounded,
-                            color: Color(0xFFFF8C00), size: 22),
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          color: Color(0xFFFF8C00),
+                          size: 22,
+                        ),
                         SizedBox(width: 2.w),
                         Expanded(
                           child: Text(
@@ -404,10 +473,13 @@ class _StudentRegistrationTermsAndCompletionState
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFFF0000),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
-            child: const Text('Ho capito, vai al Login',
-                style: TextStyle(color: Colors.white)),
+            child: const Text(
+              'Ho capito, vai al Login',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -545,8 +617,9 @@ class _StudentRegistrationTermsAndCompletionState
                               width: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
                               ),
                             )
                           : Text(
@@ -582,8 +655,11 @@ class _StudentRegistrationTermsAndCompletionState
         children: [
           Row(
             children: [
-              const Icon(Icons.warning_amber_rounded,
-                  color: Color(0xFFFF8C00), size: 22),
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: Color(0xFFFF8C00),
+                size: 22,
+              ),
               SizedBox(width: 2.w),
               Expanded(
                 child: Text(
@@ -600,11 +676,7 @@ class _StudentRegistrationTermsAndCompletionState
           SizedBox(height: 1.h),
           Text(
             'Il modulo PDF da stampare e far firmare è disponibile nella sezione Profilo. Nella stessa pagina sarà possibile caricare il modulo firmato unitamente al documento d\'identità del genitore/tutore legale, entro e non oltre 7 giorni dalla registrazione.',
-            style: TextStyle(
-              fontSize: 11.sp,
-              color: Colors.white,
-              height: 1.5,
-            ),
+            style: TextStyle(fontSize: 11.sp, color: Colors.white, height: 1.5),
           ),
         ],
       ),
@@ -696,8 +768,11 @@ class _StudentRegistrationTermsAndCompletionState
             ),
             child: Row(
               children: [
-                const Icon(Icons.info_outline,
-                    color: Color(0xFF00A8FF), size: 20),
+                const Icon(
+                  Icons.info_outline,
+                  color: Color(0xFF00A8FF),
+                  size: 20,
+                ),
                 SizedBox(width: 2.w),
                 Expanded(
                   child: Text(

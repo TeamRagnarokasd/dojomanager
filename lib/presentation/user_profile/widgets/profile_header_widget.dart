@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sizer/sizer.dart';
@@ -407,47 +408,14 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
-    Navigator.pop(context);
-
-    if (source == ImageSource.camera) {
-      final permission = await Permission.camera.request();
-      if (!permission.isGranted) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('profile.camera_permission_required'.tr()),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
-              action: SnackBarAction(
-                label: 'common.settings'.tr(),
-                textColor: Colors.white,
-                onPressed: () => openAppSettings(),
-              ),
-            ),
-          );
-        }
-        return;
-      }
-    }
-
-    if (!mounted) return;
-    setState(() => _isLoading = true);
-
+    XFile? image;
     try {
-      final XFile? image = await _picker.pickImage(
+      image = await _picker.pickImage(
         source: source,
         maxWidth: 1024,
         maxHeight: 1024,
         imageQuality: 85,
       );
-
-      if (!mounted) return;
-
-      if (image != null) {
-        await _uploadProfileImage(image);
-      } else {
-        setState(() => _isLoading = false);
-      }
     } catch (e) {
       print('Error picking image: $e');
       if (mounted) {
@@ -457,8 +425,42 @@ class _ProfileHeaderWidgetState extends State<ProfileHeaderWidget> {
             backgroundColor: Colors.red,
           ),
         );
-        setState(() => _isLoading = false);
       }
+      return;
+    }
+
+    Navigator.pop(context);
+
+    if (source == ImageSource.camera) {
+      if (!kIsWeb) {
+        final permission = await Permission.camera.request();
+        if (!permission.isGranted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('profile.camera_permission_required'.tr()),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 3),
+                action: SnackBarAction(
+                  label: 'common.settings'.tr(),
+                  textColor: Colors.white,
+                  onPressed: () => openAppSettings(),
+                ),
+              ),
+            );
+          }
+          return;
+        }
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    if (image != null) {
+      await _uploadProfileImage(image);
+    } else {
+      setState(() => _isLoading = false);
     }
   }
 

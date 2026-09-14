@@ -146,7 +146,8 @@ Il genitore/tutore legale dichiara di aver letto, compreso e accettato integralm
               }
               final isSeparator =
                   line.startsWith('===') || line.startsWith('---');
-              final isHeader = line.startsWith('TEAM RAGNAROK') ||
+              final isHeader =
+                  line.startsWith('TEAM RAGNAROK') ||
                   RegExp(r'^\d+\.').hasMatch(line.trim()) ||
                   line.startsWith('A)') ||
                   line.startsWith('B)') ||
@@ -163,8 +164,9 @@ Il genitore/tutore legale dichiara di aver letto, compreso e accettato integralm
                   line,
                   style: pw.TextStyle(
                     fontSize: 9,
-                    fontWeight:
-                        isHeader ? pw.FontWeight.bold : pw.FontWeight.normal,
+                    fontWeight: isHeader
+                        ? pw.FontWeight.bold
+                        : pw.FontWeight.normal,
                   ),
                 ),
               );
@@ -221,7 +223,8 @@ Il genitore/tutore legale dichiara di aver letto, compreso e accettato integralm
     final minute = acceptedAt.minute.toString().padLeft(2, '0');
     final second = acceptedAt.second.toString().padLeft(2, '0');
 
-    final footer = '''
+    final footer =
+        '''
 DATI DI ACCETTAZIONE
 ============================================================
 Utente:        $userName
@@ -276,7 +279,8 @@ Documento generato automaticamente dal sistema Team Ragnarok ASD
         ? '[X] La liberatoria per la diffusione di immagini e video del minore'
         : '[ ] La liberatoria per la diffusione di immagini e video del minore (NON ACCETTATA)';
 
-    final footer = '''
+    final footer =
+        '''
 DATI DI ACCETTAZIONE
 ============================================================
 Minore:        $childName
@@ -392,7 +396,8 @@ Documento generato automaticamente dall\'app Team Ragnarok ASD''';
     final minute = acceptedAt.minute.toString().padLeft(2, '0');
     final second = acceptedAt.second.toString().padLeft(2, '0');
 
-    final footer = '''
+    final footer =
+        '''
 DATI DI ACCETTAZIONE
 ============================================================
 Utente:        $userName
@@ -430,7 +435,9 @@ Documento generato automaticamente dal sistema Team Ragnarok ASD
       final fileName = 'termini_accettati_$timestamp.txt';
       final filePath = '$userId/$fileName';
 
-      await _client.storage.from('user_docs').uploadBinary(
+      await _client.storage
+          .from('user_docs')
+          .uploadBinary(
             filePath,
             documentBytes,
             fileOptions: const FileOptions(
@@ -457,19 +464,21 @@ Documento generato automaticamente dal sistema Team Ragnarok ASD
           '${acceptedAt.day.toString().padLeft(2, '0')} ${italianMonthsShort[acceptedAt.month - 1]} ${acceptedAt.year}';
 
       // Use SECURITY DEFINER RPC to bypass RLS during registration
-      await _client.rpc('save_registration_document', params: {
-        'p_user_id': userId,
-        'p_file_name': 'Termini e Condizioni Accettati',
-        'p_file_url': filePath,
-        'p_file_type': 'document',
-        'p_document_type': 'terms_acceptance',
-        'p_document_label': 'Termini accettati il $dateLabel',
-      });
+      await _client.rpc(
+        'save_registration_document',
+        params: {
+          'p_user_id': userId,
+          'p_file_name': 'Termini e Condizioni Accettati',
+          'p_file_url': filePath,
+          'p_file_type': 'document',
+          'p_document_type': 'terms_acceptance',
+          'p_document_label': 'Termini accettati il $dateLabel',
+        },
+      );
 
-      debugPrint(
-          'Terms acceptance document saved successfully for user $userId');
+      print('Terms acceptance document saved successfully for user $userId');
     } catch (e) {
-      debugPrint('Warning: Could not save terms acceptance document: $e');
+      print('Warning: Could not save terms acceptance document: $e');
     }
   }
 
@@ -511,7 +520,8 @@ Documento generato automaticamente dal sistema Team Ragnarok ASD
           ? '[X] La liberatoria per la diffusione di immagini e video del minore'
           : '[ ] La liberatoria per la diffusione di immagini e video del minore (NON ACCETTATA)';
 
-      final footer = '''
+      final footer =
+          '''
 DATI DI ACCETTAZIONE
 ============================================================
 Minore:        $childName
@@ -533,12 +543,15 @@ Documento generato automaticamente dal sistema Team Ragnarok ASD
       final documentBytes = Uint8List.fromList(utf8.encode(fullContent));
 
       final timestamp = acceptedAt.millisecondsSinceEpoch;
-      final safeChildName =
-          childName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_').toLowerCase();
+      final safeChildName = childName
+          .replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')
+          .toLowerCase();
       final fileName = 'termini_minore_${safeChildName}_$timestamp.txt';
       final filePath = '$guardianUserId/$fileName';
 
-      await _client.storage.from('user_docs').uploadBinary(
+      await _client.storage
+          .from('user_docs')
+          .uploadBinary(
             filePath,
             documentBytes,
             fileOptions: const FileOptions(
@@ -565,18 +578,22 @@ Documento generato automaticamente dal sistema Team Ragnarok ASD
           '${acceptedAt.day.toString().padLeft(2, '0')} ${italianMonthsShort[acceptedAt.month - 1]} ${acceptedAt.year}';
 
       // Use SECURITY DEFINER RPC to bypass RLS during registration
-      await _client.rpc('save_registration_document', params: {
-        'p_user_id': guardianUserId,
-        'p_file_name': 'Termini Minore - $childName',
-        'p_file_url': filePath,
-        'p_file_type': 'document',
-        'p_document_type': 'child_terms_acceptance',
-        'p_document_label':
-            'Modulo iscrizione minore ($childName) - $dateLabel',
-      });
+      await _client.rpc(
+        'save_registration_document',
+        params: {
+          'p_user_id': guardianUserId,
+          'p_file_name': 'Termini Minore - $childName',
+          'p_file_url': filePath,
+          'p_file_type': 'document',
+          'p_document_type': 'child_terms_acceptance',
+          'p_document_label':
+              'Modulo iscrizione minore ($childName) - $dateLabel',
+        },
+      );
 
       debugPrint(
-          'Child terms acceptance document saved for guardian $guardianUserId, child: $childName');
+        'Child terms acceptance document saved for guardian $guardianUserId, child: $childName',
+      );
     } catch (e) {
       debugPrint('Warning: Could not save child terms acceptance document: $e');
     }
@@ -765,7 +782,9 @@ Documento generato automaticamente dall\'app Team Ragnarok ASD''';
       final fileName = 'modulo_minore_1417_$timestamp.txt';
       final filePath = '$userId/$fileName';
 
-      await _client.storage.from('user_docs').uploadBinary(
+      await _client.storage
+          .from('user_docs')
+          .uploadBinary(
             filePath,
             documentBytes,
             fileOptions: const FileOptions(
@@ -792,19 +811,22 @@ Documento generato automaticamente dall\'app Team Ragnarok ASD''';
           '${acceptedAt.day.toString().padLeft(2, '0')} ${italianMonthsShort[acceptedAt.month - 1]} ${acceptedAt.year}';
 
       // Use SECURITY DEFINER RPC to bypass RLS during registration
-      await _client.rpc('save_registration_document', params: {
-        'p_user_id': userId,
-        'p_file_name': 'Modulo Iscrizione Minore 14-17 anni',
-        'p_file_url': filePath,
-        'p_file_type': 'document',
-        'p_document_type': 'minor_1417_terms',
-        'p_document_label':
-            'Modulo minore 14-17 anni - da firmare e ricaricare entro 7 giorni ($dateLabel)',
-      });
+      await _client.rpc(
+        'save_registration_document',
+        params: {
+          'p_user_id': userId,
+          'p_file_name': 'Modulo Iscrizione Minore 14-17 anni',
+          'p_file_url': filePath,
+          'p_file_type': 'document',
+          'p_document_type': 'minor_1417_terms',
+          'p_document_label':
+              'Modulo minore 14-17 anni - da firmare e ricaricare entro 7 giorni ($dateLabel)',
+        },
+      );
 
-      debugPrint('Minor 14-17 terms document saved for user $userId');
+      print('Minor 14-17 terms document saved for user $userId');
     } catch (e) {
-      debugPrint('Warning: Could not save minor 14-17 terms document: $e');
+      print('Warning: Could not save minor 14-17 terms document: $e');
     }
   }
 
@@ -862,8 +884,10 @@ Documento generato automaticamente dall\'app Team Ragnarok ASD''';
             .from('user_docs')
             .createSignedUrl(filePath, 3600);
         if (await canLaunchUrl(Uri.parse(signedUrl))) {
-          await launchUrl(Uri.parse(signedUrl),
-              mode: LaunchMode.externalApplication);
+          await launchUrl(
+            Uri.parse(signedUrl),
+            mode: LaunchMode.externalApplication,
+          );
         }
       } catch (fallbackError) {
         debugPrint('Fallback also failed: $fallbackError');

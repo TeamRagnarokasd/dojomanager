@@ -602,7 +602,7 @@ class ClassScheduleService {
   /// Fully Flutter-side: queries payment_confirmations (custom_plan_id) and
   /// discipline_custom_plan_associations to verify the user has a confirmed
   /// payment whose plan is associated with the class discipline.
-  /// Also checks standard user_subscriptions with discipline_subscription_plans.
+  /// No SQL function (check_class_booking_eligibility) is called.
   Future<Map<String, dynamic>> checkBookingEligibility(
     String scheduleInstanceId,
   ) async {
@@ -651,127 +651,7 @@ class ClassScheduleService {
 
       print('📍 [eligibility] classDiscipline=$classDiscipline');
 
-      // ── Step 2: Check standard user_subscriptions with discipline restrictions ──
-      // These are subscriptions from subscription_plans (not custom_plans)
-      try {
-        final now = DateTime.now();
-        final activeSubs = await _client
-            .from('user_subscriptions')
-            .select(
-                'id, subscription_plan_id, entries_remaining, entries_total, is_active, expires_at, subscription_plans(id, name, plan_type, entry_count, is_active)')
-            .eq('user_id', userId)
-            .eq('is_active', true);
-
-        for (final sub in activeSubs) {
-          final planData = sub['subscription_plans'] as Map<String, dynamic>?;
-          if (planData == null) continue;
-          if (planData['is_active'] != true) continue;
-
-          // Check expiry
-          final expiresAt = sub['expires_at'] as String?;
-          if (!_isSubscriptionStillValid(expiresAt, now)) continue;
-
-          final subPlanId = sub['subscription_plan_id'] as String?;
-          if (subPlanId == null) continue;
-
-          // Check if this plan has discipline restrictions
-          List<dynamic> disciplineAssocs = [];
-          try {
-            disciplineAssocs = await _client
-                .from('discipline_subscription_plans')
-                .select('discipline')
-                .eq('subscription_plan_id', subPlanId);
-          } catch (e) {
-            print(
-                '⚠️ [eligibility] Could not fetch discipline_subscription_plans for $subPlanId: $e');
-          }
-
-          print(
-              '📋 [eligibility] Standard plan "${planData['name']}" has ${disciplineAssocs.length} discipline restriction(s)');
-
-          // If no discipline restrictions configured for this plan, skip discipline check
-          // (plan covers all disciplines — allow)
-          if (disciplineAssocs.isEmpty) {
-            final planType = planData['plan_type'] as String? ?? '';
-            final entryCount = planData['entry_count'] as int?;
-            final isEntryBased =
-                planType == 'single_entry' || planType == 'multi_entry';
-
-            if (!isEntryBased) {
-              print(
-                  '✅ [eligibility] Standard plan "${planData['name']}" (no discipline restriction) — booking allowed');
-              return {'allowed': true, 'booking_type': 'subscription'};
-            }
-
-            // Entry-based: check remaining entries
-            final remaining = (sub['entries_remaining'] as int?) ?? 0;
-            if (remaining > 0) {
-              print(
-                  '✅ [eligibility] Standard entry plan "${planData['name']}" — $remaining entries remaining');
-              return {
-                'allowed': true,
-                'booking_type': 'entry_based',
-                'subscription_id': sub['id'] as String,
-                'entries_remaining': remaining,
-              };
-            }
-            continue;
-          }
-
-          // Discipline restrictions exist — check if class discipline matches
-          bool disciplineMatches = false;
-          if (classDiscipline == null) {
-            disciplineMatches = true; // Unknown discipline — allow
-          } else {
-            for (final assoc in disciplineAssocs) {
-              final assocDiscipline =
-                  (assoc['discipline'] as String? ?? '').toLowerCase().trim();
-              if (assocDiscipline == classDiscipline ||
-                  assocDiscipline.contains(classDiscipline) ||
-                  classDiscipline.contains(assocDiscipline)) {
-                disciplineMatches = true;
-                break;
-              }
-            }
-          }
-
-          if (!disciplineMatches) {
-            print(
-                '⏭️ [eligibility] Standard plan "${planData['name']}" does not cover discipline=$classDiscipline — skipping');
-            continue;
-          }
-
-          // Discipline matches — check plan type
-          final planType = planData['plan_type'] as String? ?? '';
-          final isEntryBased =
-              planType == 'single_entry' || planType == 'multi_entry';
-
-          if (!isEntryBased) {
-            print(
-                '✅ [eligibility] Standard plan "${planData['name']}" covers discipline=$classDiscipline — booking allowed');
-            return {'allowed': true, 'booking_type': 'subscription'};
-          }
-
-          // Entry-based with discipline match
-          final remaining = (sub['entries_remaining'] as int?) ?? 0;
-          if (remaining > 0) {
-            print(
-                '✅ [eligibility] Standard entry plan "${planData['name']}" covers discipline=$classDiscipline — $remaining entries remaining');
-            return {
-              'allowed': true,
-              'booking_type': 'entry_based',
-              'subscription_id': sub['id'] as String,
-              'entries_remaining': remaining,
-            };
-          }
-          print(
-              '🚫 [eligibility] Standard entry plan "${planData['name']}" — no entries remaining');
-        }
-      } catch (e) {
-        print('⚠️ [eligibility] Error checking standard subscriptions: $e');
-      }
-
-      // ── Step 3: Fetch all confirmed payment_confirmations with custom_plan_id ──
+      // ── Step 2: Fetch all confirmed payment_confirmations with custom_plan_id ──
       List<dynamic> confirmations = [];
       try {
         confirmations = await _client
@@ -800,7 +680,7 @@ class ClassScheduleService {
         };
       }
 
-      // ── Step 4: For each confirmed payment, check discipline association ──
+      // ── Step 3: For each confirmed payment, check discipline association ──
       for (final payment in confirmations) {
         final customPlanId = payment['custom_plan_id'] as String?;
         if (customPlanId == null) continue;
@@ -829,9 +709,7 @@ class ClassScheduleService {
             '📋 [eligibility] Plan "$planName" has ${associations.length} discipline association(s): ${associations.map((a) => a['discipline_name']).toList()}');
 
         if (associations.isEmpty) {
-          // No associations configured — skip this plan (discipline restriction enforced)
-          print(
-              '⏭️ [eligibility] Plan "$planName" has no discipline associations — skipping (discipline restriction enforced)');
+          // No associations configured — skip this plan
           continue;
         }
 
@@ -866,7 +744,7 @@ class ClassScheduleService {
           continue;
         }
 
-        // ── Step 5: Check entry count for entry-based plans ───────────────
+        // ── Step 4: Check entry count for entry-based plans ───────────────
         final isUnlimited = planData?['is_unlimited'] as bool? ?? false;
         final entryCount = planData?['entry_count'] as int?;
 

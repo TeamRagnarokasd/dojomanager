@@ -393,7 +393,7 @@ class ChildProfileService {
         '';
     final birthDate = childProfile['birth_date'] as String? ?? '';
     final parts = <String>['Quota relativa al minore: $name'];
-    if (taxCode.isNotEmpty) parts.add('C.F.: $taxCode');
+    if (taxCode.isNotEmpty) parts.add('Codice Fiscale: $taxCode');
     if (birthDate.isNotEmpty) parts.add('Data di nascita: $birthDate');
     return parts.join(' | ');
   }
