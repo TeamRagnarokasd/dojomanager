@@ -1,6 +1,5 @@
-
 import 'package:flutter/foundation.dart';
-import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Holds the update information fetched from the remote `app_version` table.
@@ -24,6 +23,16 @@ class AppUpdateService {
   AppUpdateService._();
   static final AppUpdateService instance = AppUpdateService._();
 
+  static const String _confirmedVersionKey = 'confirmed_version_code';
+
+  /// Saves the given [versionCode] as the locally confirmed version.
+  /// Call this right after a successful APK download, before launching the
+  /// install intent.
+  Future<void> saveConfirmedVersionCode(int versionCode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_confirmedVersionKey, versionCode);
+  }
+
   /// Checks whether a newer APK is available on the server.
   ///
   /// Returns [AppUpdateInfo] when a newer version exists, or `null` when the
@@ -39,7 +48,8 @@ class AppUpdateService {
       final response = await Supabase.instance.client
           .from('app_version')
           .select(
-              'version_code, version_name, apk_url, release_notes, mandatory')
+            'version_code, version_name, apk_url, release_notes, mandatory',
+          )
           .limit(1)
           .maybeSingle();
 
@@ -54,9 +64,9 @@ class AppUpdateService {
 
       if (apkUrl.isEmpty) return null;
 
-      // 2. Read the local build number.
-      final packageInfo = await PackageInfo.fromPlatform();
-      final localVersionCode = int.tryParse(packageInfo.buildNumber) ?? 0;
+      // 2. Read the locally stored confirmed version code.
+      final prefs = await SharedPreferences.getInstance();
+      final localVersionCode = prefs.getInt(_confirmedVersionKey) ?? 0;
 
       // 3. Compare — only return info when remote is strictly newer.
       if (remoteVersionCode > localVersionCode) {

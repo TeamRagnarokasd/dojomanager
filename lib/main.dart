@@ -733,6 +733,12 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
 
       // Launch install intent via android_intent_plus.
       if (!kIsWeb && Platform.isAndroid) {
+        // Save the confirmed version code BEFORE launching the install intent,
+        // so the app remembers it has already moved to this version.
+        await AppUpdateService.instance.saveConfirmedVersionCode(
+          widget.info.versionCode,
+        );
+
         // Use android_intent_plus to fire ACTION_VIEW with the APK URI.
         // We import it conditionally so it never compiles on web.
         await _launchInstallIntent(apkPath);
