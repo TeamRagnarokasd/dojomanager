@@ -9,6 +9,7 @@ class AppUpdateInfo {
   final String apkUrl;
   final String releaseNotes;
   final bool mandatory;
+  final bool requiresSignatureChange;
 
   const AppUpdateInfo({
     required this.versionCode,
@@ -16,6 +17,7 @@ class AppUpdateInfo {
     required this.apkUrl,
     required this.releaseNotes,
     required this.mandatory,
+    required this.requiresSignatureChange,
   });
 }
 
@@ -48,7 +50,8 @@ class AppUpdateService {
       final response = await Supabase.instance.client
           .from('app_version')
           .select(
-            'version_code, version_name, apk_url, release_notes, mandatory',
+            'version_code, version_name, apk_url, release_notes, mandatory, '
+            'requires_signature_change',
           )
           .limit(1)
           .maybeSingle();
@@ -61,6 +64,8 @@ class AppUpdateService {
       final apkUrl = (response['apk_url'] as String?) ?? '';
       final releaseNotes = (response['release_notes'] as String?) ?? '';
       final mandatory = (response['mandatory'] as bool?) ?? false;
+      final requiresSignatureChange =
+          (response['requires_signature_change'] as bool?) ?? false;
 
       if (apkUrl.isEmpty) return null;
 
@@ -76,6 +81,7 @@ class AppUpdateService {
           apkUrl: apkUrl,
           releaseNotes: releaseNotes,
           mandatory: mandatory,
+          requiresSignatureChange: requiresSignatureChange,
         );
       }
 
