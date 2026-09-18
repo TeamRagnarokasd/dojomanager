@@ -15,12 +15,17 @@ subprojects {
 
 // Some plugins (e.g. fluttertoast) ship with an older compileSdk than their
 // own transitive dependencies require (AAR metadata check). Force every
-// Android module to compile against the same SDK as the app itself.
+// Android plugin module to compile against the same SDK as the app itself.
+// The ":app" module is skipped: it already sets compileSdk explicitly, and
+// the evaluationDependsOn(':app') above may have already evaluated it by
+// the time this block reaches it, which would make afterEvaluate throw.
 subprojects {
-    afterEvaluate { project ->
-        if (project.hasProperty('android')) {
-            project.android {
-                compileSdkVersion 36
+    if (project.name != 'app') {
+        afterEvaluate { project ->
+            if (project.hasProperty('android')) {
+                project.android {
+                    compileSdkVersion 36
+                }
             }
         }
     }
