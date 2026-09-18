@@ -16447,9 +16447,8 @@ c2f(){var s=$.aI
 return s==null?$.aI=new A.c_():s},
 b4j(){var s=0,r=A.y(t.H)
 var $async$b4j=A.u(function(a,b){if(a===1)return A.v(b,r)
-for(;;)switch(s){case 0:A.S("\u26a0\ufe0f SUPABASE_URL/SUPABASE_ANON_KEY not provided via --dart-define. Initializing with placeholder credentials; backend features will not work until real values are configured.")
-s=2
-return A.i(A.b4o("placeholder-anon-key","https://placeholder.supabase.co"),$async$b4j)
+for(;;)switch(s){case 0:s=2
+return A.i(A.b4o("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuZWR2dGRndGh3cmlhd2h4d2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY1NTg3ODcsImV4cCI6MjA3MjEzNDc4N30.1BMmn4p1OmViefKUzT4PWDZFS24yxAIEyatXLGIo2sU","https://knedvtdgthwriawhxwgr.supabase.co"),$async$b4j)
 case 2:return A.w(null,r)}})
 return A.x($async$b4j,r)},
 c_:function c_(){},
