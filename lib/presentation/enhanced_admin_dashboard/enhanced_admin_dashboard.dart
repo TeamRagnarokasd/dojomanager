@@ -1,7 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_export.dart';
 import '../../services/auth_service.dart';
@@ -29,6 +30,7 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
   late AnimationController _refreshController;
   bool _isRefreshing = false;
   final ScrollController _scrollController = ScrollController();
+  StreamSubscription? _authSubscription;
 
   // Admin Dashboard Statistics
   Map<String, dynamic> _dashboardStats = {
@@ -63,16 +65,15 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
     _refreshController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   void _checkAuthState() {
-    AuthService.instance.onAuthStateChange.listen((data) {
-      if (data.event == AuthChangeEvent.signedOut && mounted) {
-        Navigator.pushReplacementNamed(context, '/');
-      }
+    _authSubscription = AuthService.instance.onAuthStateChange.listen((data) {
+      // Navigation is handled by the logout button; no navigation here.
     });
   }
 
@@ -82,10 +83,14 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
       return;
     }
 
+    final currentUser = AuthService.instance.currentUser;
+    if (currentUser == null) {
+      Navigator.pushReplacementNamed(context, '/');
+      return;
+    }
+
     try {
-      final profile = await AuthService.instance.getUserProfile(
-        AuthService.instance.currentUser!.id,
-      );
+      final profile = await AuthService.instance.getUserProfile(currentUser.id);
       final role = await AuthService.instance.getUserRole();
 
       // Verify admin privileges

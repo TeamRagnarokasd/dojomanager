@@ -888,89 +888,61 @@ class SubscriptionService {
       try {
         for (final item in items) {
           final itemName = item['name'] as String? ?? description;
-          final itemPrice = (item['price'] as num?)?.toDouble() ?? amount;
+
+          // ── Direct lookup by the custom_plan_id already resolved in planIdCache ──
+          final resolvedPlanId = planIdCache[itemName];
+          if (resolvedPlanId == null) {
+            print(
+              '⚠️ STEP 8b: No custom_plan_id in planIdCache for item "$itemName" — skipping user_subscriptions insert',
+            );
+            continue;
+          }
 
           Map<String, dynamic>? plan;
           try {
             final planResponse = await _supabase
                 .from('custom_subscription_plans')
-                .select(
-                  'id, plan_type, entry_count, is_unlimited, duration_months, name',
-                )
-                .eq('name', itemName)
-                .eq('is_active', true)
+                .select('id, entry_count, is_unlimited, duration_months, name')
+                .eq('id', resolvedPlanId)
                 .maybeSingle();
-            if (planResponse != null)
+            if (planResponse != null) {
               plan = Map<String, dynamic>.from(planResponse);
-          } catch (_) {}
-
-          if (plan == null) {
-            try {
-              final planByPrice = await _supabase
-                  .from('custom_subscription_plans')
-                  .select(
-                    'id, plan_type, entry_count, is_unlimited, duration_months, name',
-                  )
-                  .eq('amount', itemPrice)
-                  .eq('is_active', true)
-                  .limit(1)
-                  .maybeSingle();
-              if (planByPrice != null)
-                plan = Map<String, dynamic>.from(planByPrice);
-            } catch (_) {}
-          }
-
-          if (plan == null) {
-            try {
-              final planByDesc = await _supabase
-                  .from('custom_subscription_plans')
-                  .select(
-                    'id, plan_type, entry_count, is_unlimited, duration_months, name',
-                  )
-                  .eq('amount', amount)
-                  .eq('is_active', true)
-                  .limit(1)
-                  .maybeSingle();
-              if (planByDesc != null)
-                plan = Map<String, dynamic>.from(planByDesc);
-            } catch (_) {}
+            }
+          } catch (e) {
+            print(
+              '❌ STEP 8b: Failed to fetch custom plan id=$resolvedPlanId: $e',
+            );
           }
 
           if (plan != null) {
-            final planType = plan['plan_type'] as String? ?? 'monthly';
             final isUnlimited = plan['is_unlimited'] as bool? ?? false;
+            final planEntryCount = (plan['entry_count'] as num?)?.toInt();
             int entriesRemaining = 0;
             int entriesTotal = 0;
             DateTime? expiresAt;
 
-            if (isUnlimited) {
-              final planEntryCount = (plan['entry_count'] as num?)?.toInt();
-              if (planEntryCount != null && planEntryCount > 0) {
-                entriesRemaining = planEntryCount;
-                entriesTotal = planEntryCount;
-              }
+            // Determine branch: entry pack vs time-based
+            if (isUnlimited && planEntryCount != null && planEntryCount > 0) {
+              // Entry pack: is_unlimited=true means no time expiry, expires when entries run out
+              entriesRemaining = planEntryCount;
+              entriesTotal = planEntryCount;
+              // expiresAt stays null
             } else {
-              switch (planType) {
-                case 'single_entry':
-                  entriesRemaining = 1;
-                  entriesTotal = 1;
-                  break;
-                case 'multi_entry':
-                  entriesRemaining = plan['entry_count'] ?? 0;
-                  entriesTotal = plan['entry_count'] ?? 0;
-                  break;
-                case 'monthly':
-                  final durationMonths =
-                      (plan['duration_months'] as num?)?.toInt() ?? 1;
-                  final baseDate = await _getStackingBaseDate(
-                    userId: beneficiaryUserId,
-                    subscriptionPlanId: plan['id'] as String,
-                  );
-                  expiresAt = baseDate.add(Duration(days: 30 * durationMonths));
-                  break;
-                case 'annual':
-                  expiresAt = _computeAnnualExpiry();
-                  break;
+              // Time-based plan
+              final planName = (plan['name'] as String? ?? '').toLowerCase();
+              final isAnnual =
+                  planName.contains('iscrizione') ||
+                  planName.contains('annuale');
+              if (isAnnual) {
+                expiresAt = _computeAnnualExpiry();
+              } else {
+                final durationMonths =
+                    (plan['duration_months'] as num?)?.toInt() ?? 1;
+                final baseDate = await _getStackingBaseDate(
+                  userId: beneficiaryUserId,
+                  subscriptionPlanId: plan['id'] as String,
+                );
+                expiresAt = baseDate.add(Duration(days: 30 * durationMonths));
               }
             }
 
@@ -992,12 +964,12 @@ class SubscriptionService {
             );
           } else {
             print(
-              '⚠️ DEBUG: Could not find custom plan for item: $itemName — skipping user_subscriptions insert',
+              '⚠️ DEBUG: Could not find custom plan id=$resolvedPlanId for item: $itemName — skipping user_subscriptions insert',
             );
           }
         }
       } catch (e) {
-        print('⚠️ DEBUG: user_subscriptions insert failed (non-critical): $e');
+        print('❌ STEP 8b: user_subscriptions insert failed: $e');
       }
 
       print('✅ DEBUG: Batch operation completed successfully');

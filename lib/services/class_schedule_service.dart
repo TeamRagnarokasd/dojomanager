@@ -53,7 +53,8 @@ class ClassScheduleService {
       }
       _disciplineColorCache = colors;
       print(
-          '🎨 Loaded ${colors.length} discipline color entries from DB: $colors');
+        '🎨 Loaded ${colors.length} discipline color entries from DB: $colors',
+      );
     } catch (e) {
       print('⚠️ Could not load discipline colors from DB: $e');
       _disciplineColorCache = {}; // empty cache so we fall back to defaults
@@ -123,8 +124,9 @@ class ClassScheduleService {
               '✅ Found ${retryResponse.length} schedule instances after regeneration',
             );
             return retryResponse.map((json) {
-              final jsonMap =
-                  Map<String, dynamic>.from(json as Map<String, dynamic>);
+              final jsonMap = Map<String, dynamic>.from(
+                json as Map<String, dynamic>,
+              );
               final disc = jsonMap['discipline']?.toString() ?? 'bjj';
               // Always override with admin-assigned color from cache
               jsonMap['discipline_color'] = _getDisciplineColor(disc);
@@ -173,8 +175,9 @@ class ClassScheduleService {
           );
 
           // Inject the admin-assigned discipline color from cache
-          final jsonWithColor =
-              Map<String, dynamic>.from(json as Map<String, dynamic>);
+          final jsonWithColor = Map<String, dynamic>.from(
+            json as Map<String, dynamic>,
+          );
           final disc = jsonWithColor['discipline']?.toString() ?? 'bjj';
           // Always override with the admin-assigned color from cache;
           // the RPC may return a stale/default color that doesn't match
@@ -379,9 +382,7 @@ class ClassScheduleService {
           'id': classId,
           'discipline': json['discipline'],
           'disciplineDisplayName': _mapDbValueToUI(json['discipline'] ?? 'bjj'),
-          'discipline_color': _getDisciplineColor(
-            json['discipline'] ?? 'bjj',
-          ),
+          'discipline_color': _getDisciplineColor(json['discipline'] ?? 'bjj'),
           'instructor_name': json['user_profiles']?['full_name'] ??
               'common.default_instructor'.tr(),
           'instructor_email': json['user_profiles']?['email'] ?? '',
@@ -657,12 +658,14 @@ class ClassScheduleService {
         confirmations = await _client
             .from('payment_confirmations')
             .select(
-                'id, custom_plan_id, status, custom_subscription_plans(id, name, is_unlimited, entry_count, duration_months)')
+              'id, custom_plan_id, status, confirmed_at, custom_subscription_plans(id, name, is_unlimited, entry_count, duration_months)',
+            )
             .eq('user_id', userId)
             .eq('status', 'confirmed')
             .not('custom_plan_id', 'is', null);
         print(
-            '🧾 [eligibility] Found ${confirmations.length} confirmed payment(s) with custom_plan_id');
+          '🧾 [eligibility] Found ${confirmations.length} confirmed payment(s) with custom_plan_id',
+        );
       } catch (e) {
         print('⚠️ [eligibility] Could not fetch payment_confirmations: $e');
         return {
@@ -673,7 +676,8 @@ class ClassScheduleService {
 
       if (confirmations.isEmpty) {
         print(
-            '❌ [eligibility] No confirmed payments with custom_plan_id found');
+          '❌ [eligibility] No confirmed payments with custom_plan_id found',
+        );
         return {
           'allowed': false,
           'reason': 'class_schedule.no_valid_subscription'.tr(),
@@ -690,7 +694,8 @@ class ClassScheduleService {
         final planName = (planData?['name'] as String? ?? '').toLowerCase();
 
         print(
-            '🔎 [eligibility] Checking plan "$planName" (id=$customPlanId) against discipline=$classDiscipline');
+          '🔎 [eligibility] Checking plan "$planName" (id=$customPlanId) against discipline=$classDiscipline',
+        );
 
         // Fetch discipline associations for this plan
         List<dynamic> associations = [];
@@ -701,12 +706,14 @@ class ClassScheduleService {
               .eq('custom_plan_id', customPlanId);
         } catch (e) {
           print(
-              '⚠️ [eligibility] Could not fetch associations for plan $customPlanId: $e');
+            '⚠️ [eligibility] Could not fetch associations for plan $customPlanId: $e',
+          );
           continue;
         }
 
         print(
-            '📋 [eligibility] Plan "$planName" has ${associations.length} discipline association(s): ${associations.map((a) => a['discipline_name']).toList()}');
+          '📋 [eligibility] Plan "$planName" has ${associations.length} discipline association(s): ${associations.map((a) => a['discipline_name']).toList()}',
+        );
 
         if (associations.isEmpty) {
           // No associations configured — skip this plan
@@ -740,7 +747,8 @@ class ClassScheduleService {
 
         if (!disciplineMatches) {
           print(
-              '⏭️ [eligibility] Plan "$planName" does not cover discipline=$classDiscipline — skipping');
+            '⏭️ [eligibility] Plan "$planName" does not cover discipline=$classDiscipline — skipping',
+          );
           continue;
         }
 
@@ -748,52 +756,122 @@ class ClassScheduleService {
         final isUnlimited = planData?['is_unlimited'] as bool? ?? false;
         final entryCount = planData?['entry_count'] as int?;
 
-        if (isUnlimited || entryCount == null) {
-          // Unlimited plan or monthly-style — allow immediately
+        // is_unlimited=true AND entry_count!=null → ENTRY PACK
+        // (is_unlimited means "no time expiry", NOT "unlimited entries")
+        if (isUnlimited && entryCount != null) {
           print(
-              '✅ [eligibility] Plan "$planName" is unlimited/monthly — booking allowed');
-          return {
-            'allowed': true,
-            'booking_type': 'subscription',
-          };
+            '🎫 [eligibility] Plan "$planName" is an entry pack (is_unlimited=true, entry_count=$entryCount) — looking up user_subscriptions row',
+          );
+          // Look up the active user_subscriptions row for this custom plan
+          try {
+            final subRows = await _client
+                .from('user_subscriptions')
+                .select('id, entries_remaining')
+                .eq('user_id', userId)
+                .eq('custom_plan_id', customPlanId)
+                .eq('is_active', true)
+                .gt('entries_remaining', 0)
+                .order('created_at', ascending: false)
+                .limit(1);
+            if (subRows.isNotEmpty) {
+              final subId = subRows[0]['id'] as String;
+              final remaining = subRows[0]['entries_remaining'] as int;
+              print(
+                '✅ [eligibility] Entry pack has $remaining entries remaining (subscription_id=$subId)',
+              );
+              return {
+                'allowed': true,
+                'booking_type': 'entry_based',
+                'subscription_id': subId,
+                'entries_remaining': remaining,
+              };
+            } else {
+              print(
+                '🚫 [eligibility] No active user_subscriptions row with entries_remaining>0 for entry pack "$planName"',
+              );
+              return {
+                'allowed': false,
+                'reason': 'class_schedule.no_valid_subscription'.tr(),
+              };
+            }
+          } catch (e) {
+            print(
+              '⚠️ [eligibility] Could not look up user_subscriptions for entry pack: $e',
+            );
+            return {
+              'allowed': false,
+              'reason': 'errors.subscription_check_failed'.tr(),
+            };
+          }
         }
 
-        // Entry-based: count confirmed bookings and compare
-        int confirmedBookings = 0;
+        if (entryCount == null) {
+          // Time-based plan (is_unlimited=false, entry_count=null) — check expiry before allowing
+          final confirmedAtRaw = payment['confirmed_at'] as String?;
+          if (confirmedAtRaw != null) {
+            final confirmedAt = DateTime.tryParse(confirmedAtRaw);
+            if (confirmedAt != null) {
+              final durationMonths = planData?['duration_months'] as int? ?? 1;
+              final expiresAt = DateTime(
+                confirmedAt.year,
+                confirmedAt.month + durationMonths,
+                confirmedAt.day,
+                confirmedAt.hour,
+                confirmedAt.minute,
+                confirmedAt.second,
+              );
+              if (!expiresAt.isAfter(DateTime.now().toUtc())) {
+                print(
+                  '⏰ [eligibility] Plan "$planName" expired on $expiresAt — skipping',
+                );
+                continue;
+              }
+            }
+          }
+          print(
+            '✅ [eligibility] Plan "$planName" is time-based and still active — booking allowed',
+          );
+          return {'allowed': true, 'booking_type': 'subscription'};
+        }
+
+        // Fallback entry-based path (is_unlimited=false, entry_count!=null)
+        // Look up the active user_subscriptions row for this custom plan
         try {
-          final registrations = await _client
-              .from('class_registrations')
-              .select('id')
+          final subRows = await _client
+              .from('user_subscriptions')
+              .select('id, entries_remaining')
               .eq('user_id', userId)
-              .eq('registration_status', 'registered');
-          confirmedBookings = registrations.length;
+              .eq('custom_plan_id', customPlanId)
+              .eq('is_active', true)
+              .gt('entries_remaining', 0)
+              .order('created_at', ascending: false)
+              .limit(1);
+          if (subRows.isNotEmpty) {
+            final subId = subRows[0]['id'] as String;
+            final remaining = subRows[0]['entries_remaining'] as int;
+            print(
+              '✅ [eligibility] Entry plan has $remaining entries remaining (subscription_id=$subId)',
+            );
+            return {
+              'allowed': true,
+              'booking_type': 'entry_based',
+              'subscription_id': subId,
+              'entries_remaining': remaining,
+            };
+          } else {
+            print('🚫 [eligibility] Entry limit reached for plan "$planName"');
+            return {
+              'allowed': false,
+              'reason': 'class_schedule.no_valid_subscription'.tr(),
+            };
+          }
         } catch (e) {
-          print('⚠️ [eligibility] Could not count registrations: $e');
+          print('⚠️ [eligibility] Could not look up user_subscriptions: $e');
           return {
             'allowed': false,
             'reason': 'errors.subscription_check_failed'.tr(),
           };
         }
-
-        print(
-            '🎫 [eligibility] Entry plan "$planName": confirmedBookings=$confirmedBookings, entryCount=$entryCount');
-
-        if (confirmedBookings >= entryCount) {
-          print(
-              '🚫 [eligibility] Entry limit reached ($confirmedBookings/$entryCount)');
-          return {
-            'allowed': false,
-            'reason': 'class_schedule.no_valid_subscription'.tr(),
-          };
-        }
-
-        print(
-            '✅ [eligibility] Entry plan allows booking ($confirmedBookings/$entryCount used)');
-        return {
-          'allowed': true,
-          'booking_type': 'entry_based',
-          'entries_remaining': entryCount - confirmedBookings,
-        };
       }
 
       print('❌ [eligibility] No plan covers discipline=$classDiscipline');
@@ -1048,9 +1126,7 @@ class ClassScheduleService {
           'id': json['id'],
           'discipline': json['discipline'],
           'disciplineDisplayName': _mapDbValueToUI(json['discipline'] ?? 'bjj'),
-          'discipline_color': _getDisciplineColor(
-            json['discipline'] ?? 'bjj',
-          ),
+          'discipline_color': _getDisciplineColor(json['discipline'] ?? 'bjj'),
           'instructor_name': json['user_profiles']?['full_name'] ??
               'common.default_instructor'.tr(),
           'instructor_email': json['user_profiles']?['email'] ?? '',

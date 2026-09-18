@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
@@ -29,6 +31,7 @@ class _DashboardHomeState extends State<DashboardHome>
   late AnimationController _refreshController;
   bool _isRefreshing = false;
   UserRole _currentUserRole = UserRole.student;
+  StreamSubscription? _authSubscription;
 
   // SIMPLIFIED: Remove complex retry mechanism that was causing issues
   String? _errorMessage;
@@ -56,13 +59,14 @@ class _DashboardHomeState extends State<DashboardHome>
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
     _refreshController.dispose();
     super.dispose();
   }
 
   void _checkAuthState() {
     // Listen for auth state changes
-    AuthService.instance.onAuthStateChange.listen((data) {
+    _authSubscription = AuthService.instance.onAuthStateChange.listen((data) {
       if (data.event == AuthChangeEvent.signedOut && mounted) {
         Navigator.pushReplacementNamed(context, AppRoutes.login);
       }

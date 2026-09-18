@@ -404,7 +404,7 @@
     "last_entry": "Last entry!",
     "exhausted": "Exhausted",
     "participants": "Participants",
-    "cancel_policy": "Bookings can be cancelled until the day before the class.",
+    "cancel_policy": "Bookings can be cancelled up to 1 hour before the class starts.",
     "quick_booking": "Quick Booking",
     "cancellation_reason": "Reason: {reason}",
     "training_description": "{discipline} training",

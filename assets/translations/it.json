@@ -405,7 +405,7 @@
     "last_entry": "Ultimo ingresso!",
     "exhausted": "Esauriti",
     "participants": "Partecipanti",
-    "cancel_policy": "La prenotazione può essere cancellata fino al giorno precedente la lezione.",
+    "cancel_policy": "La prenotazione può essere cancellata fino a 1 ora prima dell'inizio della lezione.",
     "quick_booking": "Prenotazione Rapida",
     "cancellation_reason": "Motivo: {reason}",
     "training_description": "Allenamento di {discipline}",

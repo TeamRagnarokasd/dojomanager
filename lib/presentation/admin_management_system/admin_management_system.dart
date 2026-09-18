@@ -65,8 +65,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   String _selectedStatus = 'approved';
   String _selectedRole = 'student';
   String _selectedMedicalCertificateStatus = 'pending';
-  String _selectedRoleTitle = 'profile.default_student_role'
-      .tr(); // NEW: Role title state
+  String _selectedRoleTitle =
+      'profile.default_student_role'.tr(); // NEW: Role title state
 
   Map<String, dynamic>? selectedUserForEdit;
 
@@ -92,7 +92,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   static const String _chipPending = 'pending';
   static const String _chipNoSub = 'no_sub';
 
-  Set<String> _subscribedTaxCodes = {};
+  Set<String> _subscribedUserIds = {};
 
   // Compute age in years from a birth_date string (ISO-8601 or similar)
   int? _ageFromBirthDate(dynamic birthDate) {
@@ -155,13 +155,13 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       } else if (chip == _chipPending) {
         chipMatch = (user['status']?.toString() ?? '') == 'pending';
       } else if (chip == _chipNoSub) {
-        final taxCode =
-            (user['codice_fiscale']?.toString() ??
-                    user['tax_code']?.toString() ??
-                    '')
-                .trim()
-                .toUpperCase();
-        chipMatch = taxCode.isEmpty || !_subscribedTaxCodes.contains(taxCode);
+        // Exclude users with booking_passpartout — they can book without a subscription by design
+        final passpartout = user['booking_passpartout'] as bool? ?? false;
+        if (passpartout)
+          return false; // skip this user from "no sub" filter entirely
+
+        final userId = user['id']?.toString() ?? '';
+        chipMatch = userId.isEmpty || !_subscribedUserIds.contains(userId);
       }
 
       if (!chipMatch) return false; // AND logic
@@ -276,8 +276,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       currentUser = profileResponse;
 
       // Check if principal admin or regular admin
-      isPrincipalAdmin =
-          user.email == 'lutadordeeliteravenna@gmail.com' ||
+      isPrincipalAdmin = user.email == 'lutadordeeliteravenna@gmail.com' ||
           (currentUser?['role'] == 'principal_admin');
 
       // Allow access for admin or principal_admin roles
@@ -334,36 +333,99 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         systemUsers = [];
       }
 
-      // Load subscribed tax codes (non-annual active subscriptions)
+      // Load subscribed user IDs via payment_confirmations (correct source of truth)
+      // Rules mirror get_user_subscription_dashboard:
+      //   - status = 'confirmed' AND custom_plan_id IS NOT NULL
+      //   - exclude annual/registration plans (name ilike '%iscrizione%' OR '%annuale%')
+      //   - time-based plans: confirmed_at + duration_months months > now
+      //   - entry-based plans (is_unlimited=true, entry_count!=null): entries_remaining > 0
+      //   - beneficiary_profile_id = user_id OR (beneficiary_profile_id IS NULL AND user_id = user_id)
       try {
         final now = DateTime.now();
-        DateTime mostRecentAug28;
-        if (now.month > 8 || (now.month == 8 && now.day >= 28)) {
-          mostRecentAug28 = DateTime(now.year, 8, 28);
-        } else {
-          mostRecentAug28 = DateTime(now.year - 1, 8, 28);
-        }
-        final aug28Str =
-            '${mostRecentAug28.year}-${mostRecentAug28.month.toString().padLeft(2, '0')}-28';
 
-        final receiptsResponse = await client
-            .from('non_fiscal_receipts')
-            .select('customer_tax_code')
-            .not('description', 'ilike', '%Iscrizione Annuale%')
-            .eq('deleted_by_user', false)
-            .gte('issue_date', aug28Str);
+        // Fetch all confirmed payment_confirmations with plan details
+        final confirmationsResponse = await client
+            .from('payment_confirmations')
+            .select(
+              'user_id, beneficiary_profile_id, custom_plan_id, confirmed_at, status, custom_subscription_plans(id, name, is_unlimited, entry_count, duration_months)',
+            )
+            .eq('status', 'confirmed')
+            .not('custom_plan_id', 'is', null);
 
-        final codes = <String>{};
-        for (final row in (receiptsResponse as List)) {
-          final code = (row['customer_tax_code']?.toString() ?? '')
-              .trim()
-              .toUpperCase();
-          if (code.isNotEmpty) codes.add(code);
+        // Fetch all active user_subscriptions (entry-based) for entries_remaining check
+        final userSubsResponse = await client
+            .from('user_subscriptions')
+            .select('user_id, custom_plan_id, entries_remaining, is_active')
+            .eq('is_active', true)
+            .gt('entries_remaining', 0);
+
+        // Build a map: custom_plan_id -> list of user_ids with entries_remaining > 0
+        final Map<String, Set<String>> entryPackActiveUsers = {};
+        for (final sub in (userSubsResponse as List)) {
+          final planId = sub['custom_plan_id']?.toString();
+          final uid = sub['user_id']?.toString();
+          if (planId != null && uid != null) {
+            entryPackActiveUsers.putIfAbsent(planId, () => {}).add(uid);
+          }
         }
-        _subscribedTaxCodes = codes;
+
+        final subscribedIds = <String>{};
+
+        for (final conf in (confirmationsResponse as List)) {
+          final userId = conf['user_id']?.toString();
+          if (userId == null) continue;
+
+          // Determine the effective member: beneficiary_profile_id if set, else user_id
+          // For this filter we tag the account (user_id) as subscribed when any of their
+          // confirmed plans (own or as beneficiary) is active.
+          final planData =
+              conf['custom_subscription_plans'] as Map<String, dynamic>?;
+          if (planData == null) continue;
+
+          final planName = (planData['name']?.toString() ?? '').toLowerCase();
+
+          // Exclude annual/registration plans
+          if (planName.contains('iscrizione') || planName.contains('annuale')) {
+            continue;
+          }
+
+          final isUnlimited = planData['is_unlimited'] as bool? ?? false;
+          final entryCount = planData['entry_count'] as int?;
+          final durationMonths = (planData['duration_months'] as int?) ?? 1;
+          final customPlanId = conf['custom_plan_id']?.toString();
+
+          if (isUnlimited && entryCount != null) {
+            // Entry-based plan: active only if entries_remaining > 0
+            if (customPlanId != null &&
+                entryPackActiveUsers[customPlanId]?.contains(userId) == true) {
+              subscribedIds.add(userId);
+            }
+          } else {
+            // Time-based plan: active if confirmed_at + duration_months > now
+            final confirmedAtRaw = conf['confirmed_at']?.toString();
+            if (confirmedAtRaw != null) {
+              try {
+                final confirmedAt = DateTime.parse(confirmedAtRaw);
+                final expiresAt = DateTime(
+                  confirmedAt.year,
+                  confirmedAt.month + durationMonths,
+                  confirmedAt.day,
+                  confirmedAt.hour,
+                  confirmedAt.minute,
+                  confirmedAt.second,
+                );
+                if (expiresAt.isAfter(now)) {
+                  subscribedIds.add(userId);
+                }
+              } catch (_) {}
+            }
+          }
+        }
+
+        _subscribedUserIds = subscribedIds;
       } catch (e) {
-        print('Error loading subscribed tax codes: $e');
-        _subscribedTaxCodes = {};
+        print('Error loading subscribed user IDs: $e');
+        _subscribedUserIds = {};
       }
 
       // Load admin communications with error handling
@@ -397,8 +459,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
 
       await client
           .from('user_profiles')
-          .update({'role': newRole})
-          .eq('id', userId);
+          .update({'role': newRole}).eq('id', userId);
 
       // Log the admin activity
       await client.from('admin_activity_log').insert({
@@ -1014,9 +1075,9 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
               child: Text(
                 'admin_management.user_management_title'.tr(),
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -1170,8 +1231,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
 
     final needsAcceptance = userStatus != 'approved';
 
-    final childProfiles =
-        (user['child_profiles'] as List<dynamic>?)
+    final childProfiles = (user['child_profiles'] as List<dynamic>?)
             ?.cast<Map<String, dynamic>>() ??
         [];
 
@@ -1416,8 +1476,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                     final now = DateTime.now();
                     int a = now.year - bd.year;
                     if (now.month < bd.month ||
-                        (now.month == bd.month && now.day < bd.day))
-                      a--;
+                        (now.month == bd.month && now.day < bd.day)) a--;
                     age = '$a anni';
                   } catch (_) {}
                 }
@@ -1460,9 +1519,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                             width: 3,
                             height: 36,
                             decoration: BoxDecoration(
-                              color: imageConsent
-                                  ? Colors.green
-                                  : Colors.orange,
+                              color:
+                                  imageConsent ? Colors.green : Colors.orange,
                               borderRadius: BorderRadius.circular(2.0),
                             ),
                           ),
@@ -2108,24 +2166,23 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                       vertical: 16,
                     ),
                   ),
-                  items:
-                      [
-                        'profile.default_student_role'.tr(),
-                        'Pro',
-                        'Istruttore Fitness',
-                        'Coach',
-                        'Staff',
-                        'Headcoach',
-                        'Presidente',
-                      ].map((roleOption) {
-                        return DropdownMenuItem<String>(
-                          value: roleOption,
-                          child: Text(
-                            roleOption,
-                            style: GoogleFonts.inter(fontSize: 14),
-                          ),
-                        );
-                      }).toList(),
+                  items: [
+                    'profile.default_student_role'.tr(),
+                    'Pro',
+                    'Istruttore Fitness',
+                    'Coach',
+                    'Staff',
+                    'Headcoach',
+                    'Presidente',
+                  ].map((roleOption) {
+                    return DropdownMenuItem<String>(
+                      value: roleOption,
+                      child: Text(
+                        roleOption,
+                        style: GoogleFonts.inter(fontSize: 14),
+                      ),
+                    );
+                  }).toList(),
                   onChanged: (value) {
                     if (value != null) {
                       dialogSetState(() {
@@ -2898,8 +2955,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                               onTap: () async {
                                 final date = await showDatePicker(
                                   context: context,
-                                  initialDate:
-                                      _selectedBirthDate ??
+                                  initialDate: _selectedBirthDate ??
                                       DateTime.now().subtract(
                                         Duration(days: 365 * 20),
                                       ),
@@ -3035,8 +3091,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                                     child: _buildTextField(
                                       controller:
                                           _editParentGuardianNameController,
-                                      label: 'profile.parent_guardian_name'
-                                          .tr(),
+                                      label:
+                                          'profile.parent_guardian_name'.tr(),
                                       icon: Icons.person,
                                     ),
                                   ),
@@ -3355,8 +3411,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       if (_editCodiceFiscaleController.text != (user['codice_fiscale'] ?? '')) {
         updates['codice_fiscale'] =
             _editCodiceFiscaleController.text.trim().isEmpty
-            ? null
-            : _editCodiceFiscaleController.text.trim();
+                ? null
+                : _editCodiceFiscaleController.text.trim();
       }
 
       // Birth Date
@@ -3367,8 +3423,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         if (currentBirthDate == null ||
             !_selectedBirthDate!.isAtSameMomentAs(currentBirthDate)) {
           updates['birth_date'] = _selectedBirthDate!.toIso8601String().split(
-            'T',
-          )[0];
+                'T',
+              )[0];
         }
       }
 
@@ -3399,15 +3455,15 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
           (user['emergency_contact'] ?? '')) {
         updates['emergency_contact'] =
             _editEmergencyContactController.text.trim().isEmpty
-            ? null
-            : _editEmergencyContactController.text.trim();
+                ? null
+                : _editEmergencyContactController.text.trim();
       }
       if (_editEmergencyPhoneController.text !=
           (user['emergency_phone'] ?? '')) {
         updates['emergency_phone'] =
             _editEmergencyPhoneController.text.trim().isEmpty
-            ? null
-            : _editEmergencyPhoneController.text.trim();
+                ? null
+                : _editEmergencyPhoneController.text.trim();
       }
 
       // Minor status and Parent/Guardian Info
@@ -3420,43 +3476,43 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
             (user['parent_guardian_name'] ?? '')) {
           updates['parent_guardian_name'] =
               _editParentGuardianNameController.text.trim().isEmpty
-              ? null
-              : _editParentGuardianNameController.text.trim();
+                  ? null
+                  : _editParentGuardianNameController.text.trim();
         }
         if (_editParentGuardianSurnameController.text !=
             (user['parent_guardian_surname'] ?? '')) {
           updates['parent_guardian_surname'] =
               _editParentGuardianSurnameController.text.trim().isEmpty
-              ? null
-              : _editParentGuardianSurnameController.text.trim();
+                  ? null
+                  : _editParentGuardianSurnameController.text.trim();
         }
         if (_editParentGuardianEmailController.text !=
             (user['parent_guardian_email'] ?? '')) {
           updates['parent_guardian_email'] =
               _editParentGuardianEmailController.text.trim().isEmpty
-              ? null
-              : _editParentGuardianEmailController.text.trim();
+                  ? null
+                  : _editParentGuardianEmailController.text.trim();
         }
         if (_editParentGuardianPhoneController.text !=
             (user['parent_guardian_phone'] ?? '')) {
           updates['parent_guardian_phone'] =
               _editParentGuardianPhoneController.text.trim().isEmpty
-              ? null
-              : _editParentGuardianPhoneController.text.trim();
+                  ? null
+                  : _editParentGuardianPhoneController.text.trim();
         }
         if (_editParentGuardianCodiceFiscaleController.text !=
             (user['parent_guardian_codice_fiscale'] ?? '')) {
           updates['parent_guardian_codice_fiscale'] =
               _editParentGuardianCodiceFiscaleController.text.trim().isEmpty
-              ? null
-              : _editParentGuardianCodiceFiscaleController.text.trim();
+                  ? null
+                  : _editParentGuardianCodiceFiscaleController.text.trim();
         }
         if (_editParentGuardianRelationController.text !=
             (user['parent_guardian_relation'] ?? '')) {
           updates['parent_guardian_relation'] =
               _editParentGuardianRelationController.text.trim().isEmpty
-              ? null
-              : _editParentGuardianRelationController.text.trim();
+                  ? null
+                  : _editParentGuardianRelationController.text.trim();
         }
       } else {
         // Clear parent/guardian fields if not minor
