@@ -13,6 +13,19 @@ subprojects {
     project.evaluationDependsOn(':app')
 }
 
+// Some plugins (e.g. fluttertoast) ship with an older compileSdk than their
+// own transitive dependencies require (AAR metadata check). Force every
+// Android module to compile against the same SDK as the app itself.
+subprojects {
+    afterEvaluate { project ->
+        if (project.hasProperty('android')) {
+            project.android {
+                compileSdkVersion 36
+            }
+        }
+    }
+}
+
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
