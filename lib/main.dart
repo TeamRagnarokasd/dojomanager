@@ -9,10 +9,12 @@ import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import './routes/app_routes.dart';
 import './services/app_update_service.dart';
 import './services/android_install_intent.dart';
+import './services/android_uninstall_intent.dart';
 import './services/auth_service.dart';
 import './services/locale_service.dart';
 import './services/realtime_notification_service.dart';
@@ -701,6 +703,33 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
     });
 
     try {
+      if (!kIsWeb &&
+          Platform.isAndroid &&
+          widget.info.requiresSignatureChange) {
+        // The new APK is signed with a different key: Android refuses to
+        // install it over the currently-installed app, so a normal
+        // in-place update is impossible. Open the download link in the
+        // browser FIRST — the browser's download runs independently of
+        // this app's process — and only THEN uninstall this app, since
+        // after that this app can no longer do anything at all.
+        final opened = await launchUrl(
+          Uri.parse(widget.info.apkUrl),
+          mode: LaunchMode.externalApplication,
+        );
+        if (!opened) {
+          setState(() {
+            _isDownloading = false;
+            _errorMessage = 'Impossibile aprire il link di download.';
+          });
+          return;
+        }
+        // Give the browser a moment to actually start the download before
+        // this app disappears from under it.
+        await Future.delayed(const Duration(seconds: 2));
+        await launchAndroidUninstallIntent();
+        return;
+      }
+
       // Request install-packages permission at runtime.
       if (!kIsWeb && Platform.isAndroid) {
         final status = await Permission.requestInstallPackages.request();
@@ -767,12 +796,31 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(widget.info.releaseNotes),
-              if (_isDownloading) ...[
+              if (widget.info.requiresSignatureChange) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Questo aggiornamento richiede di disinstallare e '
+                  'reinstallare l\'app. Al tocco su "Aggiorna ora" si aprirà '
+                  'il download nel browser e poi l\'app verrà disinstallata: '
+                  'al termine apri il file scaricato per reinstallarla.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+              if (_isDownloading && !widget.info.requiresSignatureChange) ...[
                 const SizedBox(height: 16),
                 LinearProgressIndicator(value: _downloadProgress),
                 const SizedBox(height: 8),
                 Text(
                   'Download: ${(_downloadProgress * 100).toStringAsFixed(0)}%',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+              if (_isDownloading && widget.info.requiresSignatureChange) ...[
+                const SizedBox(height: 16),
+                const LinearProgressIndicator(),
+                const SizedBox(height: 8),
+                Text(
+                  'Apertura del download in corso…',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
