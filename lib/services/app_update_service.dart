@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -69,9 +70,13 @@ class AppUpdateService {
 
       if (apkUrl.isEmpty) return null;
 
-      // 2. Read the locally stored confirmed version code.
-      final prefs = await SharedPreferences.getInstance();
-      final localVersionCode = prefs.getInt(_confirmedVersionKey) ?? 0;
+      // 2. Read the real build number of the currently installed app.
+      // (Not the SharedPreferences "confirmed" value below — that only
+      // records what was last downloaded, not what's actually running,
+      // so after a guided reinstall it would still show the old value
+      // and the popup would reappear pointlessly.)
+      final packageInfo = await PackageInfo.fromPlatform();
+      final localVersionCode = int.tryParse(packageInfo.buildNumber) ?? 0;
 
       // 3. Compare — only return info when remote is strictly newer.
       if (remoteVersionCode > localVersionCode) {
