@@ -1,0 +1,152 @@
+name: Pubblica APK Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: 'URL diretto del file APK da pubblicare'
+        required: true
+        type: string
+      tag:
+        description: 'Tag della release'
+        required: false
+        type: string
+        default: 'V13'
+      title:
+        description: 'Titolo della release'
+        required: false
+        type: string
+        default: 'Versione 13'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Verifica e pubblica APK
+    runs-on: ubuntu-latest
+    env:
+      # Gli input arrivano SOLO tramite variabili d'ambiente: non vengono mai
+      # interpolati direttamente dentro uno script "run:", per evitare
+      # command injection da parte di chi lancia il workflow_dispatch.
+      APK_URL: ${{ inputs.apk_url }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_TITLE: ${{ inputs.title }}
+      APK_FILE: Team-Ragnarok-asd-APP.21.apk
+      PREVIOUS_RELEASE_TAG: V12
+      PREVIOUS_APK_FILE: previous-release.apk
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout codice
+        uses: actions/checkout@v4
+
+      - name: Scarica APK
+        run: |
+          curl -L --fail --max-time 300 -o "$APK_FILE" "$APK_URL"
+
+      - name: Verifica dimensione APK (> 50MB)
+        run: |
+          size=$(stat -c%s "$APK_FILE")
+          min_size=$((50 * 1024 * 1024))
+          echo "Dimensione APK: $size bytes (minimo richiesto: $min_size bytes)"
+          if [ "$size" -le "$min_size" ]; then
+            echo "::error::APK troppo piccolo: $size bytes (richiesti > 50MB)"
+            exit 1
+          fi
+
+      - name: Verifica integrità archivio ZIP
+        run: unzip -t "$APK_FILE"
+
+      - name: Individua Android build-tools
+        id: buildtools
+        run: |
+          dir=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -n1)
+          echo "Uso build-tools: $dir"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      - name: Ispeziona APK con aapt2 (versionCode, package, permessi)
+        run: |
+          AAPT2="${{ steps.buildtools.outputs.dir }}aapt2"
+
+          echo "===== aapt2 dump badging ====="
+          "$AAPT2" dump badging "$APK_FILE" | tee aapt_badging.txt
+
+          echo ""
+          echo "===== aapt2 dump permissions ====="
+          "$AAPT2" dump permissions "$APK_FILE" | tee aapt_permissions.txt
+
+          echo ""
+          echo "===== Riepilogo ====="
+          version_code=$(grep -oP "versionCode='\K[^']+" aapt_badging.txt || echo "N/D")
+          package_name=$(grep -oP "package: name='\K[^']+" aapt_badging.txt || echo "N/D")
+          echo "versionCode: $version_code"
+          echo "package: $package_name"
+          if grep -q "REQUEST_DELETE_PACKAGES" aapt_permissions.txt; then
+            echo "Permesso REQUEST_DELETE_PACKAGES: presente"
+          else
+            echo "Permesso REQUEST_DELETE_PACKAGES: assente"
+          fi
+
+      - name: Fingerprint certificato APK nuovo (apksigner)
+        id: newcert
+        run: |
+          APKSIGNER="${{ steps.buildtools.outputs.dir }}apksigner"
+
+          echo "===== apksigner verify --print-certs (nuovo APK) ====="
+          "$APKSIGNER" verify --print-certs "$APK_FILE" | tee apksigner_new.txt
+
+          fingerprint=$(grep -m1 "SHA-256 digest" apksigner_new.txt \
+            | awk -F': ' '{print $2}' | tr -d ' ' | tr 'A-F' 'a-f')
+
+          if [ -z "$fingerprint" ]; then
+            echo "::error::Impossibile estrarre il fingerprint SHA-256 del certificato del nuovo APK"
+            exit 1
+          fi
+
+          echo "Fingerprint SHA-256 (nuovo APK): $fingerprint"
+          echo "sha256=$fingerprint" >> "$GITHUB_OUTPUT"
+
+      - name: Scarica APK della release precedente (V12)
+        run: |
+          gh release download "$PREVIOUS_RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "*.apk" \
+            --output "$PREVIOUS_APK_FILE"
+
+      - name: Fingerprint certificato APK precedente (apksigner)
+        id: oldcert
+        run: |
+          APKSIGNER="${{ steps.buildtools.outputs.dir }}apksigner"
+
+          echo "===== apksigner verify --print-certs (APK release $PREVIOUS_RELEASE_TAG) ====="
+          "$APKSIGNER" verify --print-certs "$PREVIOUS_APK_FILE" | tee apksigner_old.txt
+
+          fingerprint=$(grep -m1 "SHA-256 digest" apksigner_old.txt \
+            | awk -F': ' '{print $2}' | tr -d ' ' | tr 'A-F' 'a-f')
+
+          if [ -z "$fingerprint" ]; then
+            echo "::error::Impossibile estrarre il fingerprint SHA-256 del certificato dell'APK della release $PREVIOUS_RELEASE_TAG"
+            exit 1
+          fi
+
+          echo "Fingerprint SHA-256 (release $PREVIOUS_RELEASE_TAG): $fingerprint"
+          echo "sha256=$fingerprint" >> "$GITHUB_OUTPUT"
+
+      - name: Confronta i certificati di firma
+        run: |
+          new="${{ steps.newcert.outputs.sha256 }}"
+          old="${{ steps.oldcert.outputs.sha256 }}"
+          echo "Nuovo APK:            $new"
+          echo "Release $PREVIOUS_RELEASE_TAG (attuale in produzione): $old"
+          if [ "$new" != "$old" ]; then
+            echo "::error::Il certificato di firma del nuovo APK NON coincide con quello della release $PREVIOUS_RELEASE_TAG. Pubblicazione annullata per evitare un aggiornamento che Android rifiuterebbe."
+            exit 1
+          fi
+          echo "I certificati coincidono: si puo' procedere con la pubblicazione."
+
+      - name: Crea la release e allega l'APK
+        run: |
+          gh release create "$RELEASE_TAG" "$APK_FILE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$RELEASE_TITLE" \
+            --notes "Release pubblicata automaticamente dal workflow publish-apk-release. Certificato di firma verificato contro la release $PREVIOUS_RELEASE_TAG."
