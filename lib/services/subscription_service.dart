@@ -30,20 +30,27 @@ class SubscriptionService {
 
   /// Fetches ALL active subscription plans from `custom_subscription_plans`
   /// and returns them as a unified list suitable for the Satispay confirmation dropdown.
-  /// Each item has keys: 'name' (String), 'price' (double).
+  /// Each item has keys: 'name' (String), 'price' (double), plus 'id',
+  /// 'is_unlimited', 'entry_count', 'duration_months' for callers (e.g. the
+  /// Satispay plan-selection screen) that need more than name/price.
+  /// Existing callers that only read 'name'/'price' are unaffected.
   static Future<List<Map<String, dynamic>>> getAllPlansForSatispay() async {
     try {
       final customResponse = await _supabase
           .from('custom_subscription_plans')
-          .select('name, amount')
+          .select('id, name, amount, is_unlimited, entry_count, duration_months')
           .eq('is_active', true)
           .order('amount');
 
       final List<Map<String, dynamic>> result = [];
       for (final row in customResponse) {
         result.add({
+          'id': row['id'] as String,
           'name': row['name'] as String,
           'price': (row['amount'] as num).toDouble(),
+          'is_unlimited': row['is_unlimited'] as bool? ?? false,
+          'entry_count': (row['entry_count'] as num?)?.toInt(),
+          'duration_months': (row['duration_months'] as num?)?.toInt() ?? 1,
         });
       }
 
@@ -466,6 +473,13 @@ class SubscriptionService {
     required String description,
     String? discipline,
     String? discipline2,
+    // 🆕 OPTIONAL — both default to null, which preserves today's behaviour
+    // exactly (active-profile beneficiary, confirmed_at = now). Used by
+    // PaidIntentsService to activate a subscription on behalf of a payment
+    // that may have been confirmed hours ago and/or for a profile that is
+    // no longer the "active" one in this session.
+    String? beneficiaryProfileIdOverride,
+    DateTime? paidAt,
   }) async {
     if (_isProcessing) {
       print('⚠️ DEBUG: Payment already processing, skipping...');
@@ -474,18 +488,30 @@ class SubscriptionService {
     _isProcessing = true;
 
     try {
-      // 🔥 CHILD PROFILE CONTEXT: Determine the actual beneficiary user ID
-      final isChildActive = ChildProfileService.isChildProfileActive;
-      final childProfileId = ChildProfileService.activeChildProfileId;
-
       // The authenticated adult is always the payer
       final adultUserId = _supabase.auth.currentUser?.id;
       if (adultUserId == null) throw Exception('User not authenticated');
 
+      // 🔥 CHILD PROFILE CONTEXT: Determine the actual beneficiary user ID.
+      // When beneficiaryProfileIdOverride is provided, it fully determines
+      // the beneficiary (adult if it matches the authenticated user, child
+      // otherwise) instead of the in-memory "active profile".
+      final bool isChildActive;
+      final String? childProfileId;
+      if (beneficiaryProfileIdOverride != null) {
+        final overrideIsChild = beneficiaryProfileIdOverride != adultUserId;
+        isChildActive = overrideIsChild;
+        childProfileId = overrideIsChild ? beneficiaryProfileIdOverride : null;
+      } else {
+        isChildActive = ChildProfileService.isChildProfileActive;
+        childProfileId = ChildProfileService.activeChildProfileId;
+      }
+
       // The beneficiary is either the child or the adult
-      final beneficiaryUserId = isChildActive && childProfileId != null
-          ? childProfileId
-          : adultUserId;
+      final beneficiaryUserId = beneficiaryProfileIdOverride ??
+          (isChildActive && childProfileId != null
+              ? childProfileId
+              : adultUserId);
 
       print(
         '🔍 DEBUG: isChildActive=$isChildActive, beneficiary=$beneficiaryUserId',
@@ -614,10 +640,20 @@ class SubscriptionService {
       String? minorNote;
       if (isChildActive && childProfileId != null) {
         try {
-          final childProfile =
-              await ChildProfileService.getActiveChildProfile();
+          final childProfile = beneficiaryProfileIdOverride != null
+              // Override path: fetch the specific child profile by id rather
+              // than relying on the in-memory "active profile" (which may not
+              // match when this runs from a background reconciliation pass).
+              ? await _supabase
+                  .from('child_profiles')
+                  .select('*')
+                  .eq('id', childProfileId)
+                  .maybeSingle()
+              : await ChildProfileService.getActiveChildProfile();
           if (childProfile != null) {
-            minorNote = ChildProfileService.buildMinorNote(childProfile);
+            minorNote = ChildProfileService.buildMinorNote(
+              Map<String, dynamic>.from(childProfile),
+            );
             print('🔍 DEBUG: Minor note for receipt: $minorNote');
           }
         } catch (e) {
@@ -779,7 +815,7 @@ class SubscriptionService {
           'amount': amount,
           'payment_method': paymentMethod,
           'status': 'confirmed',
-          'confirmed_at': DateTime.now().toIso8601String(),
+          'confirmed_at': (paidAt ?? DateTime.now()).toIso8601String(),
           'batch_transaction_id': uniqueTxId,
         };
 

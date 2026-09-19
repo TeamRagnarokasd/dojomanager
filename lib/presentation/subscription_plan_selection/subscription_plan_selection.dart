@@ -13,10 +13,18 @@ import '../../services/auth_service.dart';
 import '../../services/child_profile_service.dart';
 import '../../services/payment_service.dart';
 import '../../services/realtime_notification_service.dart';
+import '../../services/subscription_service.dart';
 import './widgets/subscription_option_card_widget.dart';
 
 class SubscriptionPlanSelection extends StatefulWidget {
-  const SubscriptionPlanSelection({Key? key}) : super(key: key);
+  /// Optional: when set to 'satispay', the screen shows the Satispay plan
+  /// list (all active custom_subscription_plans, via
+  /// SubscriptionService.getAllPlansForSatispay) and taps create a Satispay
+  /// payment intent instead of launching the SumUp flow. Defaults to null,
+  /// which is today's SumUp behaviour, unchanged.
+  final String? provider;
+
+  const SubscriptionPlanSelection({Key? key, this.provider}) : super(key: key);
 
   @override
   State<SubscriptionPlanSelection> createState() =>
@@ -53,6 +61,13 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   // Standard plans loaded from Supabase (ONLY source of truth — no hardcoded fallback)
   List<Map<String, dynamic>> _standardPlans = [];
   bool _isLoadingStandardPlans = true;
+
+  // 🆕 SATISPAY MODE (widget.provider == 'satispay'): separate plan list and
+  // loading/launch state, entirely isolated from the SumUp flow above.
+  bool get _isSatispayMode => widget.provider == 'satispay';
+  List<Map<String, dynamic>> _satispayPlans = [];
+  bool _isLoadingSatispayPlans = false;
+  String? _launchingSatispayPlanId;
 
   // Returns the active plan list: always from Supabase
   List<Map<String, dynamic>> get _activePlans {
@@ -156,12 +171,187 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (_isSatispayMode) {
+      // Satispay entry point: go straight to the plan list, load only the
+      // Satispay-specific plan list, skip the SumUp/admin data loads below.
+      _showSubscriptionOptions = true;
+      _isLoadingEnrollmentStatus = false;
+      _loadSatispayPlans();
+      _loadChildProfileContext();
+      return;
+    }
     _checkEnrollmentStatus();
     _loadCustomPlans();
     _loadStandardPlans();
     _checkPrincipalAdminStatus();
     _subscribeToRealtimeChanges();
     _loadChildProfileContext();
+  }
+
+  /// 🆕 SATISPAY MODE: loads the exact same plan set shown today in the
+  /// Satispay confirmation dropdown (SubscriptionService.getAllPlansForSatispay
+  /// — all active custom_subscription_plans, conventions and annual
+  /// registration included), so the list is identical to today's.
+  Future<void> _loadSatispayPlans() async {
+    if (!mounted) return;
+    setState(() => _isLoadingSatispayPlans = true);
+    try {
+      final plans = await SubscriptionService.getAllPlansForSatispay();
+      if (!mounted) return;
+      setState(() {
+        _satispayPlans = plans;
+        _isLoadingSatispayPlans = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _satispayPlans = [];
+        _isLoadingSatispayPlans = false;
+      });
+    }
+  }
+
+  /// 🆕 SATISPAY MODE: maps a raw getAllPlansForSatispay() row into the map
+  /// shape SubscriptionOptionCardWidget expects.
+  Map<String, dynamic> _toSatispayCardPlan(Map<String, dynamic> plan) {
+    final name = plan['name'] as String? ?? '';
+    final price = (plan['price'] as num?)?.toDouble() ?? 0.0;
+    final isUnlimited = plan['is_unlimited'] as bool? ?? false;
+    final entryCount = plan['entry_count'] as int?;
+    final durationMonths = plan['duration_months'] as int? ?? 1;
+    final lower = name.toLowerCase();
+    final isAnnual = lower.contains('iscrizione') || lower.contains('annuale');
+
+    String frequency;
+    if (isAnnual) {
+      frequency = 'Annuale';
+    } else if (isUnlimited) {
+      frequency = entryCount != null ? '$entryCount ingressi' : 'Senza limite';
+    } else {
+      frequency = durationMonths == 1 ? 'Mensile' : '$durationMonths mesi';
+    }
+
+    return {
+      'id': plan['id'],
+      'title': name,
+      'price': price,
+      'frequency': frequency,
+      'classesPerWeek': 0,
+      'entryBased': isUnlimited && entryCount != null,
+      'entryCount': entryCount ?? 0,
+      'color': _getColorForPlanName(name),
+    };
+  }
+
+  /// 🆕 SATISPAY MODE: tapping a plan creates a Satispay payment intent via
+  /// the 'satispay/create-payment' Edge Function and opens the redirect URL
+  /// in the external browser. isPaymentPending/pendingPaymentMethod are
+  /// intentionally NOT set — the old "did you pay?" dialog must not appear
+  /// for this flow; activation happens automatically via PaidIntentsService.
+  /// On failure, shows a message and offers (asks, doesn't auto-switch)
+  /// today's fixed-link Satispay flow as a fallback.
+  Future<void> _launchSatispayForPlan(Map<String, dynamic> rawPlan) async {
+    final planId = rawPlan['id'] as String?;
+    final planName = rawPlan['name'] as String? ?? '';
+    if (planId == null || planId.isEmpty) {
+      await _offerFixedSatispayLinkFallback();
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _launchingSatispayPlanId = planId);
+
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'satispay/create-payment',
+        body: {
+          'plan_id': planId,
+          'beneficiary_profile_id': ChildProfileService.getActiveUserId(),
+          'redirect_url':
+              'https://teamragnarokasd.github.io/dojomanager/payment-done.html',
+        },
+      );
+
+      final data = response.data;
+      final redirectUrl =
+          data is Map ? data['redirect_url'] as String? : null;
+
+      if (redirectUrl == null || redirectUrl.isEmpty) {
+        throw Exception('Missing redirect_url in create-payment response');
+      }
+
+      final opened = await launchUrl(
+        Uri.parse(redirectUrl),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened) {
+        throw Exception('launchUrl returned false');
+      }
+    } catch (e) {
+      print('❌ Satispay create-payment failed for plan "$planName": $e');
+      await _offerFixedSatispayLinkFallback();
+    } finally {
+      if (mounted) {
+        setState(() => _launchingSatispayPlanId = null);
+      }
+    }
+  }
+
+  /// 🆕 SATISPAY MODE fallback: shows a message explaining the new flow
+  /// couldn't start, and — only if the user explicitly agrees — reproduces
+  /// today's fixed-link Satispay flow (same URL and SharedPreferences flags
+  /// as sumup_payment_options_widget._launchSatispayUrl), so nothing is
+  /// switched to the old confirm-by-hand flow without the user choosing it.
+  Future<void> _offerFixedSatispayLinkFallback() async {
+    if (!mounted) return;
+    final useOldFlow = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: AppTheme.darkTheme.cardColor,
+            title: Text(
+              'Pagamento non avviato',
+              style: AppTheme.darkTheme.textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            content: Text(
+              'Non è stato possibile avviare il pagamento Satispay per questo '
+              'piano. Vuoi provare con il link diretto di Satispay?',
+              style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
+                height: 1.4,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(
+                  'common.cancel'.tr(),
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text('Usa link diretto'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!useOldFlow) return;
+
+    try {
+      const satispayUrl =
+          'https://www.satispay.com/app/pay/shops/58875f70-d796-4596-a2f6-12fe91a8c202';
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isPaymentPending', true);
+      await prefs.setString('pendingPaymentMethod', 'satispay');
+      await launchUrl(
+        Uri.parse(satispayUrl),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      // Nothing more we can do — the user can still open Satispay manually.
+    }
   }
 
   @override
@@ -188,6 +378,9 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
 
   void _refreshAllPlans() {
     if (!mounted) return;
+    // Satispay mode has its own isolated plan list/loader — skip the SumUp
+    // (standard + custom plans) refresh entirely.
+    if (_isSatispayMode) return;
     setState(() {
       _isLoadingStandardPlans = true;
       _isLoadingCustomPlans = true;
@@ -1437,6 +1630,24 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
         (selectedPlan['price'] as num?)?.toDouble() ?? 0.0,
       );
       await prefs.setString('pendingPaymentMethod', 'sumup');
+
+      // 🆕 Best-effort bookkeeping row for the "click" — no auto-activation
+      // for SumUp, this is only used for tracking. Never blocks the flow.
+      try {
+        final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+        if (currentUserId != null) {
+          await Supabase.instance.client.from('payment_intents').insert({
+            'user_id': currentUserId,
+            'provider': 'sumup',
+            'custom_plan_id': selectedPlan['id'],
+            'plan_name': planTitle,
+            'amount': (selectedPlan['price'] as num?)?.toDouble() ?? 0.0,
+            'beneficiary_profile_id': ChildProfileService.getActiveUserId(),
+          });
+        }
+      } catch (_) {
+        // Ignore — this is only a best-effort click record.
+      }
     } catch (error) {
       print('Error launching SumUp URL: $error');
       final prefs = await SharedPreferences.getInstance();
@@ -1659,7 +1870,11 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
             color: AppTheme.darkTheme.colorScheme.onSurface,
           ),
           onPressed: () {
-            if (_showSubscriptionOptions) {
+            if (_isSatispayMode) {
+              // Satispay entry point always starts on the plan list — a
+              // single back tap should just leave the screen.
+              Navigator.pop(context);
+            } else if (_showSubscriptionOptions) {
               setState(() {
                 _showSubscriptionOptions = false;
               });
@@ -1685,10 +1900,66 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
             )
           : AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
-              child: _showSubscriptionOptions
-                  ? _buildSubscriptionOptionsView()
-                  : _buildInitialView(),
+              child: _isSatispayMode
+                  ? _buildSatispayPlansView()
+                  : (_showSubscriptionOptions
+                      ? _buildSubscriptionOptionsView()
+                      : _buildInitialView()),
             ),
+    );
+  }
+
+  /// 🆕 SATISPAY MODE view: a plain grid of Satispay plans, isolated from
+  /// _buildSubscriptionOptionsView (SumUp/admin) so that view is untouched.
+  Widget _buildSatispayPlansView() {
+    if (_isLoadingSatispayPlans) {
+      return Center(
+        key: const ValueKey('satispay-loading'),
+        child: CircularProgressIndicator(
+          color: AppTheme.darkTheme.colorScheme.secondary,
+        ),
+      );
+    }
+
+    if (_satispayPlans.isEmpty) {
+      return Center(
+        key: const ValueKey('satispay-empty'),
+        child: Padding(
+          padding: EdgeInsets.all(6.w),
+          child: Text(
+            'Nessun piano disponibile al momento.',
+            textAlign: TextAlign.center,
+            style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
+              color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return GridView.builder(
+      key: const ValueKey('satispay-plans'),
+      padding: EdgeInsets.all(4.w),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 3.w,
+        mainAxisSpacing: 3.w,
+        childAspectRatio: 0.78,
+      ),
+      itemCount: _satispayPlans.length,
+      itemBuilder: (context, index) {
+        final rawPlan = _satispayPlans[index];
+        final cardPlan = _toSatispayCardPlan(rawPlan);
+        final planId = rawPlan['id'] as String?;
+        final isLaunching = _launchingSatispayPlanId == planId;
+        return SubscriptionOptionCardWidget(
+          plan: cardPlan,
+          isLoading: isLaunching,
+          onTap: (_launchingSatispayPlanId != null)
+              ? () {}
+              : () => _launchSatispayForPlan(rawPlan),
+        );
+      },
     );
   }
 

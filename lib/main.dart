@@ -4,6 +4,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -17,6 +18,7 @@ import './services/android_install_intent.dart';
 import './services/android_uninstall_intent.dart';
 import './services/auth_service.dart';
 import './services/locale_service.dart';
+import './services/paid_intents_service.dart';
 import './services/realtime_notification_service.dart';
 import './services/supabase_service.dart';
 import './services/child_profile_service.dart';
@@ -172,6 +174,9 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
     if (state == AppLifecycleState.resumed) {
       print('📱 App resumed from background');
       _handleAppResume();
+      // 🆕 Reconcile Satispay payment_intents on every foreground return —
+      // this is how activation happens even hours after the payment.
+      _runPaidIntentsCheck();
     } else if (state == AppLifecycleState.paused) {
       print('📱 App moved to background');
     }
@@ -484,6 +489,9 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
       final userId = _authService.currentUser?.id;
       if (userId != null) {
         RealtimeNotificationService.instance.subscribe(userId);
+        // 🆕 Reconcile any Satispay payment_intents on startup for an
+        // already-authenticated session (e.g. app was killed and reopened).
+        _runPaidIntentsCheck();
       }
 
       // React to future sign-in / sign-out events
@@ -494,6 +502,8 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
               final uid = data.session?.user.id;
               if (uid != null) {
                 RealtimeNotificationService.instance.subscribe(uid);
+                // 🆕 Reconcile right after login too.
+                _runPaidIntentsCheck();
               }
             } else if (data.event == AuthChangeEvent.signedOut) {
               RealtimeNotificationService.instance.unsubscribe();
@@ -508,6 +518,29 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
       );
     } catch (e) {
       debugPrint('❌ Failed to initialize realtime subscription: $e');
+    }
+  }
+
+  /// 🆕 Reconciles any pending/matched Satispay payment_intents and activates
+  /// the corresponding subscription automatically. Safe to call repeatedly —
+  /// PaidIntentsService itself guards against overlapping runs — and safe on
+  /// any platform (web included), since it relies only on backend data.
+  /// Shows an "Abbonamento attivato" toast only when something was actually
+  /// activated by this call.
+  Future<void> _runPaidIntentsCheck() async {
+    try {
+      final activated = await PaidIntentsService.instance.processPaidIntents();
+      if (activated > 0) {
+        Fluttertoast.showToast(
+          msg: 'Abbonamento attivato',
+          toastLength: Toast.LENGTH_LONG,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.green,
+          textColor: Colors.white,
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ PaidIntents check failed: $e');
     }
   }
 

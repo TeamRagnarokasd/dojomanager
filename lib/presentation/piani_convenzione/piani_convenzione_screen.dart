@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_export.dart';
 import '../../services/auth_service.dart';
+import '../../services/child_profile_service.dart';
 import '../../services/payment_service.dart';
 import '../subscription_plan_selection/widgets/subscription_option_card_widget.dart';
 
@@ -187,6 +188,26 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
         await prefs.setDouble('pendingPlanAmount', planAmount);
       }
       await prefs.setString('pendingPaymentMethod', 'sumup');
+
+      // 🆕 Best-effort bookkeeping row for the "click" — no auto-activation
+      // for SumUp, this is only used for tracking. Never blocks the flow.
+      try {
+        final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+        if (currentUserId != null) {
+          await Supabase.instance.client.from('payment_intents').insert({
+            'user_id': currentUserId,
+            'provider': 'sumup',
+            'custom_plan_id': (planId != null && planId.isNotEmpty)
+                ? planId
+                : null,
+            'plan_name': planTitle,
+            'amount': planAmount ?? 0.0,
+            'beneficiary_profile_id': ChildProfileService.getActiveUserId(),
+          });
+        }
+      } catch (_) {
+        // Ignore — this is only a best-effort click record.
+      }
 
       HapticFeedback.lightImpact();
 

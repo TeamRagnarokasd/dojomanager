@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/app_export.dart';
 import '../../../services/child_profile_service.dart';
@@ -17,8 +15,6 @@ class SumUpPaymentOptionsWidget extends StatefulWidget {
 }
 
 class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
-  bool _isLoading = false;
-
   // 🆕 ENROLLMENT CHECK: Track if user has annual registration
   bool _hasAnnualRegistration = false;
   bool _isLoadingEnrollmentStatus = true;
@@ -53,6 +49,11 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
   }
 
   // 🔥 MODIFIED: Add enrollment warning for Satispay
+  // 🆕 Now routes to the in-app Satispay plan selection (provider intents +
+  // automatic activation) instead of the old fixed-link flow. The old
+  // isPaymentPending/pendingPaymentMethod flags are intentionally NOT set
+  // here anymore, since the confirmation dialog they used to trigger no
+  // longer applies to this flow.
   Future<void> _launchSatispayUrl() async {
     // 🎯 RULE: For Satispay, show warning popup if no annual registration
     if (!_hasAnnualRegistration) {
@@ -65,68 +66,11 @@ class _SumUpPaymentOptionsWidgetState extends State<SumUpPaymentOptionsWidget> {
     }
 
     if (!mounted) return;
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      const satispayUrl =
-          'https://www.satispay.com/app/pay/shops/58875f70-d796-4596-a2f6-12fe91a8c202';
-      final Uri uri = Uri.parse(satispayUrl);
-
-      // Set payment pending flag before launching
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isPaymentPending', true);
-      await prefs.setString('pendingPaymentMethod', 'satispay');
-
-      // Show loading for better UX
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-        // Clear pending flag if launch failed
-        await prefs.setBool('isPaymentPending', false);
-
-        if (mounted) {
-          Fluttertoast.showToast(
-            msg: 'payment.satispay_open_error'.tr(),
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.BOTTOM,
-            backgroundColor: Colors.red,
-            textColor: Colors.white,
-          );
-        }
-      } else {
-        if (mounted) {
-          Fluttertoast.showToast(
-            msg: 'payment.satispay_redirect'.tr(),
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.BOTTOM,
-            backgroundColor: AppTheme.lightTheme.colorScheme.primary,
-            textColor: Colors.white,
-          );
-        }
-      }
-    } catch (e) {
-      // Clear pending flag on error
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isPaymentPending', false);
-
-      if (mounted) {
-        Fluttertoast.showToast(
-          msg: 'payment.redirect_error'.tr(namedArgs: {'detail': e.toString()}),
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.BOTTOM,
-          backgroundColor: Colors.red,
-          textColor: Colors.white,
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
+    Navigator.pushNamed(
+      context,
+      AppRoutes.subscriptionPlanSelection,
+      arguments: 'satispay',
+    );
   }
 
   // 🆕 DIALOG: Show warning for Satispay (allows continuation)

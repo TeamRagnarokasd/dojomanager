@@ -97,7 +97,15 @@ class AppRoutes {
       instructorDashboard: (context) => const InstructorMainDashboard(),
       instructorMainDashboard: (context) => const InstructorMainDashboard(),
       adminDisciplineManagement: (context) => const AdminDisciplineManagement(),
-      subscriptionPlanSelection: (context) => const SubscriptionPlanSelection(),
+      subscriptionPlanSelection: (context) {
+        // Optional String argument: e.g. Navigator.pushNamed(context,
+        // AppRoutes.subscriptionPlanSelection, arguments: 'satispay').
+        // With no arguments (today's SumUp entry point) this stays null and
+        // the screen behaves exactly as before.
+        final args = ModalRoute.of(context)?.settings.arguments;
+        final provider = args is String ? args : null;
+        return SubscriptionPlanSelection(provider: provider);
+      },
       adminEventManagement: (context) => const AdminEventManagement(),
       instructorDirectory: (context) => const InstructorDirectory(),
       receiptManagement: (context) => const ReceiptManagement(),
