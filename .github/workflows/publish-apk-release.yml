@@ -34,6 +34,7 @@ jobs:
       RELEASE_TITLE: ${{ inputs.title }}
       APK_FILE: Team-Ragnarok-asd-APP.21.apk
       PREVIOUS_RELEASE_TAG: V12
+      PREVIOUS_APK_DIR: prev_apk
       PREVIOUS_APK_FILE: previous-release.apk
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -108,10 +109,30 @@ jobs:
 
       - name: Scarica APK della release precedente (V12)
         run: |
+          rm -rf "$PREVIOUS_APK_DIR"
+          mkdir -p "$PREVIOUS_APK_DIR"
+
           gh release download "$PREVIOUS_RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --pattern "*.apk" \
-            --output "$PREVIOUS_APK_FILE"
+            --dir "$PREVIOUS_APK_DIR"
+
+          echo "File .apk trovati nella release $PREVIOUS_RELEASE_TAG:"
+          ls -1 "$PREVIOUS_APK_DIR"
+
+          selected=$(find "$PREVIOUS_APK_DIR" -maxdepth 1 -name '*.apk' \
+            -iname '*Team-Ragnarok-asd-APP*' | head -n1)
+          if [ -z "$selected" ]; then
+            selected=$(find "$PREVIOUS_APK_DIR" -maxdepth 1 -name '*.apk' | head -n1)
+          fi
+
+          if [ -z "$selected" ]; then
+            echo "::error::Nessun file .apk trovato nella release $PREVIOUS_RELEASE_TAG"
+            exit 1
+          fi
+
+          echo "APK selezionato: $selected"
+          cp "$selected" "$PREVIOUS_APK_FILE"
 
       - name: Fingerprint certificato APK precedente (apksigner)
         id: oldcert
