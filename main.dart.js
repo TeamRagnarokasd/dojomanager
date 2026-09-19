@@ -106997,12 +106997,12 @@ l=A.bT(A.aw(m),A.ax(m),1,0,0,0,0)
 k=A.bT(A.aw(m),A.ax(m)+1,1,0,0,0,0)
 c=n.a
 s=7
-return A.i(c.V("payment_confirmations").aI(0,"amount, confirmed_at").a1("status","confirmed"),$async$ES)
+return A.i(c.V("payment_confirmations").aI(0,"amount, created_at").a1("status","confirmed"),$async$ES)
 case 7:j=a1
 c=c.V("payment_confirmations").aI(0,"amount").a1("status","confirmed")
-c=A.dE(c.e3(c.e4("confirmed_at","gte."+l.bY())),c.$ti.c)
+c=A.dE(c.e3(c.e4("created_at","gte."+l.bY())),c.$ti.c)
 s=8
-return A.i(A.dE(c.e3(c.e4("confirmed_at","lt."+k.bY())),c.$ti.c),$async$ES)
+return A.i(A.dE(c.e3(c.e4("created_at","lt."+k.bY())),c.$ti.c),$async$ES)
 case 8:i=a1
 h=0
 g=0
