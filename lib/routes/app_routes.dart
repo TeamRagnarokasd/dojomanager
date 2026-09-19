@@ -30,6 +30,8 @@ import '../presentation/student_progress/student_progress_screen.dart';
 import '../presentation/child_profiles/child_profiles_screen.dart';
 import '../presentation/admin_child_profile/admin_child_profile_screen.dart';
 import '../presentation/piani_convenzione/piani_convenzione_screen.dart';
+import '../presentation/administration_asd/administration_asd_screen.dart';
+import '../presentation/cash_register/cash_register_screen.dart';
 
 class AppRoutes {
   // Global RouteObserver — add to MaterialApp.navigatorObservers
@@ -75,6 +77,8 @@ class AppRoutes {
   static const String childProfiles = '/child-profiles';
   static const String adminChildProfile = '/admin-child-profile';
   static const String pianiConvenzione = '/piani-convenzione';
+  static const String administrationAsd = '/amministrazione-asd';
+  static const String cashRegister = '/registro-cassa';
 
   static Map<String, WidgetBuilder> get routes {
     return {
@@ -124,6 +128,8 @@ class AppRoutes {
       childProfiles: (context) => const ChildProfilesScreen(),
       adminChildProfile: (context) => const AdminChildProfileScreen(),
       pianiConvenzione: (context) => const PianiConvenzioneScreen(),
+      administrationAsd: (context) => const AdministrationAsdScreen(),
+      cashRegister: (context) => const CashRegisterScreen(),
     };
   }
 }
