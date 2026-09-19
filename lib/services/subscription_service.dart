@@ -31,14 +31,16 @@ class SubscriptionService {
   /// Fetches ALL active subscription plans from `custom_subscription_plans`
   /// and returns them as a unified list suitable for the Satispay confirmation dropdown.
   /// Each item has keys: 'name' (String), 'price' (double), plus 'id',
-  /// 'is_unlimited', 'entry_count', 'duration_months' for callers (e.g. the
-  /// Satispay plan-selection screen) that need more than name/price.
-  /// Existing callers that only read 'name'/'price' are unaffected.
+  /// 'is_unlimited', 'entry_count', 'duration_months', 'is_convenzione' for
+  /// callers (e.g. the Satispay plan-selection screen) that need more than
+  /// name/price. Existing callers that only read 'name'/'price' are unaffected.
   static Future<List<Map<String, dynamic>>> getAllPlansForSatispay() async {
     try {
       final customResponse = await _supabase
           .from('custom_subscription_plans')
-          .select('id, name, amount, is_unlimited, entry_count, duration_months')
+          .select(
+            'id, name, amount, is_unlimited, entry_count, duration_months, is_convenzione',
+          )
           .eq('is_active', true)
           .order('amount');
 
@@ -51,6 +53,7 @@ class SubscriptionService {
           'is_unlimited': row['is_unlimited'] as bool? ?? false,
           'entry_count': (row['entry_count'] as num?)?.toInt(),
           'duration_months': (row['duration_months'] as num?)?.toInt() ?? 1,
+          'is_convenzione': row['is_convenzione'] as bool? ?? false,
         });
       }
 

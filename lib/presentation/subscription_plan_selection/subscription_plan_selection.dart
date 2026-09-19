@@ -68,6 +68,16 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   List<Map<String, dynamic>> _satispayPlans = [];
   bool _isLoadingSatispayPlans = false;
   String? _launchingSatispayPlanId;
+  // Whether the "Abbonamenti in convenzione" sub-list is shown instead of
+  // the main Satispay plan list (same split as SumUp's separate
+  // PianiConvenzioneScreen, but kept inside this isolated Satispay view).
+  bool _showSatispayConvenzioni = false;
+
+  // Non-convenzione / convenzione split of the raw Satispay plan list.
+  List<Map<String, dynamic>> get _satispayMainPlans =>
+      _satispayPlans.where((p) => p['is_convenzione'] != true).toList();
+  List<Map<String, dynamic>> get _satispayConvenzionePlans =>
+      _satispayPlans.where((p) => p['is_convenzione'] == true).toList();
 
   // Returns the active plan list: always from Supabase
   List<Map<String, dynamic>> get _activePlans {
@@ -174,10 +184,13 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     if (_isSatispayMode) {
       // Satispay entry point: go straight to the plan list, load only the
       // Satispay-specific plan list, skip the SumUp/admin data loads below.
+      // Enrollment status IS checked here (same rule as SumUp — see
+      // _checkEnrollmentStatus), so _isLoadingEnrollmentStatus is left at
+      // its default (true) until that check resolves.
       _showSubscriptionOptions = true;
-      _isLoadingEnrollmentStatus = false;
       _loadSatispayPlans();
       _loadChildProfileContext();
+      _checkEnrollmentStatus();
       return;
     }
     _checkEnrollmentStatus();
@@ -1871,9 +1884,15 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
           ),
           onPressed: () {
             if (_isSatispayMode) {
-              // Satispay entry point always starts on the plan list — a
-              // single back tap should just leave the screen.
-              Navigator.pop(context);
+              if (_showSatispayConvenzioni) {
+                // Leave the convenzioni sub-list, back to the main Satispay
+                // plan list — a single back tap should not leave the screen.
+                setState(() => _showSatispayConvenzioni = false);
+              } else {
+                // Satispay entry point always starts on the plan list — a
+                // single back tap should just leave the screen.
+                Navigator.pop(context);
+              }
             } else if (_showSubscriptionOptions) {
               setState(() {
                 _showSubscriptionOptions = false;
@@ -1884,7 +1903,9 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
           },
         ),
         title: Text(
-          _showSubscriptionOptions ? 'Selezione Piano' : 'Team Ragnarok',
+          _isSatispayMode && _showSatispayConvenzioni
+              ? 'Piani in Convenzione'
+              : (_showSubscriptionOptions ? 'Selezione Piano' : 'Team Ragnarok'),
           style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w700,
             color: AppTheme.darkTheme.colorScheme.onSurface,
@@ -1909,7 +1930,124 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     );
   }
 
-  /// 🆕 SATISPAY MODE view: a plain grid of Satispay plans, isolated from
+  /// 🆕 SATISPAY MODE — same rule as SumUp's _handlePlanSelection: a plan
+  /// counts as the annual registration if its (derived) planType is
+  /// 'annual' or its title contains "iscrizione annuale". Satispay plans
+  /// have no explicit plan_type field, so it is derived the same way the
+  /// rest of this screen derives it for custom plans (name-based match).
+  bool _isSatispayAnnualRegistrationPlan(Map<String, dynamic> rawPlan) {
+    final name = (rawPlan['name'] as String? ?? '').toLowerCase();
+    final planType =
+        (name.contains('iscrizione') || name.contains('annuale'))
+            ? 'annual'
+            : 'monthly';
+    return planType == 'annual' || name.contains('iscrizione annuale');
+  }
+
+  /// 🆕 SATISPAY MODE: finds the annual registration plan across the full
+  /// Satispay plan list (main + convenzioni), for the "Acquista Iscrizione"
+  /// CTA in _showSatispayAnnualRegistrationRequiredDialog.
+  Map<String, dynamic>? _findSatispayAnnualPlan() {
+    for (final p in _satispayPlans) {
+      if (_isSatispayAnnualRegistrationPlan(p)) return p;
+    }
+    return null;
+  }
+
+  /// 🆕 SATISPAY MODE: same enrollment gate as SumUp — any plan that isn't
+  /// the annual registration requires _hasAnnualRegistration; otherwise
+  /// shows the "Non sei ancora iscritto!" dialog and starts no payment.
+  /// The annual registration itself is always purchasable. Applies to both
+  /// the main list and the convenzioni sub-list.
+  void _handleSatispayPlanTap(Map<String, dynamic> rawPlan) {
+    if (!_isSatispayAnnualRegistrationPlan(rawPlan) &&
+        !_hasAnnualRegistration) {
+      _showSatispayAnnualRegistrationRequiredDialog();
+      return;
+    }
+    _launchSatispayForPlan(rawPlan);
+  }
+
+  /// 🆕 SATISPAY MODE — mirrors _showAnnualRegistrationRequiredDialog
+  /// (SumUp) exactly in appearance/text, but its CTA launches the Satispay
+  /// payment for the annual plan instead of the SumUp flow.
+  void _showSatispayAnnualRegistrationRequiredDialog() {
+    final annualPlan = _findSatispayAnnualPlan();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.darkTheme.colorScheme.surface,
+        title: Row(
+          children: [
+            CustomIconWidget(
+              iconName: 'warning',
+              color: const Color(0xFFF39C12),
+              size: 28,
+            ),
+            SizedBox(width: 3.w),
+            Expanded(
+              child: Text(
+                'Non sei ancora iscritto!',
+                style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFFF39C12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Procedi prima all\'acquisto dell\'iscrizione annuale, dopo potrai scegliere il tuo piano di abbonamento.',
+          style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
+            color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'class_schedule.close_modal'.tr(),
+              style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
+                color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          if (annualPlan != null)
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                _launchSatispayForPlan(annualPlan);
+              },
+              icon: CustomIconWidget(
+                iconName: 'credit_card',
+                color: Colors.white,
+                size: 20,
+              ),
+              label: Text(
+                'Acquista Iscrizione',
+                style: AppTheme.darkTheme.textTheme.titleMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.darkTheme.colorScheme.secondary,
+                padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.5.h),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 🆕 SATISPAY MODE view: the main Satispay plan list (is_convenzione ==
+  /// false) or, when _showSatispayConvenzioni is true, the convenzioni-only
+  /// sub-list (is_convenzione == true) — same split as SumUp's separate
+  /// PianiConvenzioneScreen, same enrollment gate/banner, same Satispay
+  /// payment (_launchSatispayForPlan) for both. Isolated from
   /// _buildSubscriptionOptionsView (SumUp/admin) so that view is untouched.
   Widget _buildSatispayPlansView() {
     if (_isLoadingSatispayPlans) {
@@ -1921,45 +2059,148 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       );
     }
 
-    if (_satispayPlans.isEmpty) {
-      return Center(
-        key: const ValueKey('satispay-empty'),
-        child: Padding(
-          padding: EdgeInsets.all(6.w),
-          child: Text(
-            'Nessun piano disponibile al momento.',
-            textAlign: TextAlign.center,
-            style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
-              color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
+    final plans =
+        _showSatispayConvenzioni ? _satispayConvenzionePlans : _satispayMainPlans;
+
+    return Column(
+      key: ValueKey(
+        _showSatispayConvenzioni ? 'satispay-convenzioni' : 'satispay-main',
+      ),
+      children: [
+        // 🔒 ENROLLMENT GATE BANNER — same as SumUp's, shown on both the
+        // main list and the convenzioni sub-list.
+        if (!_isLoadingEnrollmentStatus && !_hasAnnualRegistration)
+          Padding(
+            padding: EdgeInsets.fromLTRB(4.w, 2.h, 4.w, 0),
+            child: Container(
+              padding: EdgeInsets.all(3.w),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.red.withValues(alpha: 0.6),
+                  width: 1.5,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.lock, color: Colors.red, size: 20),
+                      SizedBox(width: 2.w),
+                      Expanded(
+                        child: Text(
+                          'Iscrizione Annuale Richiesta',
+                          style:
+                              AppTheme.darkTheme.textTheme.titleSmall?.copyWith(
+                            color: Colors.red,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 0.8.h),
+                  Text(
+                    'Prima di acquistare un abbonamento devi acquistare l\'Iscrizione Annuale. Cerca il piano "Iscrizione Annuale" qui sotto.',
+                    style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
+                      color: Colors.red.shade200,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      );
-    }
 
-    return GridView.builder(
-      key: const ValueKey('satispay-plans'),
-      padding: EdgeInsets.all(4.w),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 3.w,
-        mainAxisSpacing: 3.w,
-        childAspectRatio: 0.78,
-      ),
-      itemCount: _satispayPlans.length,
-      itemBuilder: (context, index) {
-        final rawPlan = _satispayPlans[index];
-        final cardPlan = _toSatispayCardPlan(rawPlan);
-        final planId = rawPlan['id'] as String?;
-        final isLaunching = _launchingSatispayPlanId == planId;
-        return SubscriptionOptionCardWidget(
-          plan: cardPlan,
-          isLoading: isLaunching,
-          onTap: (_launchingSatispayPlanId != null)
-              ? () {}
-              : () => _launchSatispayForPlan(rawPlan),
-        );
-      },
+        // Clickable "Abbonamenti in convenzione" banner — only on the main
+        // list, same text/style as SumUp's.
+        if (!_showSatispayConvenzioni)
+          Padding(
+            padding: EdgeInsets.fromLTRB(4.w, 2.h, 4.w, 0),
+            child: GestureDetector(
+              onTap: () => setState(() => _showSatispayConvenzioni = true),
+              child: Container(
+                padding: EdgeInsets.all(3.w),
+                decoration: BoxDecoration(
+                  color: Colors.teal.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.teal.withValues(alpha: 0.5),
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.handshake_outlined,
+                      color: Colors.teal.shade300,
+                      size: 20,
+                    ),
+                    SizedBox(width: 2.w),
+                    Expanded(
+                      child: Text(
+                        'Abbonamenti in convenzione - Clicca qui per scoprirli',
+                        style: AppTheme.darkTheme.textTheme.bodySmall?.copyWith(
+                          color: Colors.teal.shade300,
+                          fontWeight: FontWeight.w600,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.arrow_forward_ios,
+                      color: Colors.teal.shade300,
+                      size: 14,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+        Expanded(
+          child: plans.isEmpty
+              ? Center(
+                  key: const ValueKey('satispay-empty'),
+                  child: Padding(
+                    padding: EdgeInsets.all(6.w),
+                    child: Text(
+                      'Nessun piano disponibile al momento.',
+                      textAlign: TextAlign.center,
+                      style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
+                        color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                )
+              : GridView.builder(
+                  key: const ValueKey('satispay-plans'),
+                  padding: EdgeInsets.all(4.w),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 3.w,
+                    mainAxisSpacing: 3.w,
+                    childAspectRatio: 0.78,
+                  ),
+                  itemCount: plans.length,
+                  itemBuilder: (context, index) {
+                    final rawPlan = plans[index];
+                    final cardPlan = _toSatispayCardPlan(rawPlan);
+                    final planId = rawPlan['id'] as String?;
+                    final isLaunching = _launchingSatispayPlanId == planId;
+                    return SubscriptionOptionCardWidget(
+                      plan: cardPlan,
+                      isLoading: isLaunching,
+                      onTap: (_launchingSatispayPlanId != null)
+                          ? () {}
+                          : () => _handleSatispayPlanTap(rawPlan),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 
