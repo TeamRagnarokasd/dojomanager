@@ -3,11 +3,25 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'subscription_service.dart';
 
-/// Reconciles Satispay `payment_intents` that were created up to a purchase
-/// flow ago and activates the corresponding subscription automatically,
-/// without requiring the user to answer "did you pay?" — the backend is the
-/// single source of truth, so this works even hours later and with no local
-/// data at all (safe to call on web too).
+/// Result of one subscription activation performed by [PaidIntentsService].
+///
+/// [stillValid] tells the caller whether the plan just activated is still
+/// within its validity window as of now (see [PaidIntentsService]'s expiry
+/// check), so it can choose the right confirmation message.
+class PaidIntentActivationResult {
+  const PaidIntentActivationResult({
+    required this.planName,
+    required this.stillValid,
+  });
+
+  final String planName;
+  final bool stillValid;
+}
+
+/// Reconciles Satispay `payment_intents` and activates the corresponding
+/// subscription automatically, without requiring the user to answer "did you
+/// pay?" — the backend is the single source of truth, so this works even
+/// hours later and with no local data at all (safe to call on web too).
 ///
 /// Every network call here is wrapped so that a failure simply leaves the
 /// intent as-is to be retried on the next call (app resume): nothing here
@@ -22,23 +36,28 @@ class PaidIntentsService {
   // startup call is still in flight).
   bool _isProcessing = false;
 
-  /// Looks at the current user's own `payment_intents` rows (provider
-  /// 'satispay', created in the last 24h), checks pending ones with Satispay,
-  /// and activates the subscription for any that have been matched/paid.
+  // When the last subscription activation actually created a
+  // payment_confirmations receipt. A database trigger discards a receipt
+  // that arrives within 60s of another one with the same customer name and
+  // amount, so consecutive activations wait at least 65s apart
+  // (see _waitForActivationSlot).
+  DateTime? _lastActivationAt;
+
+  /// Looks at the current user's own pending/matched Satispay
+  /// `payment_intents` rows, checks pending ones with Satispay, and
+  /// activates the subscription for any that have been matched/paid.
   ///
-  /// Returns the number of subscriptions actually activated in this call —
-  /// callers can use this to decide whether to show an "Abbonamento
-  /// attivato" toast.
-  Future<int> processPaidIntents() async {
-    if (_isProcessing) return 0;
+  /// Returns one [PaidIntentActivationResult] per subscription actually
+  /// activated in this call — callers can use this to decide which
+  /// confirmation toast(s) to show.
+  Future<List<PaidIntentActivationResult>> processPaidIntents() async {
+    if (_isProcessing) return [];
     _isProcessing = true;
-    var activatedCount = 0;
+    final results = <PaidIntentActivationResult>[];
 
     try {
       final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) return 0;
-
-      final since = DateTime.now().toUtc().subtract(const Duration(hours: 24));
+      if (userId == null) return [];
 
       List<Map<String, dynamic>> intents;
       try {
@@ -50,17 +69,17 @@ class PaidIntentsService {
             )
             .eq('user_id', userId)
             .eq('provider', 'satispay')
-            .gte('created_at', since.toIso8601String());
+            .inFilter('status', ['pending', 'matched']);
         intents = List<Map<String, dynamic>>.from(response as List);
       } catch (e) {
         debugPrint('⚠️ PaidIntentsService: could not fetch payment_intents: $e');
-        return 0;
+        return [];
       }
 
       for (final intent in intents) {
         try {
-          final activated = await _processSingleIntent(intent);
-          if (activated) activatedCount++;
+          final result = await _processSingleIntent(intent);
+          if (result != null) results.add(result);
         } catch (e) {
           debugPrint('⚠️ PaidIntentsService: error processing intent: $e');
         }
@@ -71,12 +90,26 @@ class PaidIntentsService {
       _isProcessing = false;
     }
 
-    return activatedCount;
+    return results;
   }
 
-  Future<bool> _processSingleIntent(Map<String, dynamic> intent) async {
+  /// Waits, if needed, so at least 65s have passed since the last receipt
+  /// this service created — see [_lastActivationAt].
+  Future<void> _waitForActivationSlot() async {
+    final last = _lastActivationAt;
+    if (last == null) return;
+    const minGap = Duration(seconds: 65);
+    final elapsed = DateTime.now().difference(last);
+    if (elapsed < minGap) {
+      await Future.delayed(minGap - elapsed);
+    }
+  }
+
+  Future<PaidIntentActivationResult?> _processSingleIntent(
+    Map<String, dynamic> intent,
+  ) async {
     final intentId = intent['id'] as String?;
-    if (intentId == null) return false;
+    if (intentId == null) return null;
 
     var status = intent['status'] as String?;
     final providerPaymentId = intent['provider_payment_id'] as String?;
@@ -99,11 +132,11 @@ class PaidIntentsService {
         debugPrint(
           '⚠️ PaidIntentsService: satispay/check failed for $intentId: $e',
         );
-        return false; // try again next time
+        return null; // try again next time
       }
     }
 
-    if (status != 'matched') return false;
+    if (status != 'matched') return null;
 
     // Only the first caller to successfully claim an intent gets non-null
     // data back — this guards against double-activation from overlapping
@@ -118,9 +151,9 @@ class PaidIntentsService {
       debugPrint(
         '⚠️ PaidIntentsService: claim_paid_intent failed for $intentId: $e',
       );
-      return false;
+      return null;
     }
-    if (claimResult == null) return false;
+    if (claimResult == null) return null;
 
     final claim = Map<String, dynamic>.from(claimResult as Map);
     final planName = claim['plan_name'] as String? ??
@@ -133,6 +166,12 @@ class PaidIntentsService {
         intent['beneficiary_profile_id'] as String?;
     final paidAtRaw = claim['paid_at'] as String?;
     final paidAt = paidAtRaw != null ? DateTime.tryParse(paidAtRaw) : null;
+    final customPlanId = claim['custom_plan_id'] as String? ??
+        intent['custom_plan_id'] as String?;
+
+    // Space consecutive activations at least 65s apart (see
+    // _waitForActivationSlot) before creating the next receipt.
+    await _waitForActivationSlot();
 
     var confirmationId = '';
     try {
@@ -148,6 +187,9 @@ class PaidIntentsService {
         beneficiaryProfileIdOverride: beneficiaryProfileId,
         paidAt: paidAt,
       );
+      if (confirmationId.isNotEmpty) {
+        _lastActivationAt = DateTime.now();
+      }
     } catch (e) {
       debugPrint(
         '⚠️ PaidIntentsService: createBatchPaymentAndReceipts failed for '
@@ -169,7 +211,7 @@ class PaidIntentsService {
           '⚠️ PaidIntentsService: release_paid_intent failed for $intentId: $e',
         );
       }
-      return false;
+      return null;
     }
 
     try {
@@ -189,6 +231,59 @@ class PaidIntentsService {
       // the confirmation id is a bookkeeping issue only, not a user-facing one.
     }
 
-    return true;
+    final stillValid = await _isPlanStillValid(
+      planName: planName,
+      customPlanId: customPlanId,
+      paidAt: paidAt,
+    );
+
+    return PaidIntentActivationResult(planName: planName, stillValid: stillValid);
+  }
+
+  /// Whether the just-activated plan is still within its validity window.
+  ///
+  /// Entry-based plans (duration_months = 0) and plans whose name contains
+  /// "iscrizione" or "annuale" are never considered expired here — their
+  /// validity is already handled by the existing logic in
+  /// payment_service.dart. A time-based plan is expired when
+  /// paid_at + duration_months months <= now.
+  Future<bool> _isPlanStillValid({
+    required String planName,
+    required String? customPlanId,
+    required DateTime? paidAt,
+  }) async {
+    final lowerName = planName.toLowerCase();
+    if (lowerName.contains('iscrizione') || lowerName.contains('annuale')) {
+      return true;
+    }
+
+    if (customPlanId == null || paidAt == null) return true;
+
+    int? durationMonths;
+    try {
+      final planRow = await _supabase
+          .from('custom_subscription_plans')
+          .select('duration_months')
+          .eq('id', customPlanId)
+          .maybeSingle();
+      durationMonths = (planRow?['duration_months'] as num?)?.toInt();
+    } catch (e) {
+      debugPrint(
+        '⚠️ PaidIntentsService: could not fetch duration_months for '
+        '$customPlanId: $e',
+      );
+    }
+
+    if (durationMonths == null || durationMonths == 0) return true;
+
+    final expiresAt = DateTime(
+      paidAt.year,
+      paidAt.month + durationMonths,
+      paidAt.day,
+      paidAt.hour,
+      paidAt.minute,
+      paidAt.second,
+    );
+    return expiresAt.isAfter(DateTime.now());
   }
 }

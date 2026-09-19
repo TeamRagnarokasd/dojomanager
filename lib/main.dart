@@ -525,17 +525,20 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
   /// the corresponding subscription automatically. Safe to call repeatedly —
   /// PaidIntentsService itself guards against overlapping runs — and safe on
   /// any platform (web included), since it relies only on backend data.
-  /// Shows an "Abbonamento attivato" toast only when something was actually
-  /// activated by this call.
+  /// Shows a confirmation toast for each subscription actually activated by
+  /// this call: "Abbonamento attivato" if it's still valid, or a "payment
+  /// registered but already expired" message otherwise.
   Future<void> _runPaidIntentsCheck() async {
     try {
-      final activated = await PaidIntentsService.instance.processPaidIntents();
-      if (activated > 0) {
+      final results = await PaidIntentsService.instance.processPaidIntents();
+      for (final result in results) {
         Fluttertoast.showToast(
-          msg: 'Abbonamento attivato',
+          msg: result.stillValid
+              ? 'Abbonamento attivato'
+              : 'Pagamento registrato. L\'abbonamento risulta già scaduto.',
           toastLength: Toast.LENGTH_LONG,
           gravity: ToastGravity.BOTTOM,
-          backgroundColor: Colors.green,
+          backgroundColor: result.stillValid ? Colors.green : Colors.orange,
           textColor: Colors.white,
         );
       }
