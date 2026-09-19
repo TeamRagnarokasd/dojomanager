@@ -347,17 +347,19 @@ class ReceiptService {
       // Get all confirmed payments
       final allPayments = await _client
           .from('payment_confirmations')
-          .select('amount, confirmed_at')
+          .select('amount, created_at')
           .eq('status', 'confirmed');
 
-      // CRITICAL FIX: Use confirmed_at instead of created_at for monthly revenue calculation
-      // This ensures we're calculating revenue based on when payments were ACTUALLY CONFIRMED
+      // Use created_at (the real payment date) instead of confirmed_at for
+      // monthly revenue: a DB rule can push confirmed_at forward for early
+      // renewals (it becomes the new subscription's start date), so it no
+      // longer reflects when the payment actually happened.
       final monthlyPayments = await _client
           .from('payment_confirmations')
           .select('amount')
           .eq('status', 'confirmed')
-          .gte('confirmed_at', currentMonthStart.toIso8601String())
-          .lt('confirmed_at', nextMonthStart.toIso8601String());
+          .gte('created_at', currentMonthStart.toIso8601String())
+          .lt('created_at', nextMonthStart.toIso8601String());
 
       double totalAmount = 0.0;
       double monthlyRevenue = 0.0;
