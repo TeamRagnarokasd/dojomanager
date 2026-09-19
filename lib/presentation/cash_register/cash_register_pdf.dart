@@ -5,19 +5,33 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../services/cash_register_service.dart';
 
 /// € formatted the Italian way (comma decimal, sign in front), e.g.
-/// "€ 1.234,56" or "-€ 12,00".
+/// "€ 1.234,56" or "-€ 12,00". Used on screen (cash_register_screen.dart),
+/// where Flutter's own text rendering shows € correctly.
 String formatEuro(double value) {
   final sign = value < 0 ? '-' : '';
   final formatted = value.abs().toStringAsFixed(2).replaceAll('.', ',');
   return '$sign€ $formatted';
 }
 
+/// Amount formatted the Italian way (thousands separator, comma decimal,
+/// sign in front) but WITHOUT the € symbol, e.g. "1.234,56" or "-12,00".
+/// PDF-only: the standard Helvetica font used in this PDF does not support
+/// the € glyph, so the € symbol must never appear here — column headers and
+/// totals spell out "euro" in full instead (see buildCashRegisterMonthPdf).
+String _formatAmountForPdf(double value) {
+  final sign = value < 0 ? '-' : '';
+  final formatted = NumberFormat('#,##0.00', 'it_IT').format(value.abs());
+  return '$sign$formatted';
+}
+
 /// Builds the "Prima Nota" PDF for one month of the Registro di Cassa:
 /// header, one row per ledger entry (giorno/operazione/entrata/uscita/saldo
 /// progressivo) and a totals row. Uses only the `pdf` package already in
-/// pubspec.yaml — the base14 Helvetica font is set explicitly (bundled in
-/// the package itself, no extra asset) because it renders the € sign
-/// correctly, unlike some other fonts.
+/// pubspec.yaml, with the base14 Helvetica font (bundled in the package
+/// itself, no extra asset, no other font). Helvetica does not support the €
+/// glyph, so amounts here never use the € symbol (see
+/// _formatAmountForPdf) — column headers and totals spell out "euro"
+/// in full instead.
 Future<pw.Document> buildCashRegisterMonthPdf(
   CashRegisterMonthSummary summary,
 ) async {
@@ -60,9 +74,9 @@ Future<pw.Document> buildCashRegisterMonthPdf(
     children: [
       cell('Giorno', bold: true),
       cell('Operazione', bold: true),
-      cell('Entrata', bold: true, align: pw.TextAlign.right),
-      cell('Uscita', bold: true, align: pw.TextAlign.right),
-      cell('Saldo progressivo', bold: true, align: pw.TextAlign.right),
+      cell('Entrata (euro)', bold: true, align: pw.TextAlign.right),
+      cell('Uscita (euro)', bold: true, align: pw.TextAlign.right),
+      cell('Saldo (euro)', bold: true, align: pw.TextAlign.right),
     ],
   );
 
@@ -85,17 +99,17 @@ Future<pw.Document> buildCashRegisterMonthPdf(
           cell(dayFormat.format(entry.entryDate)),
           cell(operationParts.join(' - ')),
           cell(
-            entry.isEntrata ? formatEuro(entry.amount) : '',
+            entry.isEntrata ? _formatAmountForPdf(entry.amount) : '',
             color: PdfColors.green800,
             align: pw.TextAlign.right,
           ),
           cell(
-            !entry.isEntrata ? formatEuro(entry.amount) : '',
+            !entry.isEntrata ? _formatAmountForPdf(entry.amount) : '',
             color: PdfColors.red800,
             align: pw.TextAlign.right,
           ),
           cell(
-            formatEuro(balance),
+            _formatAmountForPdf(balance),
             color: balance < 0 ? PdfColors.red800 : PdfColors.black,
             align: pw.TextAlign.right,
           ),
@@ -141,7 +155,7 @@ Future<pw.Document> buildCashRegisterMonthPdf(
         ),
         pw.SizedBox(height: 4),
         pw.Text(
-          'Saldo a inizio mese: ${formatEuro(summary.balanceAtMonthStart)}',
+          'Saldo a inizio mese: ${_formatAmountForPdf(summary.balanceAtMonthStart)} euro',
           style: cellStyle(),
         ),
         pw.SizedBox(height: 12),
@@ -171,7 +185,7 @@ Future<pw.Document> buildCashRegisterMonthPdf(
                 children: [
                   pw.Text('Totale entrate del mese', style: cellStyle(bold: true)),
                   pw.Text(
-                    formatEuro(summary.totalEntrate),
+                    '${_formatAmountForPdf(summary.totalEntrate)} euro',
                     style: cellStyle(bold: true, color: PdfColors.green800),
                   ),
                 ],
@@ -182,7 +196,7 @@ Future<pw.Document> buildCashRegisterMonthPdf(
                 children: [
                   pw.Text('Totale uscite del mese', style: cellStyle(bold: true)),
                   pw.Text(
-                    formatEuro(summary.totalUscite),
+                    '${_formatAmountForPdf(summary.totalUscite)} euro',
                     style: cellStyle(bold: true, color: PdfColors.red800),
                   ),
                 ],
@@ -193,7 +207,7 @@ Future<pw.Document> buildCashRegisterMonthPdf(
                 children: [
                   pw.Text('Saldo a fine mese', style: cellStyle(bold: true)),
                   pw.Text(
-                    formatEuro(summary.balanceAtMonthEnd),
+                    '${_formatAmountForPdf(summary.balanceAtMonthEnd)} euro',
                     style: cellStyle(
                       bold: true,
                       color: summary.balanceAtMonthEnd < 0
