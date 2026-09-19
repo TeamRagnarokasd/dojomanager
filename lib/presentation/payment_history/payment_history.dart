@@ -546,7 +546,7 @@ class _PaymentHistoryState extends State<PaymentHistory>
           payment['external_payment_id'] ??
           'PAY-${payment['id'].substring(0, 8)}',
       'issue_date':
-          payment['confirmed_at']?.split('T')[0] ??
+          payment['created_at']?.split('T')[0] ??
           DateTime.now().toIso8601String().split('T')[0],
       'customer_name': userProfile['full_name'] ?? 'payment.customer'.tr(),
       'customer_tax_code': userProfile['codice_fiscale'],
@@ -564,7 +564,7 @@ class _PaymentHistoryState extends State<PaymentHistory>
       'vat_rate': '0',
       'vat_amount': 0.0,
       'discount_percentage': 0.0,
-      'created_at': payment['confirmed_at'],
+      'created_at': payment['created_at'],
       'created_by': userId,
     };
   }

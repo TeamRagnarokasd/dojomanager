@@ -154,13 +154,17 @@ class EnhancedInstructorDashboardService {
       final lastDayString =
           '${lastDayOfMonth.year}-${lastDayOfMonth.month.toString().padLeft(2, '0')}-${lastDayOfMonth.day.toString().padLeft(2, '0')}';
 
-      // Get monthly confirmed payments
+      // Get monthly confirmed payments.
+      // Use created_at (the real payment date) instead of confirmed_at: a DB
+      // rule can push confirmed_at forward for early renewals (it becomes the
+      // new subscription's start date), so it no longer reflects when the
+      // payment actually happened.
       final monthlyPayments = await _supabase
           .from('payment_confirmations')
           .select('amount')
           .eq('status', 'confirmed')
-          .gte('confirmed_at', firstDayString)
-          .lte('confirmed_at', lastDayString);
+          .gte('created_at', firstDayString)
+          .lte('created_at', lastDayString);
 
       // Calculate total monthly revenue
       double monthlyRevenue = 0.0;
