@@ -32,6 +32,7 @@ import '../presentation/admin_child_profile/admin_child_profile_screen.dart';
 import '../presentation/piani_convenzione/piani_convenzione_screen.dart';
 import '../presentation/administration_asd/administration_asd_screen.dart';
 import '../presentation/cash_register/cash_register_screen.dart';
+import '../presentation/asd_deadlines/asd_deadlines_screen.dart';
 
 class AppRoutes {
   // Global RouteObserver — add to MaterialApp.navigatorObservers
@@ -79,6 +80,7 @@ class AppRoutes {
   static const String pianiConvenzione = '/piani-convenzione';
   static const String administrationAsd = '/amministrazione-asd';
   static const String cashRegister = '/registro-cassa';
+  static const String asdDeadlines = '/scadenzario-asd';
 
   static Map<String, WidgetBuilder> get routes {
     return {
@@ -130,6 +132,7 @@ class AppRoutes {
       pianiConvenzione: (context) => const PianiConvenzioneScreen(),
       administrationAsd: (context) => const AdministrationAsdScreen(),
       cashRegister: (context) => const CashRegisterScreen(),
+      asdDeadlines: (context) => const AsdDeadlinesScreen(),
     };
   }
 }

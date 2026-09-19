@@ -1,10 +1,13 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../../../core/app_export.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../services/admin_section_visibility_service.dart';
+import '../../../services/asd_deadlines_service.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/notification_service.dart';
 import '../../administration_asd/administration_asd_screen.dart';
 
 class ManagementCardsWidget extends StatefulWidget {
@@ -17,13 +20,57 @@ class ManagementCardsWidget extends StatefulWidget {
   State<ManagementCardsWidget> createState() => _ManagementCardsWidgetState();
 }
 
-class _ManagementCardsWidgetState extends State<ManagementCardsWidget> {
+class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
+    with WidgetsBindingObserver {
   bool _showAdministrationAsdCard = false;
+
+  /// Badge shown on the "Amministrazione ASD" card — overdue/due-soon count
+  /// from the Scadenzario, only for admins with access to 'deadlines'.
+  int? _asdDeadlinesBadgeCount;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkAdministrationAsdVisibility();
+    _loadAsdDeadlinesBadgeAndNotify();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// This widget sits on the admin dashboard, mounted right after login and
+  /// normally kept alive as the base route — the natural place to detect
+  /// "app startup and foreground-resume" for the Scadenzario notifications.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadAsdDeadlinesBadgeAndNotify();
+    }
+  }
+
+  /// Refreshes the "Amministrazione ASD" card badge and, on startup/resume,
+  /// fires the local notifications for overdue/due-soon Scadenzario items —
+  /// only for admins with access to the 'deadlines' section.
+  Future<void> _loadAsdDeadlinesBadgeAndNotify() async {
+    try {
+      final canAccessDeadlines =
+          await AdminSectionVisibilityService.instance.canAccess('deadlines');
+      if (!canAccessDeadlines) {
+        if (mounted) setState(() => _asdDeadlinesBadgeCount = null);
+        return;
+      }
+      final summary = await AsdDeadlinesService.instance.getPendingSummary();
+      if (mounted) setState(() => _asdDeadlinesBadgeCount = summary.pendingCount);
+      if (!kIsWeb) {
+        await NotificationService().showAsdDeadlineAlerts(summary);
+      }
+    } catch (_) {
+      // Not critical — the card just shows no badge.
+    }
   }
 
   /// "Amministrazione ASD" shows when can_access_admin_section returns true
@@ -172,6 +219,8 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget> {
           'status': 'Riservato',
           'badgeColor': Colors.brown,
           'category': 'admin',
+          'notificationCount':
+              (_asdDeadlinesBadgeCount ?? 0) > 0 ? _asdDeadlinesBadgeCount : null,
         },
     ];
 
@@ -398,29 +447,54 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget> {
               // Header with Icon and Status Badge
               Row(
                 children: [
-                  Container(
-                    padding: EdgeInsets.all(3.w),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          (option['color'] as Color).withValues(alpha: 0.15),
-                          (option['color'] as Color).withValues(alpha: 0.08),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: (option['color'] as Color).withValues(
-                          alpha: 0.2,
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        padding: EdgeInsets.all(3.w),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              (option['color'] as Color).withValues(alpha: 0.15),
+                              (option['color'] as Color).withValues(alpha: 0.08),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: (option['color'] as Color).withValues(
+                              alpha: 0.2,
+                            ),
+                          ),
+                        ),
+                        child: Icon(
+                          option['icon'],
+                          color: option['color'],
+                          size: 28,
                         ),
                       ),
-                    ),
-                    child: Icon(
-                      option['icon'],
-                      color: option['color'],
-                      size: 28,
-                    ),
+                      if (option['notificationCount'] != null)
+                        Positioned(
+                          right: -4,
+                          top: -4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '${option['notificationCount']}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   const Spacer(),
                   Container(
