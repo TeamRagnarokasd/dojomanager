@@ -269,48 +269,101 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
     );
   }
 
+  /// No ListTile: a ListTile's onTap wraps the WHOLE row (title, subtitle,
+  /// trailing) in one InkWell, so a switch nested in its trailing slot was
+  /// racing that same ancestor tap in the gesture arena — hence the
+  /// previous, unreliable "sometimes the row wins" bug. Two independent
+  /// sibling zones in a Row can't have this problem: a tap can only ever
+  /// land in one of them, so there's no shared ancestor gesture to race.
   Widget _buildSectionTile(AdminAsdSection section) {
     return Padding(
       padding: EdgeInsets.only(bottom: 1.5.h),
       child: Card(
-        child: ListTile(
-          contentPadding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
-          leading: CircleAvatar(
-            backgroundColor:
-                Theme.of(context).colorScheme.secondary.withValues(alpha: 0.15),
-            child: Icon(section.icon, color: Theme.of(context).colorScheme.secondary),
+        clipBehavior: Clip.antiAlias,
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Left zone: icon + title + subtitle, opens the section.
+              Expanded(
+                child: InkWell(
+                  onTap: () => Navigator.pushNamed(
+                    context,
+                    section.route,
+                    arguments: section.arguments,
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.secondary.withValues(alpha: 0.15),
+                          child: Icon(
+                            section.icon,
+                            color: Theme.of(context).colorScheme.secondary,
+                          ),
+                        ),
+                        SizedBox(width: 4.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                section.title,
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                              SizedBox(height: 0.3.h),
+                              Text(
+                                section.subtitle,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (!_isPrincipalAdmin) ...[
+                          SizedBox(width: 2.w),
+                          const Icon(Icons.arrow_forward_ios, size: 16),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              // Right zone: principal admin only, full height, separated by
+              // a thin vertical divider — never opens the section.
+              if (_isPrincipalAdmin) ...[
+                VerticalDivider(
+                  width: 1,
+                  thickness: 1,
+                  color: Theme.of(context).dividerColor,
+                ),
+                _buildSectionVisibilityZone(section),
+              ],
+            ],
           ),
-          title: Text(
-            section.title,
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-          subtitle: Text(section.subtitle),
-          trailing: _isPrincipalAdmin
-              ? _buildSectionSwitch(section)
-              : const Icon(Icons.arrow_forward_ios, size: 16),
-          onTap: () =>
-              Navigator.pushNamed(context, section.route, arguments: section.arguments),
         ),
       ),
     );
   }
 
-  /// The whole label+switch area (with margin) is one opaque tap zone that
-  /// only ever toggles visibility — it never lets the tap reach the
-  /// ListTile's onTap (which opens the section). The inner Switch is
-  /// visual only (IgnorePointer): letting it keep its own tap handling
-  /// would race this GestureDetector in the gesture arena. While saving,
-  /// gestures are swallowed here (still never reaching the ListTile) but do
-  /// nothing, and the spinner takes the exact space the switch would.
-  ///
-  /// Both onTap and onHorizontalDragEnd toggle the same way: a plain tap
-  /// only fires onTap if the finger barely moves (Flutter's default tap
-  /// slop), which felt unresponsive for a switch-like control where a
-  /// small slide, or an outright horizontal drag as if dragging the
-  /// switch's thumb, is a natural gesture. Only one of the two ever fires
-  /// per gesture (tap and horizontal-drag recognizers are mutually
-  /// exclusive in the same gesture arena), so this never double-toggles.
-  Widget _buildSectionSwitch(AdminAsdSection section) {
+  /// Fixed-width (~110dp), full-height zone: label + Switch. Every pixel of
+  /// it toggles visibility via an opaque GestureDetector (which never opens
+  /// the section); the Switch inside also toggles on its own native
+  /// tap/drag when hit directly — the two never conflict, since only one
+  /// recognizer can ever win a given tap in the gesture arena, and this
+  /// GestureDetector has no shared ancestor with the left zone's InkWell.
+  /// While saving, the spinner takes the exact space of the Switch (same
+  /// height throughout) and taps do nothing.
+  Widget _buildSectionVisibilityZone(AdminAsdSection section) {
     final isVisible = _visibilityMap[section.key] ?? false;
     final isSaving = _togglingKeys.contains(section.key);
 
@@ -322,43 +375,37 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: toggle,
-      onHorizontalDragEnd: (_) => toggle(),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
+      child: SizedBox(
+        width: 110,
         child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: SizedBox(
-            width: 22.w,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  isVisible
-                      ? 'Visibile agli altri admin'
-                      : 'Non visibile agli altri admin',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.labelSmall,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                isVisible
+                    ? 'Visibile agli altri admin'
+                    : 'Non visibile agli altri admin',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+              SizedBox(
+                height: 48,
+                child: Center(
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : _buildVisibilitySwitch(
+                          value: isVisible,
+                          onChanged: (value) =>
+                              _toggleVisibility(section.key, value),
+                        ),
                 ),
-                SizedBox(
-                  height: 48,
-                  child: Center(
-                    child: isSaving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : IgnorePointer(
-                            child: _buildVisibilitySwitch(
-                              value: isVisible,
-                              onChanged: (_) {},
-                            ),
-                          ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
