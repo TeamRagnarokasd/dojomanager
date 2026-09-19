@@ -270,34 +270,61 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
     );
   }
 
+  /// The whole label+switch area (with margin) is one opaque tap zone that
+  /// only ever toggles visibility — it never lets the tap reach the
+  /// ListTile's onTap (which opens the section). The inner Switch is
+  /// visual only (IgnorePointer): letting it keep its own tap handling
+  /// would race this GestureDetector in the gesture arena. While saving,
+  /// taps are swallowed here (still never reaching the ListTile) but do
+  /// nothing, and the spinner takes the exact space the switch would.
   Widget _buildSectionSwitch(AdminAsdSection section) {
     final isVisible = _visibilityMap[section.key] ?? false;
     final isSaving = _togglingKeys.contains(section.key);
 
-    return SizedBox(
-      width: 22.w,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            isVisible ? 'Visibile agli altri admin' : 'Non visibile agli altri admin',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.labelSmall,
-          ),
-          isSaving
-              ? const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 10),
-                  child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
-              : _buildVisibilitySwitch(
-                  value: isVisible,
-                  onChanged: (value) => _toggleVisibility(section.key, value),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (isSaving) return;
+        _toggleVisibility(section.key, !isVisible);
+      },
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: SizedBox(
+            width: 22.w,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  isVisible
+                      ? 'Visibile agli altri admin'
+                      : 'Non visibile agli altri admin',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.labelSmall,
                 ),
-        ],
+                SizedBox(
+                  height: 48,
+                  child: Center(
+                    child: isSaving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : IgnorePointer(
+                            child: _buildVisibilitySwitch(
+                              value: isVisible,
+                              onChanged: (_) {},
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
