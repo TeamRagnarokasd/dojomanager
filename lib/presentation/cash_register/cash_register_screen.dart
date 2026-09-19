@@ -237,10 +237,12 @@ class _CashRegisterScreenState extends State<CashRegisterScreen> {
     }
   }
 
-  /// Opens the same receipt preview/detail as "Gestione Ricevute" for a
-  /// 'receipt'-source row. The receipt (non_fiscal_receipts) may have been
-  /// deleted by the student in the meantime — in that case the row is left
-  /// as-is and a message is shown instead of opening anything.
+  /// Loads the receipt for a 'receipt'-source row and opens a small bottom
+  /// sheet with "Vedi anteprima" (same preview as "Gestione Ricevute") and
+  /// "Scarica PDF" (same generation/share as its Archivio PDF icon). The
+  /// receipt (non_fiscal_receipts) may have been deleted by the student in
+  /// the meantime — in that case the row is left as-is and a message is
+  /// shown instead of opening anything.
   Future<void> _viewReceiptDetail(CashRegisterEntry entry) async {
     final receiptId = entry.sourceReceiptId;
     if (receiptId == null) {
@@ -255,15 +257,48 @@ class _CashRegisterScreenState extends State<CashRegisterScreen> {
       }
       final receipt = ItalianReceiptModel.fromJson(data);
       if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => CashRegisterReceiptPreviewScreen(receipt: receipt),
-        ),
-      );
+      await _showReceiptActionsSheet(receipt);
     } catch (_) {
       _showReceiptUnavailable();
     }
+  }
+
+  Future<void> _showReceiptActionsSheet(ItalianReceiptModel receipt) async {
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.visibility_outlined),
+              title: const Text('Vedi anteprima'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        CashRegisterReceiptPreviewScreen(receipt: receipt),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.picture_as_pdf_outlined),
+              title: const Text('Scarica PDF'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                downloadReceiptPdf(context, receipt);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showReceiptUnavailable() {
