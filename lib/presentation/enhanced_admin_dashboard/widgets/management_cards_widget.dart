@@ -3,11 +3,31 @@ import '../../../core/app_export.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
-class ManagementCardsWidget extends StatelessWidget {
+import '../../../services/auth_service.dart';
+
+class ManagementCardsWidget extends StatefulWidget {
   final VoidCallback? onNavigateReturn;
 
   const ManagementCardsWidget({Key? key, this.onNavigateReturn})
     : super(key: key);
+
+  @override
+  State<ManagementCardsWidget> createState() => _ManagementCardsWidgetState();
+}
+
+class _ManagementCardsWidgetState extends State<ManagementCardsWidget> {
+  bool _isPrincipalAdmin = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPrincipalAdmin();
+  }
+
+  Future<void> _checkPrincipalAdmin() async {
+    final isPrincipal = await AuthService.instance.isPrincipalAdmin();
+    if (mounted) setState(() => _isPrincipalAdmin = isPrincipal);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,6 +157,21 @@ class ManagementCardsWidget extends StatelessWidget {
         'badgeColor': Colors.green,
         'category': 'admin',
       },
+      // NEW: Amministrazione ASD — principal admin only. Opens the
+      // Amministrazione ASD section list (Registro di Cassa for Fase 1).
+      if (_isPrincipalAdmin)
+        {
+          'title': 'Amministrazione ASD',
+          'subtitle': 'Registro di cassa e altre sezioni amministrative',
+          'icon': Icons.account_balance_outlined,
+          'color': Colors.brown,
+          'route': AppRoutes.administrationAsd,
+          'description':
+              'Sezioni riservate all\'amministratore principale: registro di cassa e altre funzioni ASD',
+          'status': 'Riservato',
+          'badgeColor': Colors.brown,
+          'category': 'admin',
+        },
     ];
 
     return Container(
@@ -329,7 +364,7 @@ class ManagementCardsWidget extends StatelessWidget {
                 ? {'initialTab': 'settings'}
                 : null;
             Navigator.pushNamed(context, route, arguments: arguments).then((_) {
-              onNavigateReturn?.call();
+              widget.onNavigateReturn?.call();
             });
           });
         },
