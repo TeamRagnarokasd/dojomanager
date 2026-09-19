@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sizer/sizer.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../routes/app_routes.dart';
 import '../../services/admin_section_visibility_service.dart';
+import '../../services/asd_deadlines_service.dart';
+import '../../services/asd_governance_service.dart';
 import '../../services/auth_service.dart';
 
 /// Definition of one "Amministrazione ASD" section. Adding a future section
@@ -55,6 +58,20 @@ const List<AdminAsdSection> kAdminAsdSections = [
     route: AppRoutes.adminManagementSystem,
     arguments: {'initialTab': 'settings'},
   ),
+  AdminAsdSection(
+    key: 'deadlines',
+    title: 'Scadenzario ASD',
+    subtitle: 'Scadenze e adempimenti',
+    icon: Icons.calendar_month_outlined,
+    route: AppRoutes.asdDeadlines,
+  ),
+  AdminAsdSection(
+    key: 'drive_documents',
+    title: 'Documenti Drive',
+    subtitle: 'Cartella condivisa: salva e carica i documenti',
+    icon: Icons.folder_shared_outlined,
+    route: '',
+  ),
 ];
 
 /// Umbrella section key: switching this off hides every section below to
@@ -88,6 +105,14 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
   final Set<String> _togglingKeys = {};
 
   String? _appVersionText;
+
+  /// Count shown on the "Scadenzario ASD" row (overdue + due-soon), only
+  /// fetched when that section is visible to the current admin.
+  int? _deadlinesBadgeCount;
+
+  /// The shared Drive folder link, only fetched when "Documenti Drive" is
+  /// visible to the current admin. Editable only by the principal admin.
+  String? _driveFolderUrl;
 
   @override
   void initState() {
@@ -129,6 +154,8 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
         _visibilityMap = visibilityMap;
         _isLoading = false;
       });
+      _loadDeadlinesBadge(kAdminAsdSections);
+      _loadDriveUrl(kAdminAsdSections);
       return;
     }
 
@@ -149,6 +176,90 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
       _visibleSections = visible;
       _isLoading = false;
     });
+    _loadDeadlinesBadge(visible);
+    _loadDriveUrl(visible);
+  }
+
+  /// Fire-and-forget: only fetched when "Scadenzario ASD" is one of the
+  /// sections this admin can see. Failure just leaves the badge unshown.
+  Future<void> _loadDeadlinesBadge(List<AdminAsdSection> sections) async {
+    if (!sections.any((s) => s.key == 'deadlines')) return;
+    try {
+      final summary = await AsdDeadlinesService.instance.getPendingSummary();
+      if (!mounted) return;
+      setState(() => _deadlinesBadgeCount = summary.pendingCount);
+    } catch (_) {
+      // Not critical — the row just shows no badge.
+    }
+  }
+
+  /// Fire-and-forget: only fetched when "Documenti Drive" is one of the
+  /// sections this admin can see.
+  Future<void> _loadDriveUrl(List<AdminAsdSection> sections) async {
+    if (!sections.any((s) => s.key == 'drive_documents')) return;
+    try {
+      final url = await AsdGovernanceService.instance.getDriveFolderUrl();
+      if (!mounted) return;
+      setState(() => _driveFolderUrl = url);
+    } catch (_) {
+      // Not critical — tapping the row will just report no link configured.
+    }
+  }
+
+  Future<void> _openDriveFolder() async {
+    final url = _driveFolderUrl;
+    if (url == null || url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nessun link della cartella Drive configurato.')),
+      );
+      return;
+    }
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossibile aprire il link: $e')),
+      );
+    }
+  }
+
+  Future<void> _showEditDriveUrlDialog() async {
+    final controller = TextEditingController(text: _driveFolderUrl ?? '');
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Link cartella Drive'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Link della cartella condivisa'),
+          keyboardType: TextInputType.url,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annulla'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Salva'),
+          ),
+        ],
+      ),
+    );
+    if (saved != true) return;
+    final url = controller.text.trim();
+    if (url.isEmpty) return;
+    try {
+      await AsdGovernanceService.instance.setDriveFolderUrl(url);
+      if (!mounted) return;
+      setState(() => _driveFolderUrl = url);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore durante il salvataggio: $e')),
+      );
+    }
   }
 
   Future<void> _toggleVisibility(String key, bool value) async {
@@ -287,11 +398,13 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
               // Left zone: icon + title + subtitle, opens the section.
               Expanded(
                 child: InkWell(
-                  onTap: () => Navigator.pushNamed(
-                    context,
-                    section.route,
-                    arguments: section.arguments,
-                  ),
+                  onTap: () => section.key == 'drive_documents'
+                      ? _openDriveFolder()
+                      : Navigator.pushNamed(
+                          context,
+                          section.route,
+                          arguments: section.arguments,
+                        ),
                   child: Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
                     child: Row(
@@ -329,6 +442,24 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
                             ],
                           ),
                         ),
+                        if (section.key == 'deadlines' && (_deadlinesBadgeCount ?? 0) > 0) ...[
+                          SizedBox(width: 2.w),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '${_deadlinesBadgeCount}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                         if (!_isPrincipalAdmin) ...[
                           SizedBox(width: 2.w),
                           const Icon(Icons.arrow_forward_ios, size: 16),
@@ -338,6 +469,17 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
                   ),
                 ),
               ),
+              // Middle zone: principal admin only, "Documenti Drive" only —
+              // a sibling zone (never nested in the left InkWell) so its tap
+              // can't race the row's own onTap, matching the pattern below.
+              if (_isPrincipalAdmin && section.key == 'drive_documents') ...[
+                VerticalDivider(
+                  width: 1,
+                  thickness: 1,
+                  color: Theme.of(context).dividerColor,
+                ),
+                _buildDriveEditZone(),
+              ],
               // Right zone: principal admin only, full height, separated by
               // a thin vertical divider — never opens the section.
               if (_isPrincipalAdmin) ...[
@@ -350,6 +492,21 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Small sibling zone, principal admin only, "Documenti Drive" only: a
+  /// pencil that opens a dialog to edit and save the shared Drive link.
+  Widget _buildDriveEditZone() {
+    return SizedBox(
+      width: 56,
+      child: Center(
+        child: IconButton(
+          icon: const Icon(Icons.edit_outlined, size: 20),
+          tooltip: 'Modifica il link della cartella Drive',
+          onPressed: _showEditDriveUrlDialog,
         ),
       ),
     );

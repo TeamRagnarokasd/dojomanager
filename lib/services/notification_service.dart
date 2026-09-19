@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cron/cron.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/asd_deadlines_service.dart';
 import '../services/receipt_service.dart';
 import '../services/supabase_service.dart';
 
@@ -384,6 +387,69 @@ class NotificationService {
   Future<void> sendPaymentReminderForUser(String userId) async {
     await _sendPaymentReminderNotification(userId);
   }
+
+  /// Local notification for each Scadenzario ASD occurrence that is overdue
+  /// or within its notice window, at most once a day per occurrence
+  /// (tracked in shared_preferences so re-entering the app the same day
+  /// doesn't repeat it). No deadline text is hardcoded — titles and dates
+  /// all come from [summary]. Not shown on web, and this never touches any
+  /// other notification this service sends.
+  Future<void> showAsdDeadlineAlerts(AsdDeadlineSummary summary) async {
+    if (kIsWeb) return;
+    if (summary.dueOccurrences.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final todayKey = DateTime.now().toIso8601String().split('T').first;
+    final dayMonthFormat = DateFormat('dd/MM');
+
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails(
+          'asd_deadlines',
+          'Scadenzario ASD',
+          channelDescription: 'Promemoria per le scadenze e gli adempimenti ASD',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          color: Color(0xFFFF9800),
+          autoCancel: true,
+        );
+
+    const DarwinNotificationDetails iOSPlatformChannelSpecifics =
+        DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        );
+
+    const NotificationDetails platformChannelSpecifics = NotificationDetails(
+      android: androidPlatformChannelSpecifics,
+      iOS: iOSPlatformChannelSpecifics,
+    );
+
+    for (final occurrence in summary.dueOccurrences) {
+      if (occurrence.urgency == AsdDeadlineUrgency.normal) continue;
+
+      final dueDateKey = occurrence.dueDate.toIso8601String().split('T').first;
+      final prefsKey =
+          'asd_deadline_alert_${occurrence.deadline.id}_${dueDateKey}_$todayKey';
+      if (prefs.getBool(prefsKey) == true) continue;
+
+      final body = occurrence.urgency == AsdDeadlineUrgency.overdue
+          ? 'Scadenza superata: ${occurrence.deadline.title}'
+          : 'Scadenza in arrivo: ${occurrence.deadline.title} (${dayMonthFormat.format(occurrence.dueDate)})';
+
+      await _flutterLocalNotificationsPlugin.show(
+        _asdNotificationId(prefsKey),
+        'Scadenzario ASD - Team Ragnarok ASD',
+        body,
+        platformChannelSpecifics,
+        payload: 'asd_deadline:${occurrence.deadline.id}',
+      );
+      await prefs.setBool(prefsKey, true);
+    }
+  }
+
+  int _asdNotificationId(String seed) => seed.hashCode & 0x7fffffff;
 
   Future<void> cancelAllNotifications() async {
     if (kIsWeb) return;
