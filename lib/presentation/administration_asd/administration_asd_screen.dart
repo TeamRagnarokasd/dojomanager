@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../routes/app_routes.dart';
@@ -86,10 +87,25 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
   Map<String, bool> _visibilityMap = {};
   final Set<String> _togglingKeys = {};
 
+  String? _appVersionText;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        _appVersionText = 'Versione app ${info.version} (build ${info.buildNumber})';
+      });
+    } catch (_) {
+      // Not critical — just leave it unshown if it can't be read.
+    }
   }
 
   Future<void> _load() async {
@@ -178,6 +194,15 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
             )
           else
             ..._visibleSections.map(_buildSectionTile),
+          if (_appVersionText != null) ...[
+            SizedBox(height: 3.h),
+            Center(
+              child: Text(
+                _appVersionText!,
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -275,18 +300,29 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
   /// ListTile's onTap (which opens the section). The inner Switch is
   /// visual only (IgnorePointer): letting it keep its own tap handling
   /// would race this GestureDetector in the gesture arena. While saving,
-  /// taps are swallowed here (still never reaching the ListTile) but do
+  /// gestures are swallowed here (still never reaching the ListTile) but do
   /// nothing, and the spinner takes the exact space the switch would.
+  ///
+  /// Both onTap and onHorizontalDragEnd toggle the same way: a plain tap
+  /// only fires onTap if the finger barely moves (Flutter's default tap
+  /// slop), which felt unresponsive for a switch-like control where a
+  /// small slide, or an outright horizontal drag as if dragging the
+  /// switch's thumb, is a natural gesture. Only one of the two ever fires
+  /// per gesture (tap and horizontal-drag recognizers are mutually
+  /// exclusive in the same gesture arena), so this never double-toggles.
   Widget _buildSectionSwitch(AdminAsdSection section) {
     final isVisible = _visibilityMap[section.key] ?? false;
     final isSaving = _togglingKeys.contains(section.key);
 
+    void toggle() {
+      if (isSaving) return;
+      _toggleVisibility(section.key, !isVisible);
+    }
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () {
-        if (isSaving) return;
-        _toggleVisibility(section.key, !isVisible);
-      },
+      onTap: toggle,
+      onHorizontalDragEnd: (_) => toggle(),
       child: ConstrainedBox(
         constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
         child: Padding(
