@@ -196,9 +196,11 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Amministrazione ASD visibile agli altri admin',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                  Text(
+                    isVisible
+                        ? 'Amministrazione ASD visibile agli altri admin'
+                        : 'Amministrazione ASD non visibile agli altri admin',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   SizedBox(height: 0.5.h),
                   Text(
@@ -215,7 +217,7 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
                     height: 24,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Switch(
+                : _buildVisibilitySwitch(
                     value: isVisible,
                     onChanged: (value) =>
                         _toggleVisibility(kAdministrationAsdKey, value),
@@ -223,6 +225,22 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Green thumb/track when on, red when off (with a lighter/more muted red
+  /// track) — used for every visibility switch in this screen.
+  Widget _buildVisibilitySwitch({
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Switch(
+      value: value,
+      onChanged: onChanged,
+      activeColor: Colors.green,
+      activeTrackColor: Colors.green.withValues(alpha: 0.5),
+      inactiveThumbColor: Colors.red,
+      inactiveTrackColor: Colors.red.withValues(alpha: 0.3),
     );
   }
 
@@ -262,7 +280,7 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'Visibile agli altri admin',
+            isVisible ? 'Visibile agli altri admin' : 'Non visibile agli altri admin',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.labelSmall,
           ),
@@ -275,7 +293,7 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 )
-              : Switch(
+              : _buildVisibilitySwitch(
                   value: isVisible,
                   onChanged: (value) => _toggleVisibility(section.key, value),
                 ),
