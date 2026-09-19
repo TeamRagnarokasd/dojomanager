@@ -13,6 +13,7 @@ class CashRegisterEntry {
     required this.source,
     required this.description,
     required this.amount,
+    this.sourceReceiptId,
     this.receiptNumber,
     this.customerName,
     this.photoPath,
@@ -24,12 +25,14 @@ class CashRegisterEntry {
   final String source; // 'receipt' | 'manual'
   final String description;
   final double amount;
+  final String? sourceReceiptId;
   final String? receiptNumber;
   final String? customerName;
   final String? photoPath;
 
   bool get isEntrata => kind == 'entrata';
   bool get isManual => source == 'manual';
+  bool get isReceipt => source == 'receipt';
 
   factory CashRegisterEntry.fromMap(Map<String, dynamic> map) {
     return CashRegisterEntry(
@@ -39,6 +42,7 @@ class CashRegisterEntry {
       source: map['source'] as String,
       description: map['description'] as String? ?? '',
       amount: (map['amount'] as num).toDouble(),
+      sourceReceiptId: map['source_receipt_id'] as String?,
       receiptNumber: map['receipt_number'] as String?,
       customerName: map['customer_name'] as String?,
       photoPath: map['photo_path'] as String?,
@@ -103,7 +107,7 @@ class CashRegisterService {
   static const String _bucket = 'cash-receipts';
 
   static const String _entryColumns =
-      'id, entry_date, kind, source, description, amount, receipt_number, customer_name, photo_path';
+      'id, entry_date, kind, source, description, amount, source_receipt_id, receipt_number, customer_name, photo_path';
 
   String _dateStr(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';

@@ -5,10 +5,14 @@ import 'package:printing/printing.dart';
 import 'package:sizer/sizer.dart';
 import 'package:universal_html/html.dart' as html;
 
+import '../../models/receipt_model.dart';
+import '../../services/admin_section_visibility_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/cash_register_service.dart';
+import '../../services/italian_receipt_service.dart';
 import './cash_register_pdf.dart';
 import './widgets/add_outflow_sheet.dart';
+import './widgets/cash_register_receipt_preview_screen.dart';
 import './widgets/opening_balance_dialog.dart';
 
 /// Registro di Cassa (Fase 1): month selector + chronological "Prima Nota"
@@ -28,6 +32,10 @@ class CashRegisterScreen extends StatefulWidget {
 
 class _CashRegisterScreenState extends State<CashRegisterScreen> {
   bool _isCheckingAccess = true;
+  bool _canAccess = false;
+  // Separate from _canAccess: the opening-balance gear icon stays principal
+  // admin only even when another admin has been granted access to this
+  // section (see AdminSectionVisibilityService).
   bool _isPrincipalAdmin = false;
 
   bool _isLoading = true;
@@ -50,12 +58,21 @@ class _CashRegisterScreenState extends State<CashRegisterScreen> {
 
   Future<void> _checkAccessAndLoad() async {
     final isPrincipal = await AuthService.instance.isPrincipalAdmin();
+    bool canAccess;
+    try {
+      canAccess = await AdminSectionVisibilityService.instance.canAccess(
+        'cash_register',
+      );
+    } catch (_) {
+      canAccess = isPrincipal;
+    }
     if (!mounted) return;
     setState(() {
       _isPrincipalAdmin = isPrincipal;
+      _canAccess = canAccess;
       _isCheckingAccess = false;
     });
-    if (isPrincipal) {
+    if (canAccess) {
       await _loadAll();
     }
   }
@@ -220,6 +237,42 @@ class _CashRegisterScreenState extends State<CashRegisterScreen> {
     }
   }
 
+  /// Opens the same receipt preview/detail as "Gestione Ricevute" for a
+  /// 'receipt'-source row. The receipt (non_fiscal_receipts) may have been
+  /// deleted by the student in the meantime — in that case the row is left
+  /// as-is and a message is shown instead of opening anything.
+  Future<void> _viewReceiptDetail(CashRegisterEntry entry) async {
+    final receiptId = entry.sourceReceiptId;
+    if (receiptId == null) {
+      _showReceiptUnavailable();
+      return;
+    }
+    try {
+      final data = await ItalianReceiptService().getReceiptById(receiptId);
+      if (data == null) {
+        _showReceiptUnavailable();
+        return;
+      }
+      final receipt = ItalianReceiptModel.fromJson(data);
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CashRegisterReceiptPreviewScreen(receipt: receipt),
+        ),
+      );
+    } catch (_) {
+      _showReceiptUnavailable();
+    }
+  }
+
+  void _showReceiptUnavailable() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Ricevuta non più disponibile')),
+    );
+  }
+
   Future<void> _exportMonthPdf() async {
     final summary = _monthSummary;
     if (summary == null) return;
@@ -259,14 +312,14 @@ class _CashRegisterScreenState extends State<CashRegisterScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    if (!_isPrincipalAdmin) {
+    if (!_canAccess) {
       return Scaffold(
         appBar: AppBar(title: const Text('Registro di Cassa')),
         body: const Center(
           child: Padding(
             padding: EdgeInsets.all(24),
             child: Text(
-              'Accesso riservato all\'amministratore principale.',
+              'Non hai accesso al Registro di Cassa.',
               textAlign: TextAlign.center,
             ),
           ),
@@ -283,11 +336,14 @@ class _CashRegisterScreenState extends State<CashRegisterScreen> {
             tooltip: 'Esporta PDF del mese',
             onPressed: _monthSummary == null ? null : _exportMonthPdf,
           ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: 'Saldo iniziale',
-            onPressed: _openOpeningBalanceDialog,
-          ),
+          // Editing the opening balance/date stays principal admin only,
+          // even for another admin granted access to this section.
+          if (_isPrincipalAdmin)
+            IconButton(
+              icon: const Icon(Icons.settings),
+              tooltip: 'Saldo iniziale',
+              onPressed: _openOpeningBalanceDialog,
+            ),
         ],
       ),
       body: _isLoading
@@ -449,7 +505,9 @@ class _CashRegisterScreenState extends State<CashRegisterScreen> {
         return Card(
           margin: const EdgeInsets.symmetric(vertical: 3),
           child: ListTile(
-            onTap: entry.photoPath != null ? () => _viewReceiptPhoto(entry) : null,
+            onTap: entry.isReceipt
+                ? () => _viewReceiptDetail(entry)
+                : (entry.photoPath != null ? () => _viewReceiptPhoto(entry) : null),
             leading: CircleAvatar(
               backgroundColor: amountColor.withValues(alpha: 0.15),
               child: Text(

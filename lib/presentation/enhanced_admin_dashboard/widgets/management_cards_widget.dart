@@ -3,7 +3,9 @@ import '../../../core/app_export.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
+import '../../../services/admin_section_visibility_service.dart';
 import '../../../services/auth_service.dart';
+import '../../administration_asd/administration_asd_screen.dart';
 
 class ManagementCardsWidget extends StatefulWidget {
   final VoidCallback? onNavigateReturn;
@@ -16,17 +18,39 @@ class ManagementCardsWidget extends StatefulWidget {
 }
 
 class _ManagementCardsWidgetState extends State<ManagementCardsWidget> {
-  bool _isPrincipalAdmin = false;
+  bool _showAdministrationAsdCard = false;
 
   @override
   void initState() {
     super.initState();
-    _checkPrincipalAdmin();
+    _checkAdministrationAsdVisibility();
   }
 
-  Future<void> _checkPrincipalAdmin() async {
+  /// "Amministrazione ASD" shows when can_access_admin_section returns true
+  /// for the umbrella key AND at least one section inside it — if the RPC
+  /// call fails, the principal admin still sees the card, other admins
+  /// don't.
+  Future<void> _checkAdministrationAsdVisibility() async {
     final isPrincipal = await AuthService.instance.isPrincipalAdmin();
-    if (mounted) setState(() => _isPrincipalAdmin = isPrincipal);
+    final visibilityService = AdminSectionVisibilityService.instance;
+    bool show;
+    try {
+      final canAccessAsd = await visibilityService.canAccess(
+        kAdministrationAsdKey,
+      );
+      show = false;
+      if (canAccessAsd) {
+        for (final section in kAdminAsdSections) {
+          if (await visibilityService.canAccess(section.key)) {
+            show = true;
+            break;
+          }
+        }
+      }
+    } catch (_) {
+      show = isPrincipal;
+    }
+    if (mounted) setState(() => _showAdministrationAsdCard = show);
   }
 
   @override
@@ -47,18 +71,6 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget> {
       },
 
       // Row 2: Financial Management
-      {
-        'title': 'receipt.management_title'.tr(),
-        'subtitle': 'Sistema ricevute italiane integrato',
-        'icon': Icons.receipt,
-        'color': Colors.blue,
-        'route': '/italian-receipt-generation',
-        'description':
-            'Sistema completo per ricevute fiscali italiane con integrazione Supabase',
-        'status': 'Funzionale',
-        'badgeColor': Colors.green,
-        'category': 'financial',
-      },
       {
         'title': 'instructor_management.title'.tr(),
         'subtitle': 'Profili, foto e corsi associati',
@@ -144,22 +156,11 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget> {
         'badgeColor': Colors.red,
         'category': 'admin',
       },
-      // NEW: Dati Team / ASD Card
-      {
-        'title': 'Dati Team / ASD',
-        'subtitle': 'Nome, indirizzo, C.F., PEC e contatti',
-        'icon': Icons.business_center,
-        'color': Colors.green,
-        'route': '/admin-management-system',
-        'description':
-            'Modifica i dati ufficiali del team: ragione sociale, sede, codice fiscale e PEC per le ricevute',
-        'status': 'Impostazioni',
-        'badgeColor': Colors.green,
-        'category': 'admin',
-      },
-      // NEW: Amministrazione ASD — principal admin only. Opens the
-      // Amministrazione ASD section list (Registro di Cassa for Fase 1).
-      if (_isPrincipalAdmin)
+      // NEW: Amministrazione ASD — replaces the "Gestione Ricevute" and
+      // "Dati Team / ASD" cards above, now moved inside this section (see
+      // AdministrationAsdScreen), plus "Registro di Cassa". Visible per
+      // can_access_admin_section (see _checkAdministrationAsdVisibility).
+      if (_showAdministrationAsdCard)
         {
           'title': 'Amministrazione ASD',
           'subtitle': 'Registro di cassa e altre sezioni amministrative',
@@ -167,7 +168,7 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget> {
           'color': Colors.brown,
           'route': AppRoutes.administrationAsd,
           'description':
-              'Sezioni riservate all\'amministratore principale: registro di cassa e altre funzioni ASD',
+              'Sezioni amministrative dell\'ASD: registro di cassa, ricevute e dati del team',
           'status': 'Riservato',
           'badgeColor': Colors.brown,
           'category': 'admin',
@@ -360,10 +361,7 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget> {
           // Navigate after brief delay for better UX
           Future.delayed(Duration(milliseconds: 400), () {
             final route = option['route'] as String;
-            final arguments = option['title'] == 'Dati Team / ASD'
-                ? {'initialTab': 'settings'}
-                : null;
-            Navigator.pushNamed(context, route, arguments: arguments).then((_) {
+            Navigator.pushNamed(context, route).then((_) {
               widget.onNavigateReturn?.call();
             });
           });

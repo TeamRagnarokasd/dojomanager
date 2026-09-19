@@ -2,32 +2,70 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../routes/app_routes.dart';
+import '../../services/admin_section_visibility_service.dart';
 import '../../services/auth_service.dart';
 
 /// Definition of one "Amministrazione ASD" section. Adding a future section
-/// is adding one more entry to [AdministrationAsdScreen._sections] —
-/// nothing else in this screen needs to change.
-class _AsdSection {
-  const _AsdSection({
+/// is adding one more entry to [kAdminAsdSections] — plus a matching
+/// `admin_section_visibility` row (`section_key`) created server-side —
+/// nothing else needs to change. Also used by ManagementCardsWidget to
+/// decide whether the "Amministrazione ASD" dashboard card itself should be
+/// shown (shown when at least one of these is accessible).
+class AdminAsdSection {
+  const AdminAsdSection({
+    required this.key,
     required this.title,
     required this.subtitle,
     required this.icon,
     required this.route,
-    required this.isVisible,
+    this.arguments,
   });
 
+  /// Matches a `section_key` in `admin_section_visibility` and the `p_key`
+  /// passed to `can_access_admin_section`/`set_admin_section_visibility`.
+  final String key;
   final String title;
   final String subtitle;
   final IconData icon;
   final String route;
-
-  /// For now this only ever returns true for the principal admin — kept as
-  /// a function so a future section can define its own visibility rule.
-  final bool Function(bool isPrincipalAdmin) isVisible;
+  final Object? arguments;
 }
 
-/// "Amministrazione ASD": a list of admin sections, visible only to the
-/// principal admin. For Fase 1 it lists only "Registro di Cassa".
+const List<AdminAsdSection> kAdminAsdSections = [
+  AdminAsdSection(
+    key: 'cash_register',
+    title: 'Registro di Cassa',
+    subtitle: 'Entrate e uscite in contanti, prima nota mensile',
+    icon: Icons.point_of_sale_outlined,
+    route: AppRoutes.cashRegister,
+  ),
+  AdminAsdSection(
+    key: 'receipts',
+    title: 'Gestione Ricevute',
+    subtitle: 'Sistema ricevute italiane integrato',
+    icon: Icons.receipt,
+    route: AppRoutes.italianReceiptGeneration,
+  ),
+  AdminAsdSection(
+    key: 'team_data',
+    title: 'Dati Team / ASD',
+    subtitle: 'Nome, indirizzo, C.F., PEC e contatti',
+    icon: Icons.business_center,
+    route: AppRoutes.adminManagementSystem,
+    arguments: {'initialTab': 'settings'},
+  ),
+];
+
+/// Umbrella section key: switching this off hides every section below to
+/// non-principal admins, regardless of their own individual switches (see
+/// can_access_admin_section).
+const String kAdministrationAsdKey = 'administration_asd';
+
+/// "Amministrazione ASD": a list of admin sections. The principal admin
+/// always sees every section and can toggle, for each one, whether other
+/// admins may access it (including the umbrella switch at the top). Other
+/// admins only ever see the sections currently enabled for them, with no
+/// switches.
 class AdministrationAsdScreen extends StatefulWidget {
   const AdministrationAsdScreen({Key? key}) : super(key: key);
 
@@ -37,32 +75,80 @@ class AdministrationAsdScreen extends StatefulWidget {
 }
 
 class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
-  static final List<_AsdSection> _sections = [
-    _AsdSection(
-      title: 'Registro di Cassa',
-      subtitle: 'Entrate e uscite in contanti, prima nota mensile',
-      icon: Icons.point_of_sale_outlined,
-      route: AppRoutes.cashRegister,
-      isVisible: (isPrincipalAdmin) => isPrincipalAdmin,
-    ),
-  ];
+  final _visibilityService = AdminSectionVisibilityService.instance;
 
   bool _isLoading = true;
   bool _isPrincipalAdmin = false;
+  List<AdminAsdSection> _visibleSections = [];
+
+  /// section_key -> visible_to_admins, only loaded/shown for the principal
+  /// admin (the switches).
+  Map<String, bool> _visibilityMap = {};
+  final Set<String> _togglingKeys = {};
 
   @override
   void initState() {
     super.initState();
-    _checkAccess();
+    _load();
   }
 
-  Future<void> _checkAccess() async {
+  Future<void> _load() async {
+    setState(() => _isLoading = true);
     final isPrincipal = await AuthService.instance.isPrincipalAdmin();
+
+    if (isPrincipal) {
+      // Principal admin always sees everything; still load the raw
+      // visibility map to render the switches' current state.
+      Map<String, bool> visibilityMap = {};
+      try {
+        visibilityMap = await _visibilityService.getVisibilityMap();
+      } catch (_) {
+        // Switches default to "off" if the table can't be read — the
+        // principal admin's own access is unaffected either way.
+      }
+      if (!mounted) return;
+      setState(() {
+        _isPrincipalAdmin = true;
+        _visibleSections = kAdminAsdSections;
+        _visibilityMap = visibilityMap;
+        _isLoading = false;
+      });
+      return;
+    }
+
+    // Non-principal admin: filter to sections currently enabled for them.
+    final visible = <AdminAsdSection>[];
+    for (final section in kAdminAsdSections) {
+      try {
+        if (await _visibilityService.canAccess(section.key)) {
+          visible.add(section);
+        }
+      } catch (_) {
+        // Fail closed for a section we couldn't verify.
+      }
+    }
     if (!mounted) return;
     setState(() {
-      _isPrincipalAdmin = isPrincipal;
+      _isPrincipalAdmin = false;
+      _visibleSections = visible;
       _isLoading = false;
     });
+  }
+
+  Future<void> _toggleVisibility(String key, bool value) async {
+    setState(() => _togglingKeys.add(key));
+    try {
+      await _visibilityService.setVisibility(key, value);
+      if (!mounted) return;
+      setState(() => _visibilityMap[key] = value);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore durante il salvataggio: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _togglingKeys.remove(key));
+    }
   }
 
   @override
@@ -71,50 +157,129 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    if (!_isPrincipalAdmin) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Amministrazione ASD')),
-        body: const Center(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Text(
-              'Accesso riservato all\'amministratore principale.',
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      );
-    }
-
-    final visibleSections =
-        _sections.where((s) => s.isVisible(_isPrincipalAdmin)).toList();
-
     return Scaffold(
       appBar: AppBar(title: const Text('Amministrazione ASD')),
-      body: ListView.separated(
+      body: ListView(
         padding: EdgeInsets.all(4.w),
-        itemCount: visibleSections.length,
-        separatorBuilder: (context, index) => SizedBox(height: 1.5.h),
-        itemBuilder: (context, index) {
-          final section = visibleSections[index];
-          return Card(
-            child: ListTile(
-              contentPadding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
-              leading: CircleAvatar(
-                backgroundColor:
-                    Theme.of(context).colorScheme.secondary.withValues(alpha: 0.15),
-                child: Icon(section.icon, color: Theme.of(context).colorScheme.secondary),
+        children: [
+          if (_isPrincipalAdmin) ...[
+            _buildAdministrationAsdToggleCard(),
+            SizedBox(height: 2.h),
+          ],
+          if (_visibleSections.isEmpty)
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 8.h),
+              child: Center(
+                child: Text(
+                  'Nessuna sezione disponibile.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
               ),
-              title: Text(
-                section.title,
-                style: const TextStyle(fontWeight: FontWeight.w700),
+            )
+          else
+            ..._visibleSections.map(_buildSectionTile),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdministrationAsdToggleCard() {
+    final isVisible = _visibilityMap[kAdministrationAsdKey] ?? false;
+    final isSaving = _togglingKeys.contains(kAdministrationAsdKey);
+
+    return Card(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.5.h),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Amministrazione ASD visibile agli altri admin',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  SizedBox(height: 0.5.h),
+                  Text(
+                    'Se lo spegni, gli altri admin non vedono nessuna sezione qui dentro.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
               ),
-              subtitle: Text(section.subtitle),
-              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-              onTap: () => Navigator.pushNamed(context, section.route),
             ),
-          );
-        },
+            SizedBox(width: 2.w),
+            isSaving
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Switch(
+                    value: isVisible,
+                    onChanged: (value) =>
+                        _toggleVisibility(kAdministrationAsdKey, value),
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTile(AdminAsdSection section) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 1.5.h),
+      child: Card(
+        child: ListTile(
+          contentPadding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+          leading: CircleAvatar(
+            backgroundColor:
+                Theme.of(context).colorScheme.secondary.withValues(alpha: 0.15),
+            child: Icon(section.icon, color: Theme.of(context).colorScheme.secondary),
+          ),
+          title: Text(
+            section.title,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          subtitle: Text(section.subtitle),
+          trailing: _isPrincipalAdmin
+              ? _buildSectionSwitch(section)
+              : const Icon(Icons.arrow_forward_ios, size: 16),
+          onTap: () =>
+              Navigator.pushNamed(context, section.route, arguments: section.arguments),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionSwitch(AdminAsdSection section) {
+    final isVisible = _visibilityMap[section.key] ?? false;
+    final isSaving = _togglingKeys.contains(section.key);
+
+    return SizedBox(
+      width: 22.w,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Visibile agli altri admin',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.labelSmall,
+          ),
+          isSaving
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : Switch(
+                  value: isVisible,
+                  onChanged: (value) => _toggleVisibility(section.key, value),
+                ),
+        ],
       ),
     );
   }
