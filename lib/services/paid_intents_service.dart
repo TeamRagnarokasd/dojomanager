@@ -138,6 +138,13 @@ class PaidIntentsService {
 
     if (status != 'matched') return null;
 
+    // Space consecutive activations at least 65s apart (see
+    // _waitForActivationSlot) BEFORE claiming the intent: if the app is
+    // closed while waiting here, the intent is still untouched ('matched')
+    // and will be retried on the next call. Claiming it first and waiting
+    // afterwards would risk leaving it stuck as claimed-but-unactivated.
+    await _waitForActivationSlot();
+
     // Only the first caller to successfully claim an intent gets non-null
     // data back — this guards against double-activation from overlapping
     // resume events or multiple devices.
@@ -169,10 +176,8 @@ class PaidIntentsService {
     final customPlanId = claim['custom_plan_id'] as String? ??
         intent['custom_plan_id'] as String?;
 
-    // Space consecutive activations at least 65s apart (see
-    // _waitForActivationSlot) before creating the next receipt.
-    await _waitForActivationSlot();
-
+    // No wait here: claim_paid_intent has already claimed this intent, so
+    // createBatchPaymentAndReceipts must run immediately (see above).
     var confirmationId = '';
     try {
       confirmationId = await SubscriptionService.createBatchPaymentAndReceipts(

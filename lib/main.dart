@@ -535,7 +535,8 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
         Fluttertoast.showToast(
           msg: result.stillValid
               ? 'Abbonamento attivato'
-              : 'Pagamento registrato. L\'abbonamento risulta già scaduto.',
+              : 'Ultimo pagamento effettuato, correttamente registrato, ma '
+                  'l\'abbonamento risulta già scaduto.',
           toastLength: Toast.LENGTH_LONG,
           gravity: ToastGravity.BOTTOM,
           backgroundColor: result.stillValid ? Colors.green : Colors.orange,
