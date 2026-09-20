@@ -38,11 +38,13 @@ class _AsdDeadlineGuideSheetState extends State<AsdDeadlineGuideSheet> {
       final templates = await _governanceService.getTemplatesByKeys(
         widget.deadline.documentTemplates,
       );
-      String? driveUrl;
-      try {
-        driveUrl = await _governanceService.getDriveFolderUrl();
-      } catch (_) {
-        driveUrl = null;
+      var driveUrl = widget.deadline.driveUrl;
+      if (driveUrl == null || driveUrl.isEmpty) {
+        try {
+          driveUrl = await _governanceService.getDriveFolderUrl();
+        } catch (_) {
+          driveUrl = null;
+        }
       }
       if (!mounted) return;
       setState(() {

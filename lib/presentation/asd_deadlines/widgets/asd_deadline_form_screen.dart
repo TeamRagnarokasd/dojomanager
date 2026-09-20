@@ -27,6 +27,7 @@ class _AsdDeadlineFormScreenState extends State<AsdDeadlineFormScreen> {
   late final TextEditingController _howToController;
   late final TextEditingController _conditionNoteController;
   late final TextEditingController _documentAgendaController;
+  late final TextEditingController _driveUrlController;
 
   late String _category;
   late int _dueDay;
@@ -61,6 +62,7 @@ class _AsdDeadlineFormScreenState extends State<AsdDeadlineFormScreen> {
     _howToController = TextEditingController(text: d?.howTo ?? '');
     _conditionNoteController = TextEditingController(text: d?.conditionNote ?? '');
     _documentAgendaController = TextEditingController(text: d?.documentAgenda ?? '');
+    _driveUrlController = TextEditingController(text: d?.driveUrl ?? '');
 
     _category = d?.category ?? kAsdDeadlineCategoryKeys.first;
     _dueDay = d?.dueDay ?? 1;
@@ -113,6 +115,7 @@ class _AsdDeadlineFormScreenState extends State<AsdDeadlineFormScreen> {
     _howToController.dispose();
     _conditionNoteController.dispose();
     _documentAgendaController.dispose();
+    _driveUrlController.dispose();
     super.dispose();
   }
 
@@ -225,6 +228,9 @@ class _AsdDeadlineFormScreenState extends State<AsdDeadlineFormScreen> {
       'document_agenda': _documentAgendaController.text.trim().isEmpty
           ? null
           : _documentAgendaController.text.trim(),
+      'drive_url': _driveUrlController.text.trim().isEmpty
+          ? null
+          : _driveUrlController.text.trim(),
     };
 
     try {
@@ -453,6 +459,14 @@ class _AsdDeadlineFormScreenState extends State<AsdDeadlineFormScreen> {
               controller: _documentAgendaController,
               decoration: const InputDecoration(labelText: 'Ordine del giorno predefinito'),
               maxLines: 4,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _driveUrlController,
+              decoration: const InputDecoration(
+                labelText: 'Cartella Drive di questa voce (link, facoltativo)',
+              ),
+              keyboardType: TextInputType.url,
             ),
             const SizedBox(height: 8),
             SwitchListTile(

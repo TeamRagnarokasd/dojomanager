@@ -51,6 +51,11 @@ class AsdDeadlineDetailSheet extends StatelessWidget {
               onTap: () => Navigator.pop(context, 'edit'),
             ),
             ListTile(
+              leading: const Icon(Icons.folder_shared_outlined),
+              title: const Text('Apri la cartella Drive'),
+              onTap: () => Navigator.pop(context, 'open_drive'),
+            ),
+            ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.red),
               title: const Text('Elimina'),
               onTap: () => Navigator.pop(context, 'delete'),

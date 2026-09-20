@@ -43,6 +43,7 @@ class AsdDeadline {
     required this.legalRefs,
     required this.documentTemplates,
     this.documentAgenda,
+    this.driveUrl,
     required this.createdAt,
   });
 
@@ -63,6 +64,11 @@ class AsdDeadline {
   final List<AsdLegalRef> legalRefs;
   final List<String> documentTemplates;
   final String? documentAgenda;
+
+  /// Optional Drive folder link specific to this deadline — takes priority
+  /// over the general asd_settings.drive_folder_url wherever "apri la
+  /// cartella Drive" is offered for this deadline.
+  final String? driveUrl;
   final DateTime createdAt;
 
   /// True for a "once only in that year" deadline (due_year set).
@@ -90,6 +96,7 @@ class AsdDeadline {
               .toList() ??
           const [],
       documentAgenda: map['document_agenda'] as String?,
+      driveUrl: map['drive_url'] as String?,
       createdAt: DateTime.parse(map['created_at'] as String),
     );
   }
@@ -111,6 +118,7 @@ class AsdDeadline {
         'legal_refs': legalRefs.map((r) => r.toJson()).toList(),
         'document_templates': documentTemplates,
         'document_agenda': documentAgenda,
+        'drive_url': driveUrl,
       };
 }
 
