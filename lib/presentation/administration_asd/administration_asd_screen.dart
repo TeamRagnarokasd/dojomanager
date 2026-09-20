@@ -83,6 +83,13 @@ const List<AdminAsdSection> kAdminAsdSections = [
     icon: Icons.folder_copy_outlined,
     route: AppRoutes.asdDocumentsArchive,
   ),
+  AdminAsdSection(
+    key: 'attendance_compensation',
+    title: 'Presenze e compensi',
+    subtitle: 'Lezioni, compenso, buoni pasto e rimborso km',
+    icon: Icons.event_available_outlined,
+    route: AppRoutes.workAttendance,
+  ),
 ];
 
 /// Umbrella section key: switching this off hides every section below to
