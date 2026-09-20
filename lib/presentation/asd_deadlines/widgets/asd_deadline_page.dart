@@ -1,17 +1,11 @@
-import 'dart:io';
-import 'dart:typed_data';
-
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:printing/printing.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../services/asd_deadlines_service.dart';
 import '../../../services/asd_documents_service.dart';
 import '../../../services/asd_governance_service.dart';
+import '../../asd_documents_archive/widgets/asd_document_actions.dart';
 import '../document_generation/asd_document_generation_screen.dart';
 import 'asd_deadline_guide_sheet.dart';
 
@@ -124,38 +118,6 @@ class _AsdDeadlinePageState extends State<AsdDeadlinePage> {
     await _openUrl(url);
   }
 
-  Future<void> _openDocument(AsdDocument document) async {
-    try {
-      final bytes = await _documentsService.downloadBytes(document.storagePath);
-      if (!mounted) return;
-      if (document.isPdf) {
-        final name = document.fileName ?? '${document.title}.pdf';
-        if (kIsWeb) {
-          await Printing.layoutPdf(onLayout: (format) async => bytes, name: name);
-        } else {
-          await Printing.sharePdf(bytes: bytes, filename: name);
-        }
-      } else if (document.isImage) {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => _AsdDocumentImageViewer(bytes: bytes, title: document.title),
-          ),
-        );
-      } else {
-        final tempDir = await getTemporaryDirectory();
-        final file = File('${tempDir.path}/${document.fileName ?? document.title}');
-        await file.writeAsBytes(bytes);
-        await Share.shareXFiles([XFile(file.path)]);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Impossibile aprire il documento: $e')),
-      );
-    }
-  }
-
   Future<void> _toggleDriveUploaded(AsdDocument document) async {
     try {
       await _documentsService.setDriveUploaded(document.id, !document.driveUploaded);
@@ -234,7 +196,7 @@ class _AsdDeadlinePageState extends State<AsdDeadlinePage> {
                   dayFormat.format(document.docDate),
                 ].join(' · '),
               ),
-              onTap: () => _openDocument(document),
+              onTap: () => openAsdDocument(context, document),
               trailing: PopupMenuButton<String>(
                 onSelected: (value) {
                   if (value == 'delete') _confirmDeleteDocument(document);
@@ -372,28 +334,6 @@ class _AsdDeadlinePageState extends State<AsdDeadlinePage> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Minimal full-screen image viewer for an uploaded/generated document,
-/// zoomable with InteractiveViewer.
-class _AsdDocumentImageViewer extends StatelessWidget {
-  const _AsdDocumentImageViewer({required this.bytes, required this.title});
-
-  final Uint8List bytes;
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(title: Text(title)),
-      body: Center(
-        child: InteractiveViewer(
-          child: Image.memory(bytes),
-        ),
       ),
     );
   }

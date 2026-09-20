@@ -76,6 +76,13 @@ const List<AdminAsdSection> kAdminAsdSections = [
     icon: Icons.folder_shared_outlined,
     route: '',
   ),
+  AdminAsdSection(
+    key: 'documents_archive',
+    title: 'Archivio documenti',
+    subtitle: 'Tutti i documenti per categoria',
+    icon: Icons.folder_copy_outlined,
+    route: AppRoutes.asdDocumentsArchive,
+  ),
 ];
 
 /// Umbrella section key: switching this off hides every section below to
