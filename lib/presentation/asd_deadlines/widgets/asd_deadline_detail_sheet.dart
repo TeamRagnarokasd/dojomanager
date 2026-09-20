@@ -3,10 +3,12 @@ import 'package:intl/intl.dart';
 
 import '../../../services/asd_deadlines_service.dart';
 
-/// Bottom sheet for a "Da fare" occurrence: Segna come fatta / Salta questa
-/// scadenza / Modifica / Elimina. Pops with a short action string that the
-/// caller (AsdDeadlinesScreen) acts on, so this sheet has no service calls
-/// of its own beyond what it needs to display.
+/// Actions menu for a "Da fare" occurrence, opened from the row's three-dot
+/// icon: Segna come fatta / Salta questa scadenza / Modifica / Elimina.
+/// Pops with a short action string that the caller (AsdDeadlinesScreen)
+/// acts on, so this sheet has no service calls of its own beyond what it
+/// needs to display. Row tap itself now opens the full "Scadenza" page,
+/// which is where "Apri la cartella Drive" and document generation live.
 class AsdDeadlineDetailSheet extends StatelessWidget {
   const AsdDeadlineDetailSheet({Key? key, required this.occurrence})
       : super(key: key);
@@ -49,11 +51,6 @@ class AsdDeadlineDetailSheet extends StatelessWidget {
               leading: const Icon(Icons.edit_outlined),
               title: const Text('Modifica'),
               onTap: () => Navigator.pop(context, 'edit'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.folder_shared_outlined),
-              title: const Text('Apri la cartella Drive'),
-              onTap: () => Navigator.pop(context, 'open_drive'),
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.red),
