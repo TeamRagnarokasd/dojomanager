@@ -90,6 +90,13 @@ const List<AdminAsdSection> kAdminAsdSections = [
     icon: Icons.event_available_outlined,
     route: AppRoutes.workAttendance,
   ),
+  AdminAsdSection(
+    key: 'social_events',
+    title: 'Eventi sociali',
+    subtitle: 'Cene sociali: verbale e spese',
+    icon: Icons.celebration_outlined,
+    route: AppRoutes.socialEvents,
+  ),
 ];
 
 /// Umbrella section key: switching this off hides every section below to

@@ -35,6 +35,7 @@ import '../presentation/cash_register/cash_register_screen.dart';
 import '../presentation/asd_deadlines/asd_deadlines_screen.dart';
 import '../presentation/asd_documents_archive/asd_documents_archive_screen.dart';
 import '../presentation/work_attendance/work_attendance_screen.dart';
+import '../presentation/social_events/social_events_screen.dart';
 
 class AppRoutes {
   // Global RouteObserver — add to MaterialApp.navigatorObservers
@@ -85,6 +86,7 @@ class AppRoutes {
   static const String asdDeadlines = '/scadenzario-asd';
   static const String asdDocumentsArchive = '/archivio-documenti-asd';
   static const String workAttendance = '/presenze-compensi';
+  static const String socialEvents = '/eventi-sociali';
 
   static Map<String, WidgetBuilder> get routes {
     return {
@@ -139,6 +141,7 @@ class AppRoutes {
       asdDeadlines: (context) => const AsdDeadlinesScreen(),
       asdDocumentsArchive: (context) => const AsdDocumentsArchiveScreen(),
       workAttendance: (context) => const WorkAttendanceScreen(),
+      socialEvents: (context) => const SocialEventsScreen(),
     };
   }
 }
