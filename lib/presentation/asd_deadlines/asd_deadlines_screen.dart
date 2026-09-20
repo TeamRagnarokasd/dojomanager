@@ -256,9 +256,14 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
       setState(() => _selectedOccurrences.clear());
       await _load();
       if (!mounted) return;
+      final count = occurrences.length;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${occurrences.length} scadenze segnate come fatte'),
+          content: Text(
+            count == 1
+                ? '1 scadenza segnata come fatta'
+                : '$count scadenze segnate come fatte',
+          ),
           action: SnackBarAction(
             label: 'Annulla',
             onPressed: () async {
@@ -450,12 +455,24 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
           children: [
             Expanded(
               child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                ),
                 onPressed: _confirmSelectedDone,
-                child: Text('Conferma ${_selectedOccurrences.length} scadenze fatte'),
+                child: Text(
+                  _selectedOccurrences.length == 1
+                      ? 'Conferma 1 scadenza fatta'
+                      : 'Conferma ${_selectedOccurrences.length} scadenze fatte',
+                ),
               ),
             ),
             const SizedBox(width: 12),
-            TextButton(
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
               onPressed: () => setState(() => _selectedOccurrences.clear()),
               child: const Text('Annulla'),
             ),
@@ -584,7 +601,15 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
 
   /// Shared row for "Da fare" and "In programma": same checkbox (selection
   /// only), three-dot menu, "?" guide, tap-to-open-page and long-press-to-
-  /// delete.
+  /// delete. Built by hand instead of ListTile: ListTile wraps its whole
+  /// content — leading included — in one InkWell for onTap/onLongPress, and
+  /// on a real phone that ink response was winning the touch over the
+  /// three-dot InkWell nested two items down inside `leading` (the
+  /// checkbox, first in that same slot, was never affected). With our own
+  /// InkWell here, the row's tap/long-press and the three-dot button are
+  /// each exactly one recognizer with nothing else layered over the same
+  /// 48x48 box — the Tooltip that used to wrap it is gone too, since it
+  /// added its own long-press recognizer over that same area.
   Widget _buildOccurrenceCard(AsdDeadlineOccurrence occurrence) {
     final dayFormat = DateFormat('dd/MM/yyyy', 'it_IT');
     final color = switch (occurrence.urgency) {
@@ -595,71 +620,83 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
     final isSelected = _selectedOccurrences.containsKey(_occurrenceKey(occurrence));
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 3),
-      child: ListTile(
-        leading: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Checkbox(
-              value: isSelected,
-              onChanged: (_) => _toggleSelection(occurrence),
-            ),
-            // Full 48x48 tap target, opaque to hit-testing so it
-            // always claims the tap before it can reach the row's own
-            // onTap (which opens the "Scadenza" page) — no dead space
-            // around the icon for a stray tap to fall through.
-            SizedBox(
-              width: 48,
-              height: 48,
-              child: Tooltip(
-                message: 'Altre azioni',
-                child: InkWell(
-                  onTap: () => _openActionsMenu(occurrence),
-                  child: const Center(
-                    child: Icon(Icons.more_vert, size: 20),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        title: Text(
-          occurrence.deadline.title,
-          style: TextStyle(color: color, fontWeight: FontWeight.w600),
-        ),
-        subtitle: Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text(
-              '${dayFormat.format(occurrence.dueDate)} · ${asdCategoryLabel(occurrence.deadline.category)}',
-              style: TextStyle(color: color),
-            ),
-            if (occurrence.deadline.needsConfirmation)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 2,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.blueGrey.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'Da confermare',
-                  style: TextStyle(fontSize: 10),
-                ),
-              ),
-          ],
-        ),
-        trailing: IconButton(
-          icon: const Icon(Icons.help_outline),
-          tooltip: 'Come si fa',
-          onPressed: () => _openGuide(occurrence.deadline),
-        ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
         onTap: () => _openDeadlinePage(occurrence),
         onLongPress: () => _confirmDeleteDeadline(occurrence.deadline),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Checkbox(
+                  value: isSelected,
+                  onChanged: (_) => _toggleSelection(occurrence),
+                ),
+                // Full 48x48 tap target of its own, nothing else
+                // registered over the same box (see doc comment above).
+                SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: InkWell(
+                    onTap: () => _openActionsMenu(occurrence),
+                    child: const Center(
+                      child: Icon(Icons.more_vert, size: 20),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      occurrence.deadline.title,
+                      style: TextStyle(color: color, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          '${dayFormat.format(occurrence.dueDate)} · ${asdCategoryLabel(occurrence.deadline.category)}',
+                          style: TextStyle(color: color),
+                        ),
+                        if (occurrence.deadline.needsConfirmation)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blueGrey.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'Da confermare',
+                              style: TextStyle(fontSize: 10),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              tooltip: 'Come si fa',
+              onPressed: () => _openGuide(occurrence.deadline),
+            ),
+          ],
+        ),
       ),
     );
   }
