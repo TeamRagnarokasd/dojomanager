@@ -469,17 +469,6 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
                   ),
                 ),
               ),
-              // Middle zone: principal admin only, "Documenti Drive" only —
-              // a sibling zone (never nested in the left InkWell) so its tap
-              // can't race the row's own onTap, matching the pattern below.
-              if (_isPrincipalAdmin && section.key == 'drive_documents') ...[
-                VerticalDivider(
-                  width: 1,
-                  thickness: 1,
-                  color: Theme.of(context).dividerColor,
-                ),
-                _buildDriveEditZone(),
-              ],
               // Right zone: principal admin only, full height, separated by
               // a thin vertical divider — never opens the section.
               if (_isPrincipalAdmin) ...[
@@ -497,29 +486,17 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
     );
   }
 
-  /// Small sibling zone, principal admin only, "Documenti Drive" only: a
-  /// pencil that opens a dialog to edit and save the shared Drive link.
-  Widget _buildDriveEditZone() {
-    return SizedBox(
-      width: 56,
-      child: Center(
-        child: IconButton(
-          icon: const Icon(Icons.edit_outlined, size: 20),
-          tooltip: 'Modifica il link della cartella Drive',
-          onPressed: _showEditDriveUrlDialog,
-        ),
-      ),
-    );
-  }
-
-  /// Fixed-width (~110dp), full-height zone: label + Switch. Every pixel of
-  /// it toggles visibility via an opaque GestureDetector (which never opens
-  /// the section); the Switch inside also toggles on its own native
-  /// tap/drag when hit directly — the two never conflict, since only one
-  /// recognizer can ever win a given tap in the gesture arena, and this
-  /// GestureDetector has no shared ancestor with the left zone's InkWell.
-  /// While saving, the spinner takes the exact space of the Switch (same
-  /// height throughout) and taps do nothing.
+  /// Fixed-width (~110dp) column: label + Switch, wrapped in its own opaque
+  /// GestureDetector (which never opens the section); the Switch inside
+  /// also toggles on its own native tap/drag when hit directly — the two
+  /// never conflict, since only one recognizer can ever win a given tap in
+  /// the gesture arena, and this GestureDetector has no shared ancestor
+  /// with the left zone's InkWell. While saving, the spinner takes the
+  /// exact space of the Switch (same height throughout) and taps do
+  /// nothing. For "Documenti Drive", principal admin only, a pencil sits
+  /// below as a plain sibling IconButton outside that GestureDetector — a
+  /// separate tap that can't activate the switch, exactly like the
+  /// switch-zone's own independence from the left zone above.
   Widget _buildSectionVisibilityZone(AdminAsdSection section) {
     final isVisible = _visibilityMap[section.key] ?? false;
     final isSaving = _togglingKeys.contains(section.key);
@@ -529,42 +506,53 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
       _toggleVisibility(section.key, !isVisible);
     }
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: toggle,
-      child: SizedBox(
-        width: 110,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                isVisible
-                    ? 'Visibile agli altri admin'
-                    : 'Non visibile agli altri admin',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.labelSmall,
+    return SizedBox(
+      width: 110,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: toggle,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    isVisible
+                        ? 'Visibile agli altri admin'
+                        : 'Non visibile agli altri admin',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                  SizedBox(
+                    height: 48,
+                    child: Center(
+                      child: isSaving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : _buildVisibilitySwitch(
+                              value: isVisible,
+                              onChanged: (value) =>
+                                  _toggleVisibility(section.key, value),
+                            ),
+                    ),
+                  ),
+                ],
               ),
-              SizedBox(
-                height: 48,
-                child: Center(
-                  child: isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : _buildVisibilitySwitch(
-                          value: isVisible,
-                          onChanged: (value) =>
-                              _toggleVisibility(section.key, value),
-                        ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+          if (section.key == 'drive_documents')
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, size: 20),
+              tooltip: 'Modifica il link della cartella Drive',
+              onPressed: _showEditDriveUrlDialog,
+            ),
+        ],
       ),
     );
   }
