@@ -39,7 +39,16 @@ class AdminAsdSection {
   final Object? arguments;
 }
 
+// Ordine logico: adempimenti, contabilità, lavoro e attività, documenti,
+// dati fissi. Nuove sezioni vanno messe nel gruppo giusto.
 const List<AdminAsdSection> kAdminAsdSections = [
+  AdminAsdSection(
+    key: 'deadlines',
+    title: 'Scadenzario ASD',
+    subtitle: 'Scadenze e adempimenti',
+    icon: Icons.calendar_month_outlined,
+    route: AppRoutes.asdDeadlines,
+  ),
   AdminAsdSection(
     key: 'cash_register',
     title: 'Registro di Cassa',
@@ -55,35 +64,6 @@ const List<AdminAsdSection> kAdminAsdSections = [
     route: AppRoutes.italianReceiptGeneration,
   ),
   AdminAsdSection(
-    key: 'team_data',
-    title: 'Dati Team / ASD',
-    subtitle: 'Nome, indirizzo, C.F., PEC e contatti',
-    icon: Icons.business_center,
-    route: AppRoutes.adminManagementSystem,
-    arguments: {'initialTab': 'settings'},
-  ),
-  AdminAsdSection(
-    key: 'deadlines',
-    title: 'Scadenzario ASD',
-    subtitle: 'Scadenze e adempimenti',
-    icon: Icons.calendar_month_outlined,
-    route: AppRoutes.asdDeadlines,
-  ),
-  AdminAsdSection(
-    key: 'drive_documents',
-    title: 'Documenti Drive',
-    subtitle: 'Cartella condivisa: salva e carica i documenti',
-    icon: Icons.folder_shared_outlined,
-    route: '',
-  ),
-  AdminAsdSection(
-    key: 'documents_archive',
-    title: 'Archivio documenti',
-    subtitle: 'Tutti i documenti per categoria',
-    icon: Icons.folder_copy_outlined,
-    route: AppRoutes.asdDocumentsArchive,
-  ),
-  AdminAsdSection(
     key: 'attendance_compensation',
     title: 'Presenze e compensi',
     subtitle: 'Lezioni, compenso, buoni pasto e rimborso km',
@@ -96,6 +76,28 @@ const List<AdminAsdSection> kAdminAsdSections = [
     subtitle: 'Cene sociali: verbale e spese',
     icon: Icons.celebration_outlined,
     route: AppRoutes.socialEvents,
+  ),
+  AdminAsdSection(
+    key: 'documents_archive',
+    title: 'Archivio documenti',
+    subtitle: 'Tutti i documenti per categoria',
+    icon: Icons.folder_copy_outlined,
+    route: AppRoutes.asdDocumentsArchive,
+  ),
+  AdminAsdSection(
+    key: 'drive_documents',
+    title: 'Documenti Drive',
+    subtitle: 'Cartella condivisa: salva e carica i documenti',
+    icon: Icons.folder_shared_outlined,
+    route: '',
+  ),
+  AdminAsdSection(
+    key: 'team_data',
+    title: 'Dati Team / ASD',
+    subtitle: 'Nome, indirizzo, C.F., PEC e contatti',
+    icon: Icons.business_center,
+    route: AppRoutes.adminManagementSystem,
+    arguments: {'initialTab': 'settings'},
   ),
 ];
 
