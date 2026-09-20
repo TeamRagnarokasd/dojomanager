@@ -119,9 +119,9 @@ class _WorkSettingsEditScreenState extends State<WorkSettingsEditScreen> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Salva', style: TextStyle(color: Colors.white)),
+                : const Text('Salva'),
           ),
         ],
       ),

@@ -500,4 +500,53 @@ class WorkAttendanceService {
   Future<void> deletePresence(String id) async {
     await _client.from(_presencesTable).delete().eq('id', id);
   }
+
+  /// `work_settings.work_instructor_user_id`, read only to identify whose
+  /// presences/name the PDF prospetti use — never shown or editable as a
+  /// raw id in the UI (see [WorkSettings], which deliberately omits it).
+  Future<String?> getInstructorUserId() async {
+    final rows = await _client
+        .from(_settingsTable)
+        .select('value')
+        .eq('key', 'work_instructor_user_id')
+        .limit(1);
+    if ((rows as List).isEmpty) return null;
+    return (rows.first as Map<String, dynamic>)['value'] as String?;
+  }
+
+  /// `user_profiles.full_name` for [userId], for the "Nome del
+  /// collaboratore" line on the PDF prospetti.
+  Future<String> getUserFullName(String userId) async {
+    final row = await _client
+        .from('user_profiles')
+        .select('full_name')
+        .eq('id', userId)
+        .single();
+    return row['full_name'] as String? ?? '';
+  }
+
+  /// Distinct dates with a confirmed presence for [userId] within
+  /// [start]..[end] (inclusive), ascending — the basis for the buoni pasto
+  /// and rimborso km prospetti (one voucher/reimbursement per day with
+  /// effective service, never per lesson).
+  Future<List<DateTime>> getConfirmedPresenceDays({
+    required String userId,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final rows = await _client
+        .from(_presencesTable)
+        .select('presence_date')
+        .eq('user_id', userId)
+        .eq('status', 'confirmed')
+        .gte('presence_date', _dateStr(start))
+        .lte('presence_date', _dateStr(end));
+    final days = (rows as List)
+        .map((row) => (row as Map<String, dynamic>)['presence_date'] as String)
+        .toSet()
+        .map(DateTime.parse)
+        .toList()
+      ..sort();
+    return days;
+  }
 }

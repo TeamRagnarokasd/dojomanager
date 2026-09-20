@@ -1,12 +1,21 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/admin_section_visibility_service.dart';
+import '../../services/asd_documents_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/work_attendance_service.dart';
+import '../asd_documents_archive/widgets/asd_category_documents_screen.dart';
+import 'widgets/work_pdf_preview_screen.dart';
 import 'widgets/work_settings_screen.dart';
+import 'work_pdfs.dart';
+
+/// "Mese" or "Anno intero" for the PDF prospetti period picker.
+enum _WorkPdfPeriodMode { month, year }
 
 const List<String> _kMonthNames = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -55,6 +64,11 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
   bool _isLoadingPresences = true;
   List<WorkPresenceEntry> _presences = [];
 
+  /// The 'buoni_pasto' asd_document_categories row, if reachable — null
+  /// (RLS denial, missing category, or any load error) just hides the
+  /// "Fatture e prospetti" button.
+  AsdDocumentCategory? _buoniPastoCategory;
+
   @override
   void initState() {
     super.initState();
@@ -85,7 +99,28 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
     await _loadSettingsInfo();
     await _loadSummary();
     await _loadPresences();
+    await _loadBuoniPastoCategory();
     if (isPrincipal) await _loadPendingLessons();
+  }
+
+  Future<void> _loadBuoniPastoCategory() async {
+    try {
+      final categories = await AsdDocumentsService.instance.getCategories();
+      AsdDocumentCategory? found;
+      for (final category in categories) {
+        if (category.key == 'buoni_pasto') {
+          found = category;
+          break;
+        }
+      }
+      if (!mounted) return;
+      setState(() => _buoniPastoCategory = found);
+    } catch (_) {
+      // RLS denial, missing category, or any other error — just hide the
+      // button (the archive screen itself decides who can actually see it).
+      if (!mounted) return;
+      setState(() => _buoniPastoCategory = null);
+    }
   }
 
   Future<void> _loadSettingsInfo() async {
@@ -298,6 +333,225 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
     await _refreshAll();
   }
 
+  Future<void> _openPdfPanel() async {
+    final now = DateTime.now();
+    final previousMonth = DateTime(now.year, now.month - 1, 1);
+    var docType = WorkPdfDocType.compensation;
+    var mode = _WorkPdfPeriodMode.month;
+    var selectedMonth = previousMonth.month;
+    final yearController = TextEditingController(text: '${previousMonth.year}');
+
+    final result = await showModalBottomSheet<Map<String, Object>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Prospetti PDF', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<WorkPdfDocType>(
+                initialValue: docType,
+                decoration: const InputDecoration(labelText: 'Tipo di documento'),
+                items: WorkPdfDocType.values
+                    .map((t) => DropdownMenuItem(value: t, child: Text(workPdfDocLabel(t))))
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) setSheetState(() => docType = value);
+                },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<_WorkPdfPeriodMode>(
+                initialValue: mode,
+                decoration: const InputDecoration(labelText: 'Periodo'),
+                items: const [
+                  DropdownMenuItem(value: _WorkPdfPeriodMode.month, child: Text('Mese')),
+                  DropdownMenuItem(value: _WorkPdfPeriodMode.year, child: Text('Anno intero')),
+                ],
+                onChanged: (value) {
+                  if (value != null) setSheetState(() => mode = value);
+                },
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  if (mode == _WorkPdfPeriodMode.month) ...[
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        initialValue: selectedMonth,
+                        decoration: const InputDecoration(labelText: 'Mese'),
+                        items: List.generate(
+                          12,
+                          (i) => DropdownMenuItem(value: i + 1, child: Text(_kMonthNames[i])),
+                        ),
+                        onChanged: (value) {
+                          if (value != null) setSheetState(() => selectedMonth = value);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  SizedBox(
+                    width: 100,
+                    child: TextFormField(
+                      controller: yearController,
+                      decoration: const InputDecoration(labelText: 'Anno'),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    final year = int.tryParse(yearController.text.trim()) ?? previousMonth.year;
+                    Navigator.pop(sheetContext, {
+                      'docType': docType,
+                      'mode': mode,
+                      'month': selectedMonth,
+                      'year': year,
+                    });
+                  },
+                  child: const Text('Genera'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (result == null) return;
+    final docType = result['docType'] as WorkPdfDocType;
+    final mode = result['mode'] as _WorkPdfPeriodMode;
+    final year = result['year'] as int;
+    final month = result['month'] as int;
+    final period =
+        mode == _WorkPdfPeriodMode.year ? WorkPdfPeriod.year(year) : WorkPdfPeriod.month(year, month);
+    await _generateAndPreviewPdf(docType, period);
+  }
+
+  Future<void> _generateAndPreviewPdf(WorkPdfDocType docType, WorkPdfPeriod period) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      final instructorId = await _service.getInstructorUserId();
+      if (instructorId == null) {
+        throw Exception('Collaboratore non configurato in Impostazioni.');
+      }
+      final instructorName = await _service.getUserFullName(instructorId);
+
+      late final Uint8List bytes;
+      if (docType == WorkPdfDocType.compensation) {
+        final summary = await _service.getCompensationSummary(period.year);
+        final pdf = await buildWorkCompensationPdf(
+          summary: summary,
+          period: period,
+          instructorName: instructorName,
+        );
+        bytes = await pdf.save();
+      } else {
+        final presenceDays = await _service.getConfirmedPresenceDays(
+          userId: instructorId,
+          start: period.start,
+          end: period.end,
+        );
+        final settings = _settings ?? await _service.getSettings();
+        WorkPresenceSummary? yearSummaryForCheck;
+        if (period.isFullYear) {
+          yearSummaryForCheck = await _service.getPresenceSummary(period.year);
+        }
+        final pdf = docType == WorkPdfDocType.mealVoucher
+            ? await buildWorkMealVoucherPdf(
+                presenceDays: presenceDays,
+                voucherValue: settings.mealVoucherValue,
+                period: period,
+                instructorName: instructorName,
+                yearSummaryForCheck: yearSummaryForCheck,
+              )
+            : await buildWorkKmPdf(
+                presenceDays: presenceDays,
+                settings: settings,
+                period: period,
+                instructorName: instructorName,
+                yearSummaryForCheck: yearSummaryForCheck,
+              );
+        bytes = await pdf.save();
+      }
+
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      final fileName = workPdfFileName(docType, period);
+      final title = '${workPdfDocLabel(docType)} - ${period.label}';
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => WorkPdfPreviewScreen(
+            title: workPdfDocLabel(docType),
+            bytes: bytes,
+            fileName: fileName,
+            onSaveToArchive: _isPrincipalAdmin
+                ? () => _saveWorkPdfToArchive(
+                      docType: docType,
+                      bytes: bytes,
+                      fileName: fileName,
+                      title: title,
+                      subject: instructorName,
+                    )
+                : null,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore durante la generazione del PDF: $e')),
+      );
+    }
+  }
+
+  Future<void> _saveWorkPdfToArchive({
+    required WorkPdfDocType docType,
+    required Uint8List bytes,
+    required String fileName,
+    required String title,
+    required String subject,
+  }) async {
+    final documentsService = AsdDocumentsService.instance;
+    final sanitizedFileName = documentsService.sanitizeFileName(fileName);
+    final storagePath = documentsService.generatedStoragePath(
+      deadlineId: null,
+      fileName: documentsService.timestampedFileName(sanitizedFileName),
+    );
+    await documentsService.uploadBytes(storagePath, bytes, contentType: 'application/pdf');
+    await documentsService.createDocument(
+      title: title,
+      storagePath: storagePath,
+      category: workPdfArchiveCategory(docType),
+      subject: subject,
+      docDate: DateTime.now(),
+      source: kAsdDocumentSourceGenerated,
+      fileName: sanitizedFileName,
+      mimeType: 'application/pdf',
+    );
+  }
+
   Future<void> _openAciTable(String url) async {
     try {
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
@@ -330,6 +584,11 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
       appBar: AppBar(
         title: const Text('Presenze e compensi'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            tooltip: 'Prospetti PDF',
+            onPressed: _openPdfPanel,
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Impostazioni',
@@ -557,6 +816,20 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
               'Totale: ${_formatEuro(summary.voucherTotal)}',
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
             ),
+            if (_buoniPastoCategory != null) ...[
+              SizedBox(height: 1.h),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        AsdCategoryDocumentsScreen(category: _buoniPastoCategory!),
+                  ),
+                ),
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: const Text('Fatture e prospetti'),
+              ),
+            ],
           ],
         ),
       ),
