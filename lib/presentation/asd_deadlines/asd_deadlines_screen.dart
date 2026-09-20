@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sizer/sizer.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/admin_section_visibility_service.dart';
 import '../../services/asd_deadlines_service.dart';
+import '../../services/asd_governance_service.dart';
 import './widgets/asd_board_members_sheet.dart';
 import './widgets/asd_deadline_detail_sheet.dart';
 import './widgets/asd_deadline_form_screen.dart';
@@ -26,6 +28,7 @@ class AsdDeadlinesScreen extends StatefulWidget {
 
 class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
   final _service = AsdDeadlinesService.instance;
+  final _governanceService = AsdGovernanceService.instance;
 
   bool _isCheckingAccess = true;
   bool _canAccess = false;
@@ -136,9 +139,41 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
       case 'edit':
         await _openEditDeadline(occurrence.deadline);
         break;
+      case 'open_drive':
+        await _openDriveForDeadline(occurrence.deadline);
+        break;
       case 'delete':
         await _confirmDeleteDeadline(occurrence.deadline);
         break;
+    }
+  }
+
+  /// Opens the deadline's own drive_url when set, otherwise falls back to
+  /// the general asd_settings.drive_folder_url — same fallback used by the
+  /// guide sheet and the post-generation reminder.
+  Future<void> _openDriveForDeadline(AsdDeadline deadline) async {
+    var url = deadline.driveUrl;
+    if (url == null || url.isEmpty) {
+      try {
+        url = await _governanceService.getDriveFolderUrl();
+      } catch (_) {
+        url = null;
+      }
+    }
+    if (url == null || url.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nessun link della cartella Drive configurato.')),
+      );
+      return;
+    }
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossibile aprire il link: $e')),
+      );
     }
   }
 

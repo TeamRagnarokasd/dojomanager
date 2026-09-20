@@ -486,11 +486,13 @@ class _AsdDocumentGenerationScreenState
   }
 
   Future<void> _showDriveReminderDialog() async {
-    String? driveUrl;
-    try {
-      driveUrl = await _governanceService.getDriveFolderUrl();
-    } catch (_) {
-      driveUrl = null;
+    var driveUrl = widget.sourceDeadline?.driveUrl;
+    if (driveUrl == null || driveUrl.isEmpty) {
+      try {
+        driveUrl = await _governanceService.getDriveFolderUrl();
+      } catch (_) {
+        driveUrl = null;
+      }
     }
     if (!mounted) return;
     await showDialog<void>(
