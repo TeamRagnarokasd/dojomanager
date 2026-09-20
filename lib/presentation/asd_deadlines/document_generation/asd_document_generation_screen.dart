@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -8,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../services/asd_deadlines_service.dart';
 import '../../../services/asd_governance_service.dart';
+import '../../../services/italian_receipt_service.dart';
 
 const List<String> _kItalianMonthNamesLower = [
   'gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
@@ -285,6 +287,36 @@ class _AsdDocumentGenerationScreenState
     return filled;
   }
 
+  /// Two tokens separated by 3+ spaces (e.g. "Il Segretario     Il
+  /// Presidente") render as a left/right pair instead of literal spaces;
+  /// anything else renders as-is, so underscore fill-in lines stay intact.
+  pw.Widget _buildBodyLine(String line, pw.TextStyle style) {
+    final parts = line
+        .split(RegExp(r' {3,}'))
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.length == 2) {
+      return pw.Padding(
+        padding: const pw.EdgeInsets.only(bottom: 4),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(parts[0], style: style),
+            pw.Text(parts[1], style: style),
+          ],
+        ),
+      );
+    }
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 4),
+      child: pw.Text(line, style: style),
+    );
+  }
+
+  /// Same red-header layout as ItalianReceiptService.generateBeautifulReceiptPDF
+  /// (logo + organization info), reused here rather than duplicated with new
+  /// styling — that file itself is left untouched.
   Future<pw.Document> _buildPdf(String title, String body) async {
     final pdf = pw.Document(
       theme: pw.ThemeData.withFont(
@@ -293,33 +325,96 @@ class _AsdDocumentGenerationScreenState
       ),
     );
 
-    final lines = body.split('\n');
-    var titleLineCount = 0;
-    for (final line in lines) {
-      if (line.trim().isEmpty) break;
-      titleLineCount++;
-    }
-    if (titleLineCount == 0) titleLineCount = 1;
-    if (titleLineCount > 3) titleLineCount = 3;
+    final orgInfo = await ItalianReceiptService().getOrganizationInfo();
+    final logoBytes = await rootBundle.load('assets/images/146804-1764638363594.jpg');
+    final logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
 
-    final boldStyle = pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold);
-    final normalStyle = const pw.TextStyle(fontSize: 11);
+    final lines = body.split('\n');
+    final docTitle = lines.isNotEmpty ? lines.first : title;
+    final bodyLines = lines.length > 1 ? lines.sublist(1) : const <String>[];
+
+    const bodyStyle = pw.TextStyle(fontSize: 11);
+    final titleStyle = pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold);
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(36),
+        margin: const pw.EdgeInsets.all(40),
+        footer: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          children: [
+            pw.Divider(color: PdfColors.grey400),
+            pw.Text(
+              'Team Ragnarok ASD - documento generato dall\'app il '
+              '${DateFormat('dd/MM/yyyy').format(DateTime.now())}',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+            ),
+            pw.Text(
+              'Pagina ${context.pageNumber} di ${context.pagesCount}',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+            ),
+          ],
+        ),
         build: (context) => [
-          for (var i = 0; i < titleLineCount && i < lines.length; i++)
-            pw.Text(lines[i], style: boldStyle, textAlign: pw.TextAlign.center),
-          pw.SizedBox(height: 16),
-          for (var i = titleLineCount; i < lines.length; i++)
-            lines[i].trim().isEmpty
-                ? pw.SizedBox(height: 10)
-                : pw.Padding(
-                    padding: const pw.EdgeInsets.only(bottom: 4),
-                    child: pw.Text(lines[i], style: normalStyle),
+          pw.Container(
+            width: double.infinity,
+            padding: const pw.EdgeInsets.all(20),
+            decoration: pw.BoxDecoration(
+              color: PdfColors.red700,
+              borderRadius: pw.BorderRadius.circular(8),
+            ),
+            child: pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Container(width: 60, height: 60, child: pw.Image(logoImage)),
+                pw.SizedBox(width: 15),
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        orgInfo.name,
+                        style: pw.TextStyle(
+                          fontSize: 24,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.white,
+                        ),
+                      ),
+                      pw.SizedBox(height: 4),
+                      pw.Text(
+                        orgInfo.address,
+                        style: const pw.TextStyle(fontSize: 12, color: PdfColors.white),
+                      ),
+                      pw.Text(
+                        'c.f. ${orgInfo.taxCode}',
+                        style: const pw.TextStyle(fontSize: 12, color: PdfColors.white),
+                      ),
+                      if (orgInfo.pec != null && orgInfo.pec!.isNotEmpty)
+                        pw.Text(
+                          'PEC: ${orgInfo.pec}',
+                          style: const pw.TextStyle(fontSize: 12, color: PdfColors.white),
+                        ),
+                      if (orgInfo.phone != null && orgInfo.phone!.isNotEmpty)
+                        pw.Text(
+                          'Tel: ${orgInfo.phone}',
+                          style: const pw.TextStyle(fontSize: 12, color: PdfColors.white),
+                        ),
+                      if (orgInfo.email != null && orgInfo.email!.isNotEmpty)
+                        pw.Text(
+                          'Email: ${orgInfo.email}',
+                          style: const pw.TextStyle(fontSize: 12, color: PdfColors.white),
+                        ),
+                    ],
                   ),
+                ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 24),
+          pw.Text(docTitle, style: titleStyle, textAlign: pw.TextAlign.center),
+          pw.SizedBox(height: 16),
+          for (final line in bodyLines)
+            line.trim().isEmpty ? pw.SizedBox(height: 10) : _buildBodyLine(line, bodyStyle),
         ],
       ),
     );
