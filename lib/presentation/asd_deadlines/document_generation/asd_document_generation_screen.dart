@@ -38,6 +38,7 @@ class AsdDocumentGenerationScreen extends StatefulWidget {
     required this.template,
     this.sourceDeadline,
     this.dueDate,
+    this.initialValues,
   }) : super(key: key);
 
   final AsdDocumentTemplate template;
@@ -46,6 +47,12 @@ class AsdDocumentGenerationScreen extends StatefulWidget {
   /// Due date of the occurrence this draft was generated from, when known —
   /// stamped onto the saved asd_documents row.
   final DateTime? dueDate;
+
+  /// Pre-fills the text field for each placeholder key given here. Only
+  /// affects placeholders that fall through to the generic TextFormField in
+  /// [_buildField] (special-cased ones like data/ora/presenti are
+  /// untouched). Null or omitted keeps the screen's behavior unchanged.
+  final Map<String, String>? initialValues;
 
   @override
   State<AsdDocumentGenerationScreen> createState() =>
@@ -138,6 +145,12 @@ class _AsdDocumentGenerationScreenState
         TextEditingController(text: 'la sede sociale di Longiano (FC), via Fratta 319');
     _textControllers['ordine_del_giorno'] =
         TextEditingController(text: widget.sourceDeadline?.documentAgenda ?? '');
+    final initialValues = widget.initialValues;
+    if (initialValues != null) {
+      for (final entry in initialValues.entries) {
+        _textControllers[entry.key] = TextEditingController(text: entry.value);
+      }
+    }
   }
 
   Future<void> _load() async {
@@ -515,7 +528,7 @@ class _AsdDocumentGenerationScreenState
       if (savedDocument != null) {
         await _showDocumentSavedDialog(savedDocument);
       }
-      if (mounted) Navigator.pop(context);
+      if (mounted) Navigator.pop(context, savedDocument);
     } catch (e) {
       if (!mounted) return;
       setState(() => _isGenerating = false);
