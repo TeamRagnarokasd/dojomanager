@@ -8,13 +8,18 @@ import 'package:intl/intl.dart';
 import '../../../services/asd_deadlines_service.dart';
 import '../../../services/asd_documents_service.dart';
 
-/// "+ Aggiungi documento": brings a past-years document into the archive —
-/// pick a photo, PDF or other file, then title/categoria/persona-ente/data
-/// and an optional linked Scadenzario entry. Uploads to
-/// archive/<category>/<timestamp>_<file> and inserts an asd_documents row
-/// with source 'uploaded'.
+/// "+ Aggiungi documento": brings any document produced outside the app
+/// into the archive — pick a photo, PDF or other file, then
+/// titolo/categoria/persona-ente/data and an optional linked Scadenzario
+/// entry. Uploads to archive/<category>/<timestamp>_<file> and inserts an
+/// asd_documents row with source 'uploaded'.
 class AsdAddDocumentScreen extends StatefulWidget {
-  const AsdAddDocumentScreen({Key? key}) : super(key: key);
+  const AsdAddDocumentScreen({Key? key, this.initialCategoryKey}) : super(key: key);
+
+  /// Preselects this category (e.g. when opened from within a category's
+  /// own screen) — still changeable from the dropdown. Falls back to the
+  /// first loaded category, as before, when null or not found among them.
+  final String? initialCategoryKey;
 
   @override
   State<AsdAddDocumentScreen> createState() => _AsdAddDocumentScreenState();
@@ -65,10 +70,15 @@ class _AsdAddDocumentScreenState extends State<AsdAddDocumentScreen> {
         // Not critical — the linked-deadline dropdown just stays empty.
       }
       if (!mounted) return;
+      final preselected = widget.initialCategoryKey;
+      final hasPreselected =
+          preselected != null && categories.any((c) => c.key == preselected);
       setState(() {
         _categories = categories;
         _deadlines = deadlines;
-        _selectedCategory = categories.isNotEmpty ? categories.first.key : null;
+        _selectedCategory = hasPreselected
+            ? preselected
+            : (categories.isNotEmpty ? categories.first.key : null);
         _isLoadingOptions = false;
       });
     } catch (e) {

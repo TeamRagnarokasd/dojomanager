@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../services/asd_documents_service.dart';
+import 'asd_add_document_screen.dart';
 import 'asd_document_actions.dart';
 
 /// One category's documents, grouped by year of doc_date (most recent
@@ -51,6 +52,16 @@ class _AsdCategoryDocumentsScreenState extends State<AsdCategoryDocumentsScreen>
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _openAddDocument() async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AsdAddDocumentScreen(initialCategoryKey: widget.category.key),
+      ),
+    );
+    if (saved == true) await _load();
   }
 
   Future<void> _toggleDriveUploaded(AsdDocument document) async {
@@ -262,7 +273,14 @@ class _AsdCategoryDocumentsScreenState extends State<AsdCategoryDocumentsScreen>
                   ),
                 )
               : _documents.isEmpty
-                  ? const Center(child: Text('Nessun documento in questa categoria.'))
+                  ? Padding(
+                      padding: EdgeInsets.only(
+                        bottom: MediaQuery.of(context).viewPadding.bottom + 88,
+                      ),
+                      child: const Center(
+                        child: Text('Nessun documento in questa categoria.'),
+                      ),
+                    )
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView(
@@ -270,11 +288,16 @@ class _AsdCategoryDocumentsScreenState extends State<AsdCategoryDocumentsScreen>
                           16,
                           16,
                           16,
-                          MediaQuery.of(context).viewPadding.bottom + 24,
+                          MediaQuery.of(context).viewPadding.bottom + 88,
                         ),
                         children: _buildDocumentsByYear(),
                       ),
                     ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _openAddDocument,
+        tooltip: 'Aggiungi documento',
+        child: const Icon(Icons.add),
+      ),
     );
   }
 }
