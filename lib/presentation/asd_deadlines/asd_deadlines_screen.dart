@@ -8,6 +8,7 @@ import './widgets/asd_board_members_sheet.dart';
 import './widgets/asd_deadline_detail_sheet.dart';
 import './widgets/asd_deadline_form_screen.dart';
 import './widgets/asd_deadline_guide_sheet.dart';
+import './widgets/asd_inactive_deadlines_screen.dart';
 
 /// Scadenzario ASD: status banner + "Da fare" / "Certificati medici" /
 /// "Completate" / "Non attive" groups. No deadline text or guide content is
@@ -241,18 +242,6 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
     }
   }
 
-  Future<void> _reactivate(AsdDeadline deadline, bool active) async {
-    try {
-      await _service.setDeadlineActive(deadline.id, active);
-      await _load();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Errore: $e')),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_isCheckingAccess) {
@@ -339,7 +328,7 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
 
     if (summary.inactiveDeadlines.isNotEmpty) {
       widgets.add(SizedBox(height: 2.h));
-      widgets.addAll(_buildInactiveSection(summary));
+      widgets.add(_buildInactiveSummaryRow(summary.inactiveDeadlines.length));
     }
 
     widgets.add(SizedBox(height: 10.h));
@@ -531,29 +520,25 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
     ];
   }
 
-  List<Widget> _buildInactiveSection(AsdDeadlineSummary summary) {
-    return [
-      _sectionHeader('Non attive'),
-      ...summary.inactiveDeadlines.map((deadline) {
-        return Card(
-          margin: const EdgeInsets.symmetric(vertical: 3),
-          child: ListTile(
-            title: Text(deadline.title),
-            subtitle: deadline.conditionNote != null &&
-                    deadline.conditionNote!.isNotEmpty
-                ? Text(
-                    deadline.conditionNote!,
-                    style: const TextStyle(fontStyle: FontStyle.italic),
-                  )
-                : null,
-            trailing: Switch(
-              value: false,
-              onChanged: (value) => _reactivate(deadline, value),
-            ),
-            onTap: () => _openEditDeadline(deadline),
-          ),
-        );
-      }),
-    ];
+  Widget _buildInactiveSummaryRow(int count) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      child: ListTile(
+        title: Text(
+          'Non attive ($count)',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        onTap: _openInactiveDeadlines,
+      ),
+    );
+  }
+
+  Future<void> _openInactiveDeadlines() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AsdInactiveDeadlinesScreen()),
+    );
+    await _load();
   }
 }
