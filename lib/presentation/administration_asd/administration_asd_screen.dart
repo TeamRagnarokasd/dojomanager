@@ -587,23 +587,53 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
     );
   }
 
-  /// AppBar icon, visible to every admin who opens this screen (principal
-  /// or not). Short tap: copy the Italian context to the clipboard and open
-  /// the chosen assistant. Long press: pick a different assistant. Both
-  /// gestures live on one InkResponse (not nested ancestor/descendant
-  /// detectors), so they can't race each other; the Tooltip is manual-only
-  /// so it doesn't compete for the long press either.
+  /// AppBar pill, visible to every admin who opens this screen (principal
+  /// or not): the assistant currently in use. Short tap: copy the Italian
+  /// context to the clipboard and open it. Long press: pick a different
+  /// assistant. Both gestures live on one InkResponse (not nested
+  /// ancestor/descendant detectors), so they can't race each other; the
+  /// Tooltip is manual-only so it doesn't compete for the long press
+  /// either. The label is capped and non-wrapping so a narrow screen never
+  /// overflows the AppBar.
   Widget _buildAssistantAction() {
+    final foregroundColor = IconTheme.of(context).color;
     return Tooltip(
       triggerMode: TooltipTriggerMode.manual,
       message: 'Chiedi a ${_currentAssistant.label} (tieni premuto per cambiare)',
       child: InkResponse(
         onTap: _askAssistant,
         onLongPress: _showAssistantPicker,
-        radius: 24,
-        child: const Padding(
-          padding: EdgeInsets.all(12),
-          child: Icon(Icons.smart_toy_outlined),
+        radius: 28,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: (foregroundColor ?? Colors.white).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.auto_awesome, size: 16, color: foregroundColor),
+                const SizedBox(width: 4),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 72),
+                  child: Text(
+                    _currentAssistant.label,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: foregroundColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

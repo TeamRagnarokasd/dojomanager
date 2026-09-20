@@ -195,17 +195,26 @@ class AsdDeadlineCompletion {
 enum AsdDeadlineUrgency { normal, dueSoon, overdue }
 
 /// The current, actionable occurrence of an active, not-yet-completed
-/// deadline — what the "Da fare" group shows.
+/// deadline — what the "Da fare"/"In programma" groups show.
 class AsdDeadlineOccurrence {
   const AsdDeadlineOccurrence({
     required this.deadline,
     required this.dueDate,
     required this.urgency,
+    required this.previousCycleCompleted,
   });
 
   final AsdDeadline deadline;
   final DateTime dueDate;
   final AsdDeadlineUrgency urgency;
+
+  /// For a recurring deadline, true when the cycle right before this one
+  /// (dueDate minus repeat_months) was completed — i.e. this occurrence is
+  /// just the next scheduled cycle, not something ever left undone. Always
+  /// false for a one-time deadline. Used to keep a freshly-completed
+  /// recurring deadline out of "Da fare"/"In programma" until it's
+  /// actually due again (it shows in "Completate" instead).
+  final bool previousCycleCompleted;
 }
 
 /// One row for the read-only "Certificati medici" group.
@@ -242,6 +251,7 @@ class AsdDeadlineSummary {
     required this.inactiveDeadlines,
     required this.medicalReport,
     required this.titlesByDeadlineId,
+    required this.deadlinesById,
   });
 
   final List<AsdDeadlineOccurrence> dueOccurrences;
@@ -253,6 +263,12 @@ class AsdDeadlineSummary {
   /// group can show a title even for a deadline whose current occurrence
   /// has since moved on, or that was a one-time deadline now fully done.
   final Map<String, String> titlesByDeadlineId;
+
+  /// Every active deadline by id, so the "Completate" group can tell a
+  /// recurring deadline from a one-time one and read its notice_days when
+  /// computing "Torna in Da fare il ...". Empty in [getPendingSummary]
+  /// (badges/notifications don't need it).
+  final Map<String, AsdDeadline> deadlinesById;
 
   int get overdueCount =>
       dueOccurrences.where((o) => o.urgency == AsdDeadlineUrgency.overdue).length +
@@ -468,16 +484,23 @@ class AsdDeadlinesService {
     final today = DateTime.now();
     final occurrences = <AsdDeadlineOccurrence>[];
     for (final deadline in active) {
-      final dueDate = _currentOccurrenceDueDate(
-        deadline,
-        completedByDeadline[deadline.id] ?? const {},
-      );
+      final completedDueDates = completedByDeadline[deadline.id] ?? const {};
+      final dueDate = _currentOccurrenceDueDate(deadline, completedDueDates);
       if (dueDate == null) continue; // one-time, already completed
+
+      // Dart's DateTime constructor normalizes an out-of-range month
+      // (including negative values), the same way _addMonths already
+      // relies on for advancing forward — so going backward by
+      // repeat_months works the same way.
+      final previousCycleCompleted = !deadline.isOneTime &&
+          completedDueDates.contains(_addMonths(dueDate, -deadline.repeatMonths));
+
       occurrences.add(
         AsdDeadlineOccurrence(
           deadline: deadline,
           dueDate: dueDate,
           urgency: _classify(dueDate, deadline.noticeDays, today),
+          previousCycleCompleted: previousCycleCompleted,
         ),
       );
     }
@@ -572,6 +595,7 @@ class AsdDeadlinesService {
       inactiveDeadlines: inactive,
       medicalReport: medicalReport,
       titlesByDeadlineId: {for (final d in all) d.id: d.title},
+      deadlinesById: {for (final d in all) d.id: d},
     );
   }
 
@@ -587,6 +611,7 @@ class AsdDeadlinesService {
       inactiveDeadlines: const [],
       medicalReport: medicalReport,
       titlesByDeadlineId: const {},
+      deadlinesById: const {},
     );
   }
 }

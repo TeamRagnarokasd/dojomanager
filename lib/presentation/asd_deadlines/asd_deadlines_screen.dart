@@ -35,6 +35,14 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
   String? _loadError;
   AsdDeadlineSummary? _summary;
 
+  /// Occurrences the checkbox has selected for a bulk "Segna come fatte",
+  /// keyed by [_occurrenceKey] — purely local UI state, nothing is written
+  /// to the database until "Conferma" is tapped.
+  final Map<String, AsdDeadlineOccurrence> _selectedOccurrences = {};
+
+  String _occurrenceKey(AsdDeadlineOccurrence occurrence) =>
+      '${occurrence.deadline.id}_${occurrence.dueDate.toIso8601String()}';
+
   @override
   void initState() {
     super.initState();
@@ -65,8 +73,10 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
     try {
       final summary = await _service.getSummary();
       if (!mounted) return;
+      final validKeys = summary.dueOccurrences.map(_occurrenceKey).toSet();
       setState(() {
         _summary = summary;
+        _selectedOccurrences.removeWhere((key, _) => !validKeys.contains(key));
         _isLoading = false;
       });
     } catch (e) {
@@ -220,6 +230,66 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
     }
   }
 
+  /// The checkbox only orders the local selection — no database write
+  /// happens until "Conferma" on the bottom bar.
+  void _toggleSelection(AsdDeadlineOccurrence occurrence) {
+    final key = _occurrenceKey(occurrence);
+    setState(() {
+      if (_selectedOccurrences.containsKey(key)) {
+        _selectedOccurrences.remove(key);
+      } else {
+        _selectedOccurrences[key] = occurrence;
+      }
+    });
+  }
+
+  Future<void> _confirmSelectedDone() async {
+    final occurrences = _selectedOccurrences.values.toList();
+    if (occurrences.isEmpty) return;
+    try {
+      for (final occurrence in occurrences) {
+        await _service.completeOccurrence(
+          deadlineId: occurrence.deadline.id,
+          dueDate: occurrence.dueDate,
+        );
+      }
+      setState(() => _selectedOccurrences.clear());
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${occurrences.length} scadenze segnate come fatte'),
+          action: SnackBarAction(
+            label: 'Annulla',
+            onPressed: () async {
+              final summary = _summary;
+              if (summary == null) return;
+              for (final occurrence in occurrences) {
+                AsdDeadlineCompletion? completion;
+                for (final c in summary.recentCompletions) {
+                  if (c.deadlineId == occurrence.deadline.id &&
+                      c.dueDate == occurrence.dueDate) {
+                    completion = c;
+                    break;
+                  }
+                }
+                if (completion != null) {
+                  await _service.undoCompletion(completion.id);
+                }
+              }
+              await _load();
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore: $e')),
+      );
+    }
+  }
+
   Future<void> _undoCompletion(AsdDeadlineCompletion completion) async {
     try {
       await _service.undoCompletion(completion.id);
@@ -230,6 +300,30 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
         SnackBar(content: Text('Errore: $e')),
       );
     }
+  }
+
+  Future<void> _confirmUndoCompletion(AsdDeadlineCompletion completion) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Riportare in Da fare?'),
+        content: const Text(
+          'Il completamento verrà annullato e la scadenza tornerà tra quelle da fare.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annulla'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Riporta'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _undoCompletion(completion);
   }
 
   Future<void> _confirmDeleteDeadline(AsdDeadline deadline) async {
@@ -322,10 +416,51 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
                     children: _buildBody(),
                   ),
                 ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openAddDeadline,
-        tooltip: 'Aggiungi scadenza',
-        child: const Icon(Icons.add),
+      bottomNavigationBar: _selectedOccurrences.isEmpty ? null : _buildSelectionBar(),
+      floatingActionButton: _selectedOccurrences.isEmpty
+          ? FloatingActionButton(
+              onPressed: _openAddDeadline,
+              tooltip: 'Aggiungi scadenza',
+              child: const Icon(Icons.add),
+            )
+          : null,
+    );
+  }
+
+  /// Fixed bar, above the FAB's spot, shown while at least one occurrence
+  /// is selected. Wrapped in SafeArea so it never sits under Android's
+  /// nav bar, and never covers the list itself — Scaffold reserves its
+  /// height above bottomNavigationBar automatically.
+  Widget _buildSelectionBar() {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 8,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: ElevatedButton(
+                onPressed: _confirmSelectedDone,
+                child: Text('Conferma ${_selectedOccurrences.length} scadenze fatte'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            TextButton(
+              onPressed: () => setState(() => _selectedOccurrences.clear()),
+              child: const Text('Annulla'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -340,6 +475,12 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
     ];
 
     widgets.addAll(_buildDueSection(summary));
+
+    final upcomingSection = _buildUpcomingSection(summary);
+    if (upcomingSection.isNotEmpty) {
+      widgets.add(SizedBox(height: 2.h));
+      widgets.addAll(upcomingSection);
+    }
 
     if (summary.medicalReport != null) {
       widgets.add(SizedBox(height: 2.h));
@@ -409,81 +550,118 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
       );
 
   List<Widget> _buildDueSection(AsdDeadlineSummary summary) {
-    final dayFormat = DateFormat('dd/MM/yyyy', 'it_IT');
+    final dueOccurrences = summary.dueOccurrences
+        .where((o) => o.urgency != AsdDeadlineUrgency.normal)
+        .toList();
     return [
       _sectionHeader('Da fare'),
-      if (summary.dueOccurrences.isEmpty)
+      if (dueOccurrences.isEmpty)
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 8),
-          child: Text('Nessuna scadenza in elenco.'),
+          child: Text('Niente da fare adesso'),
         )
       else
-        ...summary.dueOccurrences.map((occurrence) {
-          final color = switch (occurrence.urgency) {
-            AsdDeadlineUrgency.overdue => Colors.red,
-            AsdDeadlineUrgency.dueSoon => Colors.orange,
-            AsdDeadlineUrgency.normal => null,
-          };
-          return Card(
-            margin: const EdgeInsets.symmetric(vertical: 3),
-            child: ListTile(
-              leading: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Checkbox(
-                    value: false,
-                    onChanged: (_) => _completeOccurrence(occurrence),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.more_vert, size: 18),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 24),
-                    tooltip: 'Altre azioni',
-                    onPressed: () => _openActionsMenu(occurrence),
-                  ),
-                ],
-              ),
-              title: Text(
-                occurrence.deadline.title,
-                style: TextStyle(color: color, fontWeight: FontWeight.w600),
-              ),
-              subtitle: Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(
-                    '${dayFormat.format(occurrence.dueDate)} · ${asdCategoryLabel(occurrence.deadline.category)}',
-                    style: TextStyle(color: color),
-                  ),
-                  if (occurrence.deadline.needsConfirmation)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.blueGrey.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Text(
-                        'Da confermare',
-                        style: TextStyle(fontSize: 10),
-                      ),
-                    ),
-                ],
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.help_outline),
-                tooltip: 'Come si fa',
-                onPressed: () => _openGuide(occurrence.deadline),
-              ),
-              onTap: () => _openDeadlinePage(occurrence),
-              onLongPress: () => _confirmDeleteDeadline(occurrence.deadline),
-            ),
-          );
-        }),
+        ...dueOccurrences.map(_buildOccurrenceCard),
     ];
+  }
+
+  /// Active deadlines whose current occurrence is neither overdue nor
+  /// due-soon and whose previous cycle was never completed — i.e. genuinely
+  /// still far away, not just a freshly-completed recurring deadline
+  /// waiting for its next cycle (that one shows in "Completate" instead).
+  /// Hidden entirely when empty.
+  List<Widget> _buildUpcomingSection(AsdDeadlineSummary summary) {
+    final upcoming = summary.dueOccurrences
+        .where((o) =>
+            o.urgency == AsdDeadlineUrgency.normal && !o.previousCycleCompleted)
+        .toList();
+    if (upcoming.isEmpty) return const [];
+    return [
+      _sectionHeader('In programma'),
+      ...upcoming.map(_buildOccurrenceCard),
+    ];
+  }
+
+  /// Shared row for "Da fare" and "In programma": same checkbox (selection
+  /// only), three-dot menu, "?" guide, tap-to-open-page and long-press-to-
+  /// delete.
+  Widget _buildOccurrenceCard(AsdDeadlineOccurrence occurrence) {
+    final dayFormat = DateFormat('dd/MM/yyyy', 'it_IT');
+    final color = switch (occurrence.urgency) {
+      AsdDeadlineUrgency.overdue => Colors.red,
+      AsdDeadlineUrgency.dueSoon => Colors.orange,
+      AsdDeadlineUrgency.normal => null,
+    };
+    final isSelected = _selectedOccurrences.containsKey(_occurrenceKey(occurrence));
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      child: ListTile(
+        leading: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Checkbox(
+              value: isSelected,
+              onChanged: (_) => _toggleSelection(occurrence),
+            ),
+            // Full 48x48 tap target, opaque to hit-testing so it
+            // always claims the tap before it can reach the row's own
+            // onTap (which opens the "Scadenza" page) — no dead space
+            // around the icon for a stray tap to fall through.
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: Tooltip(
+                message: 'Altre azioni',
+                child: InkWell(
+                  onTap: () => _openActionsMenu(occurrence),
+                  child: const Center(
+                    child: Icon(Icons.more_vert, size: 20),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        title: Text(
+          occurrence.deadline.title,
+          style: TextStyle(color: color, fontWeight: FontWeight.w600),
+        ),
+        subtitle: Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              '${dayFormat.format(occurrence.dueDate)} · ${asdCategoryLabel(occurrence.deadline.category)}',
+              style: TextStyle(color: color),
+            ),
+            if (occurrence.deadline.needsConfirmation)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.blueGrey.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Da confermare',
+                  style: TextStyle(fontSize: 10),
+                ),
+              ),
+          ],
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.help_outline),
+          tooltip: 'Come si fa',
+          onPressed: () => _openGuide(occurrence.deadline),
+        ),
+        onTap: () => _openDeadlinePage(occurrence),
+        onLongPress: () => _confirmDeleteDeadline(occurrence.deadline),
+      ),
+    );
   }
 
   List<Widget> _buildMedicalSection(AsdMedicalCertificateReport report) {
@@ -521,6 +699,9 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
 
   List<Widget> _buildCompletedSection(AsdDeadlineSummary summary) {
     final dayFormat = DateFormat('dd/MM/yyyy', 'it_IT');
+    final occurrenceByDeadlineId = {
+      for (final o in summary.dueOccurrences) o.deadline.id: o,
+    };
     return [
       _sectionHeader('Completate'),
       if (summary.recentCompletions.isEmpty)
@@ -535,6 +716,20 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
           final subtitle = completion.isSkipped
               ? 'Saltata il ${dayFormat.format(completion.completedAt)}'
               : 'Fatto da ${completion.completedByName ?? 'un admin'} il ${dayFormat.format(completion.completedAt)}';
+
+          // Recurring deadlines only: when the next occurrence re-enters
+          // "Da fare" (its due date minus its own notice_days).
+          String? returnText;
+          final deadline = summary.deadlinesById[completion.deadlineId];
+          if (deadline != null && !deadline.isOneTime) {
+            final nextOccurrence = occurrenceByDeadlineId[completion.deadlineId];
+            if (nextOccurrence != null) {
+              final returnDate = nextOccurrence.dueDate
+                  .subtract(Duration(days: deadline.noticeDays));
+              returnText = 'Torna in Da fare il ${dayFormat.format(returnDate)}';
+            }
+          }
+
           return Card(
             margin: const EdgeInsets.symmetric(vertical: 3),
             child: ListTile(
@@ -545,8 +740,16 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
                 color: completion.isSkipped ? Colors.grey : Colors.green,
               ),
               title: Text(title),
-              subtitle: Text(subtitle),
-              onTap: () => _undoCompletion(completion),
+              subtitle: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(subtitle),
+                  if (returnText != null)
+                    Text(returnText, style: const TextStyle(fontStyle: FontStyle.italic)),
+                ],
+              ),
+              onTap: () => _confirmUndoCompletion(completion),
             ),
           );
         }),
