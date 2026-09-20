@@ -91,8 +91,10 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   static const String _chipNoCert = 'no_cert';
   static const String _chipPending = 'pending';
   static const String _chipNoSub = 'no_sub';
+  static const String _chipNoReg = 'no_reg';
 
   Set<String> _subscribedUserIds = {};
+  Set<String> _annualRegisteredIds = {};
 
   // Compute age in years from a birth_date string (ISO-8601 or similar)
   int? _ageFromBirthDate(dynamic birthDate) {
@@ -162,6 +164,13 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
 
         final userId = user['id']?.toString() ?? '';
         chipMatch = userId.isEmpty || !_subscribedUserIds.contains(userId);
+      } else if (chip == _chipNoReg) {
+        final role = user['role']?.toString() ?? '';
+        if (role != 'student' && role != 'instructor_student') {
+          return false; // other roles are excluded entirely from this filter
+        }
+        final userId = user['id']?.toString() ?? '';
+        chipMatch = userId.isEmpty || !_annualRegisteredIds.contains(userId);
       }
 
       if (!chipMatch) return false; // AND logic
@@ -370,6 +379,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         }
 
         final subscribedIds = <String>{};
+        final annualRegisteredIds = <String>{};
 
         for (final conf in (confirmationsResponse as List)) {
           final userId = conf['user_id']?.toString();
@@ -383,6 +393,18 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
           if (planData == null) continue;
 
           final planName = (planData['name']?.toString() ?? '').toLowerCase();
+
+          // Annual registration (mirrors check_user_has_annual_registration /
+          // payment_service.checkHasAnnualRegistration): no expiry check,
+          // unlike the ordinary subscription rules below.
+          if (planName.contains('iscrizione annuale') ||
+              (planName.contains('iscrizione') && planName.contains('annuale'))) {
+            annualRegisteredIds.add(userId);
+            final beneficiaryId = conf['beneficiary_profile_id']?.toString();
+            if (beneficiaryId != null && beneficiaryId.isNotEmpty) {
+              annualRegisteredIds.add(beneficiaryId);
+            }
+          }
 
           // Exclude annual/registration plans
           if (planName.contains('iscrizione') || planName.contains('annuale')) {
@@ -423,9 +445,11 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         }
 
         _subscribedUserIds = subscribedIds;
+        _annualRegisteredIds = annualRegisteredIds;
       } catch (e) {
         print('Error loading subscribed user IDs: $e');
         _subscribedUserIds = {};
+        _annualRegisteredIds = {};
       }
 
       // Load admin communications with error handling
@@ -1130,6 +1154,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
             _buildFilterChip('Senza certificato medico', _chipNoCert),
             _buildFilterChip('In attesa di approvazione', _chipPending),
             _buildFilterChip('Senza abbonamento', _chipNoSub),
+            _buildFilterChip('Senza iscrizione', _chipNoReg),
           ],
         ),
         SizedBox(height: 10),

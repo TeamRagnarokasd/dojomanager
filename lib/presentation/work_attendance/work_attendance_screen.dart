@@ -344,13 +344,16 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
     final result = await showModalBottomSheet<Map<String, Object>>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       builder: (sheetContext) => StatefulBuilder(
-        builder: (sheetContext, setSheetState) => Padding(
+        builder: (sheetContext, setSheetState) => SingleChildScrollView(
           padding: EdgeInsets.only(
             left: 16,
             right: 16,
             top: 16,
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom +
+                MediaQuery.of(sheetContext).viewPadding.bottom +
+                16,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
