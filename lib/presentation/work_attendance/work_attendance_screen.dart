@@ -432,13 +432,14 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
     );
 
     if (result == null) return;
-    final docType = result['docType'] as WorkPdfDocType;
-    final mode = result['mode'] as _WorkPdfPeriodMode;
+    final pickedDocType = result['docType'] as WorkPdfDocType;
+    final pickedMode = result['mode'] as _WorkPdfPeriodMode;
     final year = result['year'] as int;
     final month = result['month'] as int;
-    final period =
-        mode == _WorkPdfPeriodMode.year ? WorkPdfPeriod.year(year) : WorkPdfPeriod.month(year, month);
-    await _generateAndPreviewPdf(docType, period);
+    final period = pickedMode == _WorkPdfPeriodMode.year
+        ? WorkPdfPeriod.year(year)
+        : WorkPdfPeriod.month(year, month);
+    await _generateAndPreviewPdf(pickedDocType, period);
   }
 
   Future<void> _generateAndPreviewPdf(WorkPdfDocType docType, WorkPdfPeriod period) async {

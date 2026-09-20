@@ -213,7 +213,7 @@ pw.Widget _noteBlock(String text) => pw.Container(
         color: PdfColors.grey200,
         borderRadius: pw.BorderRadius.circular(6),
       ),
-      child: pw.Text(text, style: const pw.TextStyle(fontSize: 10, fontStyle: pw.FontStyle.italic)),
+      child: pw.Text(text, style: pw.TextStyle(fontSize: 10, fontStyle: pw.FontStyle.italic)),
     );
 
 pw.Widget _signatureBlock() => pw.Padding(
