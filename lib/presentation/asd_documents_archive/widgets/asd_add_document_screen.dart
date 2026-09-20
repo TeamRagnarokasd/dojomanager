@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../services/asd_deadlines_service.dart';
 import '../../../services/asd_documents_service.dart';
+import 'asd_deadline_picker.dart';
 
 /// "+ Aggiungi documento": brings any document produced outside the app
 /// into the archive — pick a photo, PDF or other file, then
@@ -65,9 +66,8 @@ class _AsdAddDocumentScreenState extends State<AsdAddDocumentScreen> {
       List<AsdDeadline> deadlines = [];
       try {
         deadlines = await AsdDeadlinesService.instance.getAllDeadlines();
-        deadlines.sort((a, b) => a.title.compareTo(b.title));
       } catch (_) {
-        // Not critical — the linked-deadline dropdown just stays empty.
+        // Not critical — the linked-deadline picker just stays empty.
       }
       if (!mounted) return;
       final preselected = widget.initialCategoryKey;
@@ -301,15 +301,10 @@ class _AsdAddDocumentScreenState extends State<AsdAddDocumentScreen> {
                     onTap: _pickDocDate,
                   ),
                   const SizedBox(height: 8),
-                  DropdownButtonFormField<String?>(
-                    initialValue: _selectedDeadlineId,
-                    decoration: const InputDecoration(labelText: 'Scadenza collegata (facoltativa)'),
-                    items: [
-                      const DropdownMenuItem<String?>(value: null, child: Text('Nessuna')),
-                      ..._deadlines.map(
-                        (d) => DropdownMenuItem<String?>(value: d.id, child: Text(d.title)),
-                      ),
-                    ],
+                  AsdDeadlinePicker(
+                    label: 'Scadenza collegata (facoltativa)',
+                    deadlines: _deadlines,
+                    selectedDeadlineId: _selectedDeadlineId,
                     onChanged: (value) => setState(() => _selectedDeadlineId = value),
                   ),
                 ],
