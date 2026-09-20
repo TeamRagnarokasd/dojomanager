@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:intl/intl.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -8,6 +11,7 @@ import '../../services/admin_section_visibility_service.dart';
 import '../../services/asd_deadlines_service.dart';
 import '../../services/asd_governance_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/italian_receipt_service.dart';
 
 /// Definition of one "Amministrazione ASD" section. Adding a future section
 /// is adding one more entry to [kAdminAsdSections] — plus a matching
@@ -79,6 +83,24 @@ const List<AdminAsdSection> kAdminAsdSections = [
 /// can_access_admin_section).
 const String kAdministrationAsdKey = 'administration_asd';
 
+/// One AI assistant offered by "Chiedi all'assistente".
+class _AssistantOption {
+  const _AssistantOption(this.key, this.label, this.url);
+
+  final String key;
+  final String label;
+  final String url;
+}
+
+/// Claude first — the default assistant.
+const List<_AssistantOption> _kAssistantOptions = [
+  _AssistantOption('claude', 'Claude', 'https://claude.ai/new'),
+  _AssistantOption('chatgpt', 'ChatGPT', 'https://chatgpt.com/'),
+  _AssistantOption('gemini', 'Gemini', 'https://gemini.google.com/app'),
+  _AssistantOption('grok', 'Grok', 'https://grok.com/'),
+  _AssistantOption('copilot', 'Copilot', 'https://copilot.microsoft.com/'),
+];
+
 /// "Amministrazione ASD": a list of admin sections. The principal admin
 /// always sees every section and can toggle, for each one, whether other
 /// admins may access it (including the umbrella switch at the top). Other
@@ -114,11 +136,202 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
   /// visible to the current admin. Editable only by the principal admin.
   String? _driveFolderUrl;
 
+  /// "Chiedi all'assistente": which assistant the short tap opens, saved
+  /// per user in shared_preferences. Defaults to Claude.
+  String _assistantKey = _kAssistantOptions.first.key;
+
   @override
   void initState() {
     super.initState();
     _load();
     _loadAppVersion();
+    _loadAssistantChoice();
+  }
+
+  _AssistantOption get _currentAssistant => _kAssistantOptions.firstWhere(
+        (a) => a.key == _assistantKey,
+        orElse: () => _kAssistantOptions.first,
+      );
+
+  String get _assistantPrefsKey {
+    final userId = AuthService.instance.currentUser?.id ?? 'anon';
+    return 'asd_assistant_choice_$userId';
+  }
+
+  Future<void> _loadAssistantChoice() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(_assistantPrefsKey);
+      if (saved != null &&
+          _kAssistantOptions.any((a) => a.key == saved) &&
+          mounted) {
+        setState(() => _assistantKey = saved);
+      }
+    } catch (_) {
+      // Not critical — stays on the default assistant.
+    }
+  }
+
+  Future<void> _selectAssistant(String key) async {
+    Navigator.pop(context);
+    setState(() => _assistantKey = key);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_assistantPrefsKey, key);
+    } catch (_) {
+      // Not critical — the choice just won't be remembered next time.
+    }
+  }
+
+  Future<void> _showAssistantPicker() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Scegli il tuo assistente',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              ),
+            ),
+            ..._kAssistantOptions.map(
+              (assistant) => ListTile(
+                title: Text(assistant.label),
+                trailing: assistant.key == _assistantKey
+                    ? const Icon(Icons.check, color: Colors.green)
+                    : null,
+                onTap: () => _selectAssistant(assistant.key),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Builds the Italian context text handed to the assistant: association
+  /// data plus, only where the current admin can actually read them, the
+  /// board and the active Scadenzario entries. No student data, medical
+  /// certificates, payments or Drive links are ever included, and a read
+  /// the database denies is skipped silently rather than shown as an error.
+  Future<String> _buildAssistantContext() async {
+    final buffer = StringBuffer();
+    buffer.writeln(
+      'Sono un amministratore dell\'ASD Team Ragnarok e ho un dubbio sulla '
+      'gestione dell\'associazione. Qui sotto trovi i dati dell\'associazione '
+      'e il mio scadenzario. Rispondi in italiano e ricorda che non sei un '
+      'consulente fiscale o legale: per le decisioni importanti va sentita '
+      'la commercialista.',
+    );
+
+    try {
+      final orgInfo = await ItalianReceiptService().getOrganizationInfo();
+      buffer.writeln();
+      buffer.writeln('Associazione: ${orgInfo.name}');
+      buffer.writeln('Indirizzo: ${orgInfo.address}');
+      buffer.writeln('Codice fiscale: ${orgInfo.taxCode}');
+    } catch (_) {
+      // Skip silently if organization_info can't be read.
+    }
+
+    try {
+      final members =
+          await AsdGovernanceService.instance.getBoardMembers(onlyActive: true);
+      if (members.isNotEmpty) {
+        buffer.writeln();
+        buffer.writeln('Consiglio direttivo:');
+        for (final member in members) {
+          buffer.writeln('- ${member.fullName} (${asdBoardRoleLabel(member.role)})');
+        }
+      }
+    } catch (_) {
+      // Skip silently if asd_board_members can't be read.
+    }
+
+    try {
+      final all = await AsdDeadlinesService.instance.getAllDeadlines();
+      final active = all.where((d) => d.isActive).toList();
+      if (active.isNotEmpty) {
+        final occurrences = await AsdDeadlinesService.instance.getDueOccurrences(all);
+        final occurrenceByDeadlineId = {
+          for (final o in occurrences) o.deadline.id: o,
+        };
+        final dayFormat = DateFormat('dd/MM/yyyy', 'it_IT');
+
+        buffer.writeln();
+        buffer.writeln('Scadenzario (voci attive):');
+        for (final deadline in active) {
+          final occurrence = occurrenceByDeadlineId[deadline.id];
+          DateTime dueDate;
+          String status;
+          if (occurrence != null) {
+            dueDate = occurrence.dueDate;
+            status = occurrence.urgency == AsdDeadlineUrgency.overdue
+                ? 'scaduta'
+                : 'da fare';
+          } else if (deadline.isOneTime) {
+            dueDate = DateTime(deadline.dueYear!, deadline.dueMonth, deadline.dueDay);
+            status = 'completata';
+          } else {
+            continue;
+          }
+          buffer.writeln(
+            '- ${deadline.title} (${asdCategoryLabel(deadline.category)}), '
+            '${dayFormat.format(dueDate)}, stato: $status',
+          );
+          if (deadline.notes != null && deadline.notes!.trim().isNotEmpty) {
+            buffer.writeln('  Note: ${deadline.notes!.trim()}');
+          }
+          if (deadline.conditionNote != null &&
+              deadline.conditionNote!.trim().isNotEmpty) {
+            buffer.writeln('  Condizione: ${deadline.conditionNote!.trim()}');
+          }
+          if (deadline.howTo != null && deadline.howTo!.trim().isNotEmpty) {
+            buffer.writeln('  Guida pratica:');
+            for (final step in deadline.howTo!.split('\n')) {
+              final trimmedStep = step.trim();
+              if (trimmedStep.isNotEmpty) buffer.writeln('    - $trimmedStep');
+            }
+          }
+        }
+      }
+    } catch (_) {
+      // Skip silently if asd_deadlines can't be read.
+    }
+
+    return buffer.toString().trim();
+  }
+
+  Future<void> _askAssistant() async {
+    final assistant = _currentAssistant;
+    String contextText;
+    try {
+      contextText = await _buildAssistantContext();
+    } catch (_) {
+      contextText = '';
+    }
+    await Clipboard.setData(ClipboardData(text: contextText));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Contesto copiato: incollalo nella chat di ${assistant.label}'),
+      ),
+    );
+    try {
+      await launchUrl(Uri.parse(assistant.url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossibile aprire ${assistant.label}: $e')),
+      );
+    }
   }
 
   Future<void> _loadAppVersion() async {
@@ -285,7 +498,10 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Amministrazione ASD')),
+      appBar: AppBar(
+        title: const Text('Amministrazione ASD'),
+        actions: [_buildAssistantAction()],
+      ),
       body: ListView(
         padding: EdgeInsets.all(4.w),
         children: [
@@ -359,6 +575,28 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
                         _toggleVisibility(kAdministrationAsdKey, value),
                   ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// AppBar icon, visible to every admin who opens this screen (principal
+  /// or not). Short tap: copy the Italian context to the clipboard and open
+  /// the chosen assistant. Long press: pick a different assistant. Both
+  /// gestures live on one InkResponse (not nested ancestor/descendant
+  /// detectors), so they can't race each other; the Tooltip is manual-only
+  /// so it doesn't compete for the long press either.
+  Widget _buildAssistantAction() {
+    return Tooltip(
+      triggerMode: TooltipTriggerMode.manual,
+      message: 'Chiedi a ${_currentAssistant.label} (tieni premuto per cambiare)',
+      child: InkResponse(
+        onTap: _askAssistant,
+        onLongPress: _showAssistantPicker,
+        radius: 24,
+        child: const Padding(
+          padding: EdgeInsets.all(12),
+          child: Icon(Icons.smart_toy_outlined),
         ),
       ),
     );
