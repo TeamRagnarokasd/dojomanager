@@ -429,17 +429,28 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
             child: ListTile(
               leading: Column(
                 mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Checkbox(
                     value: false,
                     onChanged: (_) => _completeOccurrence(occurrence),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.more_vert, size: 18),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 24),
-                    tooltip: 'Altre azioni',
-                    onPressed: () => _openActionsMenu(occurrence),
+                  // Full 48x48 tap target, opaque to hit-testing so it
+                  // always claims the tap before it can reach the row's own
+                  // onTap (which opens the "Scadenza" page) — no dead space
+                  // around the icon for a stray tap to fall through.
+                  SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Tooltip(
+                      message: 'Altre azioni',
+                      child: InkWell(
+                        onTap: () => _openActionsMenu(occurrence),
+                        child: const Center(
+                          child: Icon(Icons.more_vert, size: 20),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
