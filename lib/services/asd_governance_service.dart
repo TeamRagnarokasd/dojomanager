@@ -49,6 +49,7 @@ class AsdDocumentTemplate {
     required this.title,
     this.description,
     required this.body,
+    this.category,
   });
 
   final String key;
@@ -56,12 +57,17 @@ class AsdDocumentTemplate {
   final String? description;
   final String body;
 
+  /// Key of `asd_document_categories` — stamped onto any `asd_documents`
+  /// row created from this template (defaults to 'altro' if unset).
+  final String? category;
+
   factory AsdDocumentTemplate.fromMap(Map<String, dynamic> map) =>
       AsdDocumentTemplate(
         key: map['key'] as String,
         title: map['title'] as String,
         description: map['description'] as String?,
         body: map['body'] as String,
+        category: map['category'] as String?,
       );
 }
 

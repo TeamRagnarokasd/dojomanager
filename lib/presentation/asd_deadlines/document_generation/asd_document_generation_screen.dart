@@ -8,6 +8,7 @@ import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../services/asd_deadlines_service.dart';
+import '../../../services/asd_documents_service.dart';
 import '../../../services/asd_governance_service.dart';
 import '../../../services/italian_receipt_service.dart';
 
@@ -27,19 +28,24 @@ const Set<String> _kDateGroupKeys = {'data', 'giorno', 'mese', 'anno'};
 
 /// Draft-document generator: builds a form from the `{{placeholder}}` tokens
 /// found in [template].body, fills them in, produces an A4 PDF (Helvetica,
-/// no €, first lines centered/bold) and shares it via Printing.sharePdf.
-/// No attachment is ever uploaded to Supabase — the reminder shown after
-/// generation tells the admin to sign the printed document and upload it to
-/// the shared Drive folder by hand.
+/// no €, first lines centered/bold), saves it to the asd-deadline-docs
+/// bucket with a matching asd_documents row, and shares it via
+/// Printing.sharePdf. The signed original still has to be uploaded to Drive
+/// by hand — the dialog shown after generation is the reminder for that.
 class AsdDocumentGenerationScreen extends StatefulWidget {
   const AsdDocumentGenerationScreen({
     Key? key,
     required this.template,
     this.sourceDeadline,
+    this.dueDate,
   }) : super(key: key);
 
   final AsdDocumentTemplate template;
   final AsdDeadline? sourceDeadline;
+
+  /// Due date of the occurrence this draft was generated from, when known —
+  /// stamped onto the saved asd_documents row.
+  final DateTime? dueDate;
 
   @override
   State<AsdDocumentGenerationScreen> createState() =>
@@ -51,6 +57,7 @@ enum _AttendanceStatus { none, present, absent }
 class _AsdDocumentGenerationScreenState
     extends State<AsdDocumentGenerationScreen> {
   final _governanceService = AsdGovernanceService.instance;
+  final _documentsService = AsdDocumentsService.instance;
 
   bool _isLoading = true;
   bool _isGenerating = false;
@@ -456,6 +463,43 @@ class _AsdDocumentGenerationScreenState
       final bytes = await pdf.save();
       final filename = _buildFilename();
 
+      AsdDocument? savedDocument;
+      try {
+        final sanitizedFileName = _documentsService.sanitizeFileName(filename);
+        final storagePath = _documentsService.generatedStoragePath(
+          deadlineId: widget.sourceDeadline?.id,
+          fileName: _documentsService.timestampedFileName(sanitizedFileName),
+        );
+        await _documentsService.uploadBytes(
+          storagePath,
+          bytes,
+          contentType: 'application/pdf',
+        );
+        final nomeCognomeKey = 'nome_cognome';
+        final subject = _placeholders.contains(nomeCognomeKey)
+            ? _textControllers[nomeCognomeKey]?.text
+            : null;
+        savedDocument = await _documentsService.createDocument(
+          deadlineId: widget.sourceDeadline?.id,
+          dueDate: widget.dueDate,
+          templateKey: widget.template.key,
+          title: widget.template.title,
+          storagePath: storagePath,
+          category: widget.template.category ?? 'altro',
+          subject: subject,
+          docDate: _dataValue ?? DateTime.now(),
+          source: kAsdDocumentSourceGenerated,
+          fileName: sanitizedFileName,
+          mimeType: 'application/pdf',
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Impossibile salvare il documento nello Scadenzario: $e')),
+          );
+        }
+      }
+
       if (kIsWeb) {
         await Printing.layoutPdf(
           onLayout: (format) async => bytes,
@@ -468,7 +512,9 @@ class _AsdDocumentGenerationScreenState
 
       if (!mounted) return;
       setState(() => _isGenerating = false);
-      await _showDriveReminderDialog();
+      if (savedDocument != null) {
+        await _showDocumentSavedDialog(savedDocument);
+      }
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
@@ -485,7 +531,7 @@ class _AsdDocumentGenerationScreenState
     } catch (_) {}
   }
 
-  Future<void> _showDriveReminderDialog() async {
+  Future<void> _showDocumentSavedDialog(AsdDocument document) async {
     var driveUrl = widget.sourceDeadline?.driveUrl;
     if (driveUrl == null || driveUrl.isEmpty) {
       try {
@@ -498,9 +544,9 @@ class _AsdDocumentGenerationScreenState
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Documento generato'),
+        title: const Text('Documento salvato'),
         content: const Text(
-          'Stampa, compila e firma il documento, poi caricalo nella cartella Drive.',
+          'Documento salvato nello Scadenzario. Per sicurezza carica una copia anche sul Drive.',
         ),
         actions: [
           if (driveUrl != null)
@@ -509,9 +555,18 @@ class _AsdDocumentGenerationScreenState
               icon: const Icon(Icons.folder_shared_outlined),
               label: const Text('Apri la cartella Drive'),
             ),
+          TextButton(
+            onPressed: () async {
+              try {
+                await _documentsService.setDriveUploaded(document.id, true);
+              } catch (_) {}
+              if (context.mounted) Navigator.pop(context);
+            },
+            child: const Text('Copia caricata'),
+          ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Chiudi'),
+            child: const Text('Più tardi'),
           ),
         ],
       ),

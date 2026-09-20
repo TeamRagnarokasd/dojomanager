@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'asd_documents_service.dart';
+
 /// Category keys in display order, and their Italian labels.
 const List<String> kAsdDeadlineCategoryKeys = [
   'fiscale',
@@ -320,7 +322,11 @@ class AsdDeadlinesService {
         .update({'is_active': isActive}).eq('id', id);
   }
 
+  /// Removes this deadline's documents from the bucket (best effort, since
+  /// the DB rows cascade automatically but the files in storage don't) then
+  /// the deadline itself.
   Future<void> deleteDeadline(String id) async {
+    await AsdDocumentsService.instance.deleteFilesForDeadline(id);
     await _client.from(_deadlinesTable).delete().eq('id', id);
   }
 
