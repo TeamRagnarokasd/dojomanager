@@ -100,6 +100,7 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -111,6 +112,7 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -445,17 +447,16 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
                 occurrence.deadline.title,
                 style: TextStyle(color: color, fontWeight: FontWeight.w600),
               ),
-              subtitle: Row(
+              subtitle: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Flexible(
-                    child: Text(
-                      '${dayFormat.format(occurrence.dueDate)} · ${asdCategoryLabel(occurrence.deadline.category)}',
-                      style: TextStyle(color: color),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  Text(
+                    '${dayFormat.format(occurrence.dueDate)} · ${asdCategoryLabel(occurrence.deadline.category)}',
+                    style: TextStyle(color: color),
                   ),
-                  if (occurrence.deadline.needsConfirmation) ...[
-                    SizedBox(width: 2.w),
+                  if (occurrence.deadline.needsConfirmation)
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 6,
@@ -470,7 +471,6 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
                         style: TextStyle(fontSize: 10),
                       ),
                     ),
-                  ],
                 ],
               ),
               trailing: IconButton(

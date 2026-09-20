@@ -42,7 +42,12 @@ class AsdDeadlineGuideSheet extends StatelessWidget {
       builder: (context, scrollController) {
         return ListView(
           controller: scrollController,
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            MediaQuery.of(context).viewPadding.bottom + 24,
+          ),
           children: [
             Center(
               child: Container(
@@ -63,16 +68,10 @@ class AsdDeadlineGuideSheet extends StatelessWidget {
             if (howToSteps.isNotEmpty) ...[
               const Text('Come si fa', style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
-              ...howToSteps.asMap().entries.map(
-                    (entry) => Padding(
+              ...howToSteps.map(
+                    (step) => Padding(
                       padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('${entry.key + 1}. ', style: const TextStyle(fontWeight: FontWeight.w600)),
-                          Expanded(child: Text(entry.value)),
-                        ],
-                      ),
+                      child: Text(step),
                     ),
                   ),
               const SizedBox(height: 12),

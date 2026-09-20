@@ -206,7 +206,12 @@ class _AsdBoardMembersSheetState extends State<AsdBoardMembersSheet> {
                           ? const Center(child: Text('Nessun membro inserito.'))
                           : ListView.builder(
                               controller: scrollController,
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              padding: EdgeInsets.fromLTRB(
+                                16,
+                                0,
+                                16,
+                                MediaQuery.of(context).viewPadding.bottom + 24,
+                              ),
                               itemCount: _members.length,
                               itemBuilder: (context, index) {
                                 final member = _members[index];
