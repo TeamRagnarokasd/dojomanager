@@ -136,10 +136,13 @@ class _WorkSettingsScreenState extends State<WorkSettingsScreen> {
                     decoration: const InputDecoration(labelText: 'Nota (facoltativa)'),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     'Un nuovo periodo vale dalla sua data e non cambia i mesi passati. '
                     'Aggiungilo quando cambia il contratto o la tariffa.',
-                    style: TextStyle(fontSize: 12, color: Colors.black54),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -243,7 +246,13 @@ class _WorkSettingsScreenState extends State<WorkSettingsScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(flex: 3, child: Text(label, style: const TextStyle(color: Colors.black54))),
+          Expanded(
+            flex: 3,
+            child: Text(
+              label,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ),
           Expanded(
             flex: 4,
             child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -278,10 +287,13 @@ class _WorkSettingsScreenState extends State<WorkSettingsScreen> {
               ],
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Un nuovo periodo vale dalla sua data e non cambia i mesi passati. '
               'Aggiungilo quando cambia il contratto o la tariffa.',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 12),
             if (_periods.isEmpty) const Text('Nessun periodo registrato.'),
