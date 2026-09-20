@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sizer/sizer.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/admin_section_visibility_service.dart';
 import '../../services/asd_deadlines_service.dart';
-import '../../services/asd_governance_service.dart';
 import './widgets/asd_board_members_sheet.dart';
 import './widgets/asd_deadline_detail_sheet.dart';
 import './widgets/asd_deadline_form_screen.dart';
 import './widgets/asd_deadline_guide_sheet.dart';
+import './widgets/asd_deadline_page.dart';
 import './widgets/asd_inactive_deadlines_screen.dart';
 
 /// Scadenzario ASD: status banner + "Da fare" / "Certificati medici" /
@@ -28,7 +27,6 @@ class AsdDeadlinesScreen extends StatefulWidget {
 
 class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
   final _service = AsdDeadlinesService.instance;
-  final _governanceService = AsdGovernanceService.instance;
 
   bool _isCheckingAccess = true;
   bool _canAccess = false;
@@ -120,9 +118,29 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
     );
   }
 
-  Future<void> _openDetail(AsdDeadlineOccurrence occurrence) async {
+  /// Row tap: the full "Scadenza" page. "Segna come fatta"/"Salta" pop back
+  /// with the same action-string convention the old detail sheet used.
+  Future<void> _openDeadlinePage(AsdDeadlineOccurrence occurrence) async {
+    final action = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (context) => AsdDeadlinePage(occurrence: occurrence)),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'done':
+        await _completeOccurrence(occurrence);
+        break;
+      case 'skip':
+        await _skipOccurrence(occurrence);
+        break;
+    }
+  }
+
+  /// Three-dot menu: Segna come fatta / Salta / Modifica / Elimina.
+  Future<void> _openActionsMenu(AsdDeadlineOccurrence occurrence) async {
     final action = await showModalBottomSheet<String>(
       context: context,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -139,41 +157,9 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
       case 'edit':
         await _openEditDeadline(occurrence.deadline);
         break;
-      case 'open_drive':
-        await _openDriveForDeadline(occurrence.deadline);
-        break;
       case 'delete':
         await _confirmDeleteDeadline(occurrence.deadline);
         break;
-    }
-  }
-
-  /// Opens the deadline's own drive_url when set, otherwise falls back to
-  /// the general asd_settings.drive_folder_url — same fallback used by the
-  /// guide sheet and the post-generation reminder.
-  Future<void> _openDriveForDeadline(AsdDeadline deadline) async {
-    var url = deadline.driveUrl;
-    if (url == null || url.isEmpty) {
-      try {
-        url = await _governanceService.getDriveFolderUrl();
-      } catch (_) {
-        url = null;
-      }
-    }
-    if (url == null || url.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nessun link della cartella Drive configurato.')),
-      );
-      return;
-    }
-    try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Impossibile aprire il link: $e')),
-      );
     }
   }
 
@@ -439,9 +425,21 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
           return Card(
             margin: const EdgeInsets.symmetric(vertical: 3),
             child: ListTile(
-              leading: Checkbox(
-                value: false,
-                onChanged: (_) => _completeOccurrence(occurrence),
+              leading: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Checkbox(
+                    value: false,
+                    onChanged: (_) => _completeOccurrence(occurrence),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.more_vert, size: 18),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 24),
+                    tooltip: 'Altre azioni',
+                    onPressed: () => _openActionsMenu(occurrence),
+                  ),
+                ],
               ),
               title: Text(
                 occurrence.deadline.title,
@@ -480,7 +478,7 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
                 tooltip: 'Come si fa',
                 onPressed: () => _openGuide(occurrence.deadline),
               ),
-              onTap: () => _openDetail(occurrence),
+              onTap: () => _openDeadlinePage(occurrence),
               onLongPress: () => _confirmDeleteDeadline(occurrence.deadline),
             ),
           );
