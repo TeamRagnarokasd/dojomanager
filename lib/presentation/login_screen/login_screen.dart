@@ -30,6 +30,11 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _passwordError;
   bool _isCheckingSession = true;
 
+  // 🆕 Fingerprint login (Android only — BiometricService.isAvailable()
+  // is already false on web). True only once a saved account has both
+  // the flag and its encrypted credentials on this device.
+  bool _showBiometricLoginButton = false;
+
   // SharedPreferences keys
   static const String _keyRememberMe = 'remember_me';
   static const String _keyStoredEmail = 'stored_email';
@@ -37,7 +42,13 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _checkExistingSession();
+    _checkExistingSession().then((_) {
+      // Only ever attempted once per screen instance, right after the
+      // session check decides the login form should actually be shown —
+      // if the user cancels the system prompt, they land on the normal
+      // form with the button still there to retry, no automatic retry loop.
+      if (_showBiometricLoginButton) _attemptBiometricLogin();
+    });
   }
 
   /// Check for existing valid Supabase session and navigate if found
@@ -97,6 +108,30 @@ class _LoginScreenState extends State<LoginScreen> {
           _emailController.text = storedEmail;
           _rememberMe = true;
         });
+      }
+
+      // 🆕 Fingerprint login: only offered when a saved account still has
+      // both the "biometric active" flag and its encrypted credentials on
+      // this device. kIsWeb is checked explicitly here too (on top of
+      // BiometricService.isAvailable() below) so nothing new is ever even
+      // read on the web build.
+      final storedCredentials = kIsWeb
+          ? null
+          : await _authService.biometricService.getStoredCredentials();
+      if (storedCredentials != null) {
+        final storedCredentialEmail = storedCredentials['email']!;
+        final biometricEnabled = await _authService.biometricService
+            .isBiometricEnabledForUser(storedCredentialEmail);
+        final biometricAvailable =
+            await _authService.biometricService.isAvailable();
+        final availableBiometrics =
+            await _authService.biometricService.getAvailableBiometrics();
+        if (biometricEnabled &&
+            biometricAvailable &&
+            availableBiometrics.isNotEmpty &&
+            mounted) {
+          setState(() => _showBiometricLoginButton = true);
+        }
       }
 
       print('❌ No valid session found - showing login screen');
@@ -181,10 +216,13 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Future<void> _performLogin() async {
+  Future<void> _performLogin({bool isBiometricAttempt = false}) async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
 
     setState(() {
       _isLoading = true;
@@ -193,9 +231,6 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final email = _emailController.text.trim();
-      final password = _passwordController.text.trim();
-
       final response = await _authService.signInWithPassword(
         email: email,
         password: password,
@@ -247,6 +282,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
         _authService.showSuccessToast('auth.login_success'.tr());
 
+        // 🆕 Only after a manual email/password login, never after a
+        // fingerprint one (shouldOfferSetup would no-op anyway here since
+        // biometric is already active for this email, but this keeps the
+        // intent explicit).
+        if (!isBiometricAttempt) {
+          await _maybeOfferBiometricSetup(email: email, password: password);
+        }
+
         await _navigateBasedOnUserRole();
       } else {
         setState(() {
@@ -255,10 +298,32 @@ class _LoginScreenState extends State<LoginScreen> {
         _authService.showErrorToast('auth.login_error'.tr());
       }
     } catch (error) {
+      final errorMessage = error.toString();
+
+      // 🆕 The saved fingerprint-login password no longer works (changed
+      // elsewhere) — drop the stale credentials/flag and fall back to the
+      // normal form instead of showing a confusing field-level error.
+      if (isBiometricAttempt &&
+          (errorMessage.contains('Invalid login credentials') ||
+              errorMessage.contains('Invalid email or password') ||
+              errorMessage.contains('Invalid password') ||
+              errorMessage.contains('Credenziali non valide'))) {
+        await _authService.biometricService.disableBiometricForUser(email);
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _showBiometricLoginButton = false;
+            _passwordController.clear();
+          });
+          _authService.showErrorToast(
+            'La password è cambiata: accedi con email e password.',
+          );
+        }
+        return;
+      }
+
       setState(() {
         _isLoading = false;
-
-        final errorMessage = error.toString();
 
         // Set specific field errors
         if (errorMessage.contains('Invalid email')) {
@@ -273,6 +338,55 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!kIsWeb) HapticFeedback.heavyImpact();
       _authService.showErrorToast(error.toString());
+    }
+  }
+
+  /// 🆕 Shown right after a successful email/password login (never after a
+  /// fingerprint one) when biometric hardware is available, not already
+  /// active for this email, and the user hasn't picked "Non chiedermelo
+  /// più" before. kIsWeb short-circuits inside BiometricService.isAvailable()
+  /// so nothing new ever appears on the web build.
+  Future<void> _maybeOfferBiometricSetup({
+    required String email,
+    required String password,
+  }) async {
+    if (kIsWeb) return;
+    try {
+      final shouldOffer =
+          await _authService.biometricService.shouldOfferSetup(email);
+      if (!shouldOffer || !mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) =>
+            _BiometricSetupPromptDialog(email: email, password: password),
+      );
+    } catch (_) {
+      // Never block login on a biometric-setup failure.
+    }
+  }
+
+  /// 🆕 Fingerprint login: asks for the fingerprint, then — only if it
+  /// succeeds — signs in with the saved credentials through the exact
+  /// same _performLogin path the normal form uses. If the user cancels
+  /// the system prompt, nothing happens and the normal form stays usable.
+  Future<void> _attemptBiometricLogin() async {
+    if (!mounted || _isLoading) return;
+    try {
+      final credentials =
+          await _authService.biometricService.getStoredCredentials();
+      if (credentials == null) return;
+
+      final authenticated = await _authService.biometricService.authenticate(
+        reason: 'Accedi con l\'impronta digitale',
+      );
+      if (!authenticated || !mounted) return;
+
+      _emailController.text = credentials['email']!;
+      _passwordController.text = credentials['password']!;
+      await _performLogin(isBiometricAttempt: true);
+    } catch (e) {
+      print('Error during fingerprint login: $e');
     }
   }
 
@@ -573,6 +687,35 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                     ),
                   ),
+
+                  // 🆕 Fingerprint login — only ever visible on Android,
+                  // once biometric login is active and its credentials are
+                  // still on this device (see _checkExistingSession).
+                  if (_showBiometricLoginButton) ...[
+                    SizedBox(height: 2.h),
+                    SizedBox(
+                      height: 7.h,
+                      child: OutlinedButton.icon(
+                        onPressed: _isLoading ? null : _attemptBiometricLogin,
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: AppTheme.secondaryDark),
+                          foregroundColor: AppTheme.secondaryDark,
+                        ),
+                        icon: Icon(
+                          Icons.fingerprint,
+                          color: AppTheme.secondaryDark,
+                        ),
+                        label: Text(
+                          'Accedi con impronta digitale',
+                          style: AppTheme.darkTheme.textTheme.titleMedium
+                              ?.copyWith(
+                                color: AppTheme.secondaryDark,
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ),
+                    ),
+                  ],
 
                   SizedBox(height: 4.h),
 
@@ -988,6 +1131,155 @@ class _PasswordResetDialogState extends State<_PasswordResetDialog> {
             height: 1.6,
           ),
           textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Biometric Setup Prompt (post-login, Android only) ─────────────────────
+
+/// Shown right after a successful email/password login when biometric
+/// login could be turned on for this account. "Attiva" asks for the
+/// fingerprint as confirmation before saving anything; "Non ora" just
+/// closes (asked again next login); "Non chiedermelo più" remembers the
+/// refusal for this email so it stops being offered.
+class _BiometricSetupPromptDialog extends StatefulWidget {
+  final String email;
+  final String password;
+
+  const _BiometricSetupPromptDialog({
+    required this.email,
+    required this.password,
+  });
+
+  @override
+  State<_BiometricSetupPromptDialog> createState() =>
+      _BiometricSetupPromptDialogState();
+}
+
+class _BiometricSetupPromptDialogState
+    extends State<_BiometricSetupPromptDialog> {
+  bool _isProcessing = false;
+
+  Future<void> _activate() async {
+    setState(() => _isProcessing = true);
+    try {
+      final authenticated = await AuthService.instance.biometricService
+          .authenticate(
+            reason:
+                'Conferma la tua identità per attivare l\'accesso con impronta digitale',
+          );
+      if (!authenticated) {
+        if (mounted) setState(() => _isProcessing = false);
+        return;
+      }
+
+      final user = AuthService.instance.currentUser;
+      final fullName =
+          (user?.userMetadata?['full_name'] as String?) ??
+          widget.email.split('@').first;
+
+      await AuthService.instance.biometricService.enableBiometricLogin(
+        email: widget.email,
+        password: widget.password,
+        fullName: fullName,
+      );
+
+      if (mounted) {
+        Navigator.pop(context);
+        AuthService.instance.showSuccessToast(
+          'Accesso con impronta digitale attivato.',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        AuthService.instance.showErrorToast(
+          'Non è stato possibile attivare l\'accesso con impronta digitale.',
+        );
+      }
+    }
+  }
+
+  void _notNow() {
+    Navigator.pop(context);
+  }
+
+  Future<void> _neverAskAgain() async {
+    await AuthService.instance.biometricService.declineSetupForever(
+      widget.email,
+    );
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Row(
+        children: [
+          const Icon(Icons.fingerprint, color: Color(0xFFFF0000), size: 24),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Accesso con impronta digitale',
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: Text(
+        'Vuoi entrare con l\'impronta digitale la prossima volta, senza '
+        'scrivere email e password? Puoi disattivarlo in qualsiasi momento '
+        'dal tuo profilo.',
+        style: GoogleFonts.inter(color: Colors.grey[300], height: 1.4),
+      ),
+      actionsOverflowDirection: VerticalDirection.down,
+      actions: [
+        TextButton(
+          onPressed: _isProcessing ? null : _neverAskAgain,
+          child: Text(
+            'Non chiedermelo più',
+            style: GoogleFonts.inter(color: Colors.grey),
+          ),
+        ),
+        TextButton(
+          onPressed: _isProcessing ? null : _notNow,
+          child: Text(
+            'Non ora',
+            style: GoogleFonts.inter(color: Colors.grey[300]),
+          ),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFFF0000),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          onPressed: _isProcessing ? null : _activate,
+          child: _isProcessing
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                )
+              : Text(
+                  'Attiva',
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
         ),
       ],
     );

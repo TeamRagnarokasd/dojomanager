@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:local_auth/error_codes.dart' as auth_error;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,7 +15,18 @@ class BiometricService {
   static const String _keyBiometricUserData = 'biometric_user_data';
   static const String _keyLastBiometricUser = 'last_biometric_user';
 
+  // SharedPreferences only ever stores flags/metadata here — never the
+  // password. The declined-setup map remembers, per email, that the user
+  // picked "Non chiedermelo più" on the post-login prompt.
+  static const String _keyDeclinedSetup = 'biometric_declined_setup';
+
+  // Encrypted, on-device only (Android Keystore via flutter_secure_storage)
+  // — this is the ONLY place the login password is ever persisted.
+  static const String _secureKeyEmail = 'biometric_login_email';
+  static const String _secureKeyPassword = 'biometric_login_password';
+
   final LocalAuthentication _localAuth = LocalAuthentication();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   /// Check if biometric authentication is available on device
   Future<bool> isAvailable() async {
@@ -142,6 +154,19 @@ class BiometricService {
     }
   }
 
+  /// Enable fingerprint login: saves the email/password in the encrypted,
+  /// on-device-only secure storage (Android Keystore) and sets the usual
+  /// per-user flag above. This is the only path that ever writes a
+  /// password anywhere — never in SharedPreferences, never in plain text.
+  Future<void> enableBiometricLogin({
+    required String email,
+    required String password,
+    required String fullName,
+  }) async {
+    await saveCredentials(email: email, password: password);
+    await enableBiometricForUser(email, fullName: fullName);
+  }
+
   /// Disable biometric authentication for a user
   Future<void> disableBiometricForUser(String userEmail) async {
     try {
@@ -170,11 +195,94 @@ class BiometricService {
         await prefs.remove(_keyLastBiometricUser);
       }
 
+      // Always drop the saved credentials for this user — biometric login
+      // being off means there is nothing left that should use them.
+      await clearStoredCredentials();
+
       print('✅ Biometric authentication disabled for user: $userEmail');
     } catch (e) {
       print('❌ Error disabling biometric for user: $e');
       rethrow;
     }
+  }
+
+  /// Saves the login credentials in the encrypted secure storage. Only one
+  /// account's credentials are kept on the device at a time.
+  Future<void> saveCredentials({
+    required String email,
+    required String password,
+  }) async {
+    await _secureStorage.write(key: _secureKeyEmail, value: email);
+    await _secureStorage.write(key: _secureKeyPassword, value: password);
+  }
+
+  /// Reads the saved login credentials, or null if none are stored.
+  Future<Map<String, String>?> getStoredCredentials() async {
+    try {
+      final email = await _secureStorage.read(key: _secureKeyEmail);
+      final password = await _secureStorage.read(key: _secureKeyPassword);
+      if (email == null || email.isEmpty || password == null || password.isEmpty) {
+        return null;
+      }
+      return {'email': email, 'password': password};
+    } catch (e) {
+      print('Error reading stored biometric credentials: $e');
+      return null;
+    }
+  }
+
+  /// Removes the saved login credentials from the secure storage.
+  Future<void> clearStoredCredentials() async {
+    try {
+      await _secureStorage.delete(key: _secureKeyEmail);
+      await _secureStorage.delete(key: _secureKeyPassword);
+    } catch (e) {
+      print('Error clearing stored biometric credentials: $e');
+    }
+  }
+
+  /// Whether the user picked "Non chiedermelo più" on the post-login
+  /// biometric setup prompt for this email.
+  Future<bool> hasDeclinedSetupForever(String userEmail) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final data = prefs.getString(_keyDeclinedSetup);
+      if (data == null) return false;
+      final Map<String, dynamic> declined = jsonDecode(data);
+      return declined[userEmail] == true;
+    } catch (e) {
+      print('Error reading declined biometric setup flag: $e');
+      return false;
+    }
+  }
+
+  /// Remembers that the user picked "Non chiedermelo più" for this email.
+  Future<void> declineSetupForever(String userEmail) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final existingData = prefs.getString(_keyDeclinedSetup);
+      Map<String, dynamic> declined = {};
+      if (existingData != null) {
+        declined = jsonDecode(existingData);
+      }
+      declined[userEmail] = true;
+      await prefs.setString(_keyDeclinedSetup, jsonEncode(declined));
+    } catch (e) {
+      print('Error saving declined biometric setup flag: $e');
+    }
+  }
+
+  /// Whether the post-login "enable fingerprint login?" prompt should be
+  /// shown for this email: biometric hardware available with at least one
+  /// fingerprint/face enrolled, not already enabled for this account, and
+  /// the user hasn't picked "Non chiedermelo più" before.
+  Future<bool> shouldOfferSetup(String userEmail) async {
+    if (!(await isAvailable())) return false;
+    final availableBiometrics = await getAvailableBiometrics();
+    if (availableBiometrics.isEmpty) return false;
+    if (await isBiometricEnabledForUser(userEmail)) return false;
+    if (await hasDeclinedSetupForever(userEmail)) return false;
+    return true;
   }
 
   /// Get the last user who enabled biometric authentication
