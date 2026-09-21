@@ -11,6 +11,7 @@ import '../../services/admin_section_visibility_service.dart';
 import '../../services/asd_deadlines_service.dart';
 import '../../services/asd_governance_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/compliance_service.dart';
 import '../../services/italian_receipt_service.dart';
 
 /// Definition of one "Amministrazione ASD" section. Adding a future section
@@ -69,6 +70,13 @@ const List<AdminAsdSection> kAdminAsdSections = [
     subtitle: 'Pagamenti SumUp da abbinare',
     icon: Icons.fact_check_outlined,
     route: AppRoutes.paymentReview,
+  ),
+  AdminAsdSection(
+    key: 'compliance_docs',
+    title: 'Documenti mancanti',
+    subtitle: 'Moduli minori 14-17 e certificati medici in scadenza',
+    icon: Icons.assignment_late,
+    route: AppRoutes.complianceDocs,
   ),
   AdminAsdSection(
     key: 'attendance_compensation',
@@ -161,6 +169,11 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
   /// Count shown on the "Scadenzario ASD" row (overdue + due-soon), only
   /// fetched when that section is visible to the current admin.
   int? _deadlinesBadgeCount;
+
+  /// Count shown on the "Documenti mancanti" row: students past their
+  /// compliance deadline and not yet blocked, only fetched when that
+  /// section is visible to the current admin.
+  int? _complianceOverdueCount;
 
   /// The shared Drive folder link, only fetched when "Documenti Drive" is
   /// visible to the current admin. Editable only by the principal admin.
@@ -398,6 +411,7 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
         _isLoading = false;
       });
       _loadDeadlinesBadge(kAdminAsdSections);
+      _loadComplianceBadge(kAdminAsdSections);
       _loadDriveUrl(kAdminAsdSections);
       return;
     }
@@ -420,6 +434,7 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
       _isLoading = false;
     });
     _loadDeadlinesBadge(visible);
+    _loadComplianceBadge(visible);
     _loadDriveUrl(visible);
   }
 
@@ -431,6 +446,36 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
       final summary = await AsdDeadlinesService.instance.getPendingSummary();
       if (!mounted) return;
       setState(() => _deadlinesBadgeCount = summary.pendingCount);
+    } catch (_) {
+      // Not critical — the row just shows no badge.
+    }
+  }
+
+  /// Red count shown next to a section's title, if any.
+  int? _sectionBadgeCount(String sectionKey) {
+    switch (sectionKey) {
+      case 'deadlines':
+        return _deadlinesBadgeCount;
+      case 'compliance_docs':
+        return _complianceOverdueCount;
+      default:
+        return null;
+    }
+  }
+
+  /// Fire-and-forget: only fetched when "Documenti mancanti" is one of the
+  /// sections this admin can see. Failure just leaves the badge unshown.
+  Future<void> _loadComplianceBadge(List<AdminAsdSection> sections) async {
+    if (!sections.any((s) => s.key == 'compliance_docs')) return;
+    try {
+      final list = await ComplianceService.instance.adminComplianceList();
+      final count = list.where((row) {
+        final worstDaysLeft = row['worst_days_left'] as int?;
+        final blocked = row['blocked'] == true;
+        return worstDaysLeft != null && worstDaysLeft < 0 && !blocked;
+      }).length;
+      if (!mounted) return;
+      setState(() => _complianceOverdueCount = count);
     } catch (_) {
       // Not critical — the row just shows no badge.
     }
@@ -740,7 +785,8 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
                             ],
                           ),
                         ),
-                        if (section.key == 'deadlines' && (_deadlinesBadgeCount ?? 0) > 0) ...[
+                        if (_sectionBadgeCount(section.key) != null &&
+                            _sectionBadgeCount(section.key)! > 0) ...[
                           SizedBox(width: 2.w),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -749,7 +795,7 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              '${_deadlinesBadgeCount}',
+                              '${_sectionBadgeCount(section.key)}',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 12,

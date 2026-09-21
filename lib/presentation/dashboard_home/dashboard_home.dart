@@ -7,8 +7,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_export.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/compliance_banner_widget.dart';
 import '../../widgets/main_navigation_wrapper.dart';
 import '../user_profile/widgets/team_certifications_widget.dart';
+import './widgets/admin_compliance_alert_widget.dart';
 import './widgets/notification_banner_widget.dart';
 import './widgets/profile_switcher_widget.dart';
 import './widgets/role_based_content_widget.dart';
@@ -1056,6 +1058,30 @@ class _DashboardHomeState extends State<DashboardHome>
 
                   // Error Banner (if any)
                   _buildErrorBanner(),
+
+                  // Compliance banner (documenti minori 14-17 / certificato
+                  // medico) — only relevant for student-facing roles.
+                  if (_userRole == 'student' ||
+                      _userRole == 'instructor_student' ||
+                      _userRole == null)
+                    Container(
+                      margin: EdgeInsets.symmetric(
+                        horizontal: 4.w,
+                        vertical: 1.h,
+                      ),
+                      child: const ComplianceBannerWidget(),
+                    ),
+
+                  // Compliance alert for admins: overdue students not yet
+                  // blocked, decides whether to block bookings.
+                  if (_userRole == 'admin' || _userRole == 'principal_admin')
+                    Container(
+                      margin: EdgeInsets.symmetric(
+                        horizontal: 4.w,
+                        vertical: 1.h,
+                      ),
+                      child: const AdminComplianceAlertWidget(),
+                    ),
 
                   // Notification Banner — only shown when user has a real upcoming booking
                   if (_showNotificationBanner && _nextBooking != null)
