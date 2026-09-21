@@ -13,6 +13,7 @@ import 'package:universal_html/html.dart' as html;
 
 import '../../core/app_export.dart';
 import '../../services/child_profile_service.dart';
+import '../../services/feature_flags_service.dart';
 import '../../services/italian_receipt_service.dart';
 import '../../services/payment_service.dart';
 import '../../services/supabase_service.dart';
@@ -26,6 +27,7 @@ import './widgets/payment_transaction_card.dart';
 import './widgets/subscription_plans_widget.dart';
 import './widgets/subscription_status_card.dart';
 import './widgets/sumup_payment_options_widget.dart';
+import './widgets/sumup_waiting_sheet.dart';
 
 class PaymentHistory extends StatefulWidget {
   const PaymentHistory({Key? key}) : super(key: key);
@@ -130,6 +132,28 @@ class _PaymentHistoryState extends State<PaymentHistory>
         final planAmount = prefs.getDouble('pendingPlanAmount');
         final paymentMethod =
             prefs.getString('pendingPaymentMethod') ?? 'sumup';
+
+        // SumUp with auto-confirm on: the backend matches the payment on
+        // its own, so watch the click's own status instead of asking the
+        // student "did you pay?". Everything else (including SumUp with
+        // the flag off) keeps using PaymentConfirmationDialog exactly as
+        // before.
+        if (paymentMethod == 'sumup' &&
+            await FeatureFlagsService.instance.isEnabled('sumup_auto_confirm')) {
+          if (mounted) {
+            showModalBottomSheet<void>(
+              context: context,
+              isDismissible: false,
+              enableDrag: false,
+              isScrollControlled: true,
+              useSafeArea: true,
+              builder: (context) => SumUpWaitingSheet(
+                onConfirmed: () => _loadPaymentData(),
+              ),
+            );
+          }
+          return;
+        }
 
         // 🎯 FIX: Show dialog for both SumUp (with planId) and Satispay (without planId)
         if (mounted) {

@@ -194,16 +194,24 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
       try {
         final currentUserId = Supabase.instance.client.auth.currentUser?.id;
         if (currentUserId != null) {
-          await Supabase.instance.client.from('payment_intents').insert({
-            'user_id': currentUserId,
-            'provider': 'sumup',
-            'custom_plan_id': (planId != null && planId.isNotEmpty)
-                ? planId
-                : null,
-            'plan_name': planTitle,
-            'amount': planAmount ?? 0.0,
-            'beneficiary_profile_id': ChildProfileService.getActiveUserId(),
-          });
+          final insertedRow = await Supabase.instance.client
+              .from('payment_intents')
+              .insert({
+                'user_id': currentUserId,
+                'provider': 'sumup',
+                'custom_plan_id': (planId != null && planId.isNotEmpty)
+                    ? planId
+                    : null,
+                'plan_name': planTitle,
+                'amount': planAmount ?? 0.0,
+                'beneficiary_profile_id': ChildProfileService.getActiveUserId(),
+              })
+              .select('id')
+              .single();
+          final intentId = insertedRow['id'] as String?;
+          if (intentId != null) {
+            await prefs.setString('pendingIntentId', intentId);
+          }
         }
       } catch (_) {
         // Ignore — this is only a best-effort click record.
