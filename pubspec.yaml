@@ -43,6 +43,7 @@ dependencies:
   universal_html: ^2.2.4
   cached_network_image: any
   local_auth: ^2.1.8
+  flutter_secure_storage: ^9.2.4 # Encrypted on-device storage (Android Keystore) for biometric login credentials — minSdk 18, no bump needed
   uuid: ^4.5.2
   image: ^4.0.17              # Required for advanced image compression and resizing to ensure profile photos stay under 1MB
 
