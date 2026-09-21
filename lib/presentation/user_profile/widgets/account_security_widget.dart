@@ -43,11 +43,28 @@ class _AccountSecurityWidgetState extends State<AccountSecurityWidget> {
     final biometrics = available
         ? await BiometricService.instance.getAvailableBiometrics()
         : const <String>[];
-    final enabled = _currentEmail.isNotEmpty
-        ? await BiometricService.instance.isBiometricEnabledForUser(
-            _currentEmail,
-          )
+    final email = _currentEmail;
+    var enabled = email.isNotEmpty
+        ? await BiometricService.instance.isBiometricEnabledForUser(email)
         : false;
+
+    if (enabled) {
+      // The flag alone isn't enough to show the switch as "on" — the
+      // encrypted credentials must still be there for this same email,
+      // otherwise fingerprint login can no longer actually happen. If
+      // they're missing (e.g. cleared elsewhere), drop the stale flag too.
+      final credentials = await BiometricService.instance
+          .getStoredCredentials();
+      final credentialsMatch =
+          credentials != null &&
+          credentials['email']?.trim().toLowerCase() ==
+              email.trim().toLowerCase();
+      if (!credentialsMatch) {
+        await BiometricService.instance.disableBiometricForUser(email);
+        enabled = false;
+      }
+    }
+
     if (mounted) {
       setState(() {
         _biometricAvailable = available && biometrics.isNotEmpty;

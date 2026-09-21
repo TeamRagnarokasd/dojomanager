@@ -28,6 +28,50 @@ class BiometricService {
   final LocalAuthentication _localAuth = LocalAuthentication();
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
+  /// Single normalization point for every email used as a storage key
+  /// below — trims it and lowercases it, so "Name@Example.com" (e.g. the
+  /// keyboard's auto-capitalized first letter at login) and
+  /// "name@example.com" (SupabaseService's currentUser?.email, already
+  /// lowercase) always resolve to the same key.
+  String _normalizeEmail(String email) => email.trim().toLowerCase();
+
+  /// Reads a JSON-encoded {email: value} map from prefs[storageKey] and
+  /// resolves [normalizedEmail] against its keys case-insensitively —
+  /// data saved before this normalization existed may still have a
+  /// differently-cased key. When such a stale key is found, it's migrated
+  /// to the normalized key (in the returned map and back into storage)
+  /// so every later lookup hits it directly.
+  Future<Map<String, dynamic>> _loadEmailKeyedMap(
+    SharedPreferences prefs,
+    String storageKey,
+    String normalizedEmail,
+  ) async {
+    final raw = prefs.getString(storageKey);
+    if (raw == null) return {};
+
+    Map<String, dynamic> map;
+    try {
+      map = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    } catch (_) {
+      return {};
+    }
+
+    if (map.containsKey(normalizedEmail)) return map;
+
+    String? staleKey;
+    for (final key in map.keys) {
+      if (key.toLowerCase() == normalizedEmail) {
+        staleKey = key;
+        break;
+      }
+    }
+    if (staleKey != null) {
+      map[normalizedEmail] = map.remove(staleKey);
+      await prefs.setString(storageKey, jsonEncode(map));
+    }
+    return map;
+  }
+
   /// Check if biometric authentication is available on device
   Future<bool> isAvailable() async {
     if (kIsWeb) {
@@ -103,13 +147,14 @@ class BiometricService {
   /// Check if biometric authentication is enabled for the current user
   Future<bool> isBiometricEnabledForUser(String userEmail) async {
     try {
+      final email = _normalizeEmail(userEmail);
       final prefs = await SharedPreferences.getInstance();
-      final biometricData = prefs.getString(_keyBiometricUserData);
-
-      if (biometricData == null) return false;
-
-      final Map<String, dynamic> userData = jsonDecode(biometricData);
-      return userData[userEmail] == true;
+      final userData = await _loadEmailKeyedMap(
+        prefs,
+        _keyBiometricUserData,
+        email,
+      );
+      return userData[email] == true;
     } catch (e) {
       print('Error checking biometric enabled for user: $e');
       return false;
@@ -122,32 +167,31 @@ class BiometricService {
     required String fullName,
   }) async {
     try {
+      final email = _normalizeEmail(userEmail);
       final prefs = await SharedPreferences.getInstance();
 
       // Update biometric enabled status
       await prefs.setBool(_keyBiometricEnabled, true);
 
       // Save user-specific biometric data
-      final existingData = prefs.getString(_keyBiometricUserData);
-      Map<String, dynamic> userData = {};
-
-      if (existingData != null) {
-        userData = jsonDecode(existingData);
-      }
-
-      userData[userEmail] = true;
+      final userData = await _loadEmailKeyedMap(
+        prefs,
+        _keyBiometricUserData,
+        email,
+      );
+      userData[email] = true;
       await prefs.setString(_keyBiometricUserData, jsonEncode(userData));
 
       // Save last biometric user info
       await prefs.setString(
           _keyLastBiometricUser,
           jsonEncode({
-            'email': userEmail,
+            'email': email,
             'fullName': fullName,
             'enabledAt': DateTime.now().toIso8601String(),
           }));
 
-      print('✅ Biometric authentication enabled for user: $userEmail');
+      print('✅ Biometric authentication enabled for user: $email');
     } catch (e) {
       print('❌ Error enabling biometric for user: $e');
       rethrow;
@@ -170,26 +214,25 @@ class BiometricService {
   /// Disable biometric authentication for a user
   Future<void> disableBiometricForUser(String userEmail) async {
     try {
+      final email = _normalizeEmail(userEmail);
       final prefs = await SharedPreferences.getInstance();
 
       // Update user-specific biometric data
-      final existingData = prefs.getString(_keyBiometricUserData);
-      if (existingData != null) {
-        final Map<String, dynamic> userData = jsonDecode(existingData);
-        userData[userEmail] = false;
+      final hadExistingData = prefs.getString(_keyBiometricUserData) != null;
+      final userData = await _loadEmailKeyedMap(
+        prefs,
+        _keyBiometricUserData,
+        email,
+      );
+      if (hadExistingData) {
+        userData[email] = false;
         await prefs.setString(_keyBiometricUserData, jsonEncode(userData));
       }
 
-      // Check if any user still has biometric enabled
-      final biometricData = prefs.getString(_keyBiometricUserData);
-      bool anyUserHasBiometric = false;
-
-      if (biometricData != null) {
-        final Map<String, dynamic> userData = jsonDecode(biometricData);
-        anyUserHasBiometric = userData.values.any((enabled) => enabled == true);
-      }
-
       // If no users have biometric enabled, disable globally
+      final anyUserHasBiometric = userData.values.any(
+        (enabled) => enabled == true,
+      );
       if (!anyUserHasBiometric) {
         await prefs.setBool(_keyBiometricEnabled, false);
         await prefs.remove(_keyLastBiometricUser);
@@ -199,7 +242,7 @@ class BiometricService {
       // being off means there is nothing left that should use them.
       await clearStoredCredentials();
 
-      print('✅ Biometric authentication disabled for user: $userEmail');
+      print('✅ Biometric authentication disabled for user: $email');
     } catch (e) {
       print('❌ Error disabling biometric for user: $e');
       rethrow;
@@ -212,7 +255,10 @@ class BiometricService {
     required String email,
     required String password,
   }) async {
-    await _secureStorage.write(key: _secureKeyEmail, value: email);
+    await _secureStorage.write(
+      key: _secureKeyEmail,
+      value: _normalizeEmail(email),
+    );
     await _secureStorage.write(key: _secureKeyPassword, value: password);
   }
 
@@ -245,11 +291,14 @@ class BiometricService {
   /// biometric setup prompt for this email.
   Future<bool> hasDeclinedSetupForever(String userEmail) async {
     try {
+      final email = _normalizeEmail(userEmail);
       final prefs = await SharedPreferences.getInstance();
-      final data = prefs.getString(_keyDeclinedSetup);
-      if (data == null) return false;
-      final Map<String, dynamic> declined = jsonDecode(data);
-      return declined[userEmail] == true;
+      final declined = await _loadEmailKeyedMap(
+        prefs,
+        _keyDeclinedSetup,
+        email,
+      );
+      return declined[email] == true;
     } catch (e) {
       print('Error reading declined biometric setup flag: $e');
       return false;
@@ -259,13 +308,14 @@ class BiometricService {
   /// Remembers that the user picked "Non chiedermelo più" for this email.
   Future<void> declineSetupForever(String userEmail) async {
     try {
+      final email = _normalizeEmail(userEmail);
       final prefs = await SharedPreferences.getInstance();
-      final existingData = prefs.getString(_keyDeclinedSetup);
-      Map<String, dynamic> declined = {};
-      if (existingData != null) {
-        declined = jsonDecode(existingData);
-      }
-      declined[userEmail] = true;
+      final declined = await _loadEmailKeyedMap(
+        prefs,
+        _keyDeclinedSetup,
+        email,
+      );
+      declined[email] = true;
       await prefs.setString(_keyDeclinedSetup, jsonEncode(declined));
     } catch (e) {
       print('Error saving declined biometric setup flag: $e');

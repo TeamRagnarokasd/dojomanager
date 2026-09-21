@@ -47,6 +47,13 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   // iPhone web and silently block the popup. See _startSumUpPayment.
   bool _sumupAutoConfirm = false;
 
+  // 🆕 Guards for _checkPaymentConfirmation: _checkingPayment blocks
+  // concurrent runs (didChangeAppLifecycleState and the route observer can
+  // both fire close together), _sumupSheetOpen stops a second
+  // SumUpWaitingSheet from stacking on top of one already open.
+  bool _checkingPayment = false;
+  bool _sumupSheetOpen = false;
+
   void _loadSumUpAutoConfirmFlag() {
     FeatureFlagsService.instance.isEnabled('sumup_auto_confirm').then((v) {
       if (mounted) setState(() => _sumupAutoConfirm = v);
@@ -1759,6 +1766,12 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   }
 
   Future<void> _checkPaymentConfirmation() async {
+    // didChangeAppLifecycleState and the RouteObserver callbacks
+    // (didPush/didPopNext — the latter fires when the sheet below is
+    // popped) can both land close together; without this guard they can
+    // race and each try to open their own sheet.
+    if (_checkingPayment) return;
+    _checkingPayment = true;
     try {
       final prefs = await SharedPreferences.getInstance();
       final isPaymentPending = prefs.getBool('isPaymentPending') ?? false;
@@ -1771,7 +1784,15 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       final paymentMethod = prefs.getString('pendingPaymentMethod');
       if (paymentMethod == 'sumup' &&
           await FeatureFlagsService.instance.isEnabled('sumup_auto_confirm')) {
-        if (!mounted) return;
+        if (!mounted || _sumupSheetOpen) return;
+
+        // Clear the pending flag now — the sheet itself reads
+        // pendingIntentId/pendingPlanTitle straight from SharedPreferences.
+        // Leaving isPaymentPending true would make the next resume or
+        // route event reopen this same sheet right after it closes.
+        await prefs.setBool('isPaymentPending', false);
+
+        _sumupSheetOpen = true;
         showModalBottomSheet<void>(
           context: context,
           isDismissible: false,
@@ -1781,13 +1802,15 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
           builder: (context) => SumUpWaitingSheet(
             onConfirmed: _refreshAllPlans,
           ),
-        );
+        ).whenComplete(() => _sumupSheetOpen = false);
         return;
       }
 
       Navigator.pushReplacementNamed(context, AppRoutes.paymentHistory);
     } catch (e) {
       // Silent fail
+    } finally {
+      _checkingPayment = false;
     }
   }
 

@@ -44,6 +44,14 @@ class _PaymentHistoryState extends State<PaymentHistory>
 
   bool _isLoading = false;
   bool _isOfflineMode = false;
+
+  // 🆕 Guards for _checkPaymentConfirmation: _checkingPayment blocks
+  // concurrent runs (didChangeAppLifecycleState can fire more than once
+  // close together), _sumupSheetOpen stops a second SumUpWaitingSheet
+  // from stacking on top of one already open.
+  bool _checkingPayment = false;
+  bool _sumupSheetOpen = false;
+
   String _selectedFilter = 'all';
   String _searchQuery = '';
   final Map<String, bool> _expandedMonths = {};
@@ -118,6 +126,11 @@ class _PaymentHistoryState extends State<PaymentHistory>
   }
 
   Future<void> _checkPaymentConfirmation() async {
+    // didChangeAppLifecycleState can fire more than once close together —
+    // without this guard two overlapping runs could each try to open
+    // their own sheet/dialog.
+    if (_checkingPayment) return;
+    _checkingPayment = true;
     try {
       final prefs = await SharedPreferences.getInstance();
       final isPaymentPending = prefs.getBool('isPaymentPending') ?? false;
@@ -140,7 +153,8 @@ class _PaymentHistoryState extends State<PaymentHistory>
         // before.
         if (paymentMethod == 'sumup' &&
             await FeatureFlagsService.instance.isEnabled('sumup_auto_confirm')) {
-          if (mounted) {
+          if (mounted && !_sumupSheetOpen) {
+            _sumupSheetOpen = true;
             showModalBottomSheet<void>(
               context: context,
               isDismissible: false,
@@ -150,7 +164,7 @@ class _PaymentHistoryState extends State<PaymentHistory>
               builder: (context) => SumUpWaitingSheet(
                 onConfirmed: () => _loadPaymentData(),
               ),
-            );
+            ).whenComplete(() => _sumupSheetOpen = false);
           }
           return;
         }
@@ -179,6 +193,8 @@ class _PaymentHistoryState extends State<PaymentHistory>
     } catch (e) {
       // Silent fail - don't disrupt user experience
       print('ERROR checking payment confirmation: $e');
+    } finally {
+      _checkingPayment = false;
     }
   }
 
