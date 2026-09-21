@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../routes/app_routes.dart';
-import '../../../services/compliance_service.dart';
+import '../routes/app_routes.dart';
+import '../services/compliance_service.dart';
 
 /// Highlighted row on the admin dashboard: how many students have gone past
 /// their compliance deadline (minor docs / medical certificate) and are not

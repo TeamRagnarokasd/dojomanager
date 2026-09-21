@@ -10,7 +10,6 @@ import '../../services/auth_service.dart';
 import '../../widgets/compliance_banner_widget.dart';
 import '../../widgets/main_navigation_wrapper.dart';
 import '../user_profile/widgets/team_certifications_widget.dart';
-import './widgets/admin_compliance_alert_widget.dart';
 import './widgets/notification_banner_widget.dart';
 import './widgets/profile_switcher_widget.dart';
 import './widgets/role_based_content_widget.dart';
@@ -34,6 +33,10 @@ class _DashboardHomeState extends State<DashboardHome>
   bool _isRefreshing = false;
   UserRole _currentUserRole = UserRole.student;
   StreamSubscription? _authSubscription;
+
+  // Admins land on the enhanced admin dashboard instead of this screen —
+  // redirected once resolved, so this never fires more than once.
+  bool _redirectedToAdminDashboard = false;
 
   // SIMPLIFIED: Remove complex retry mechanism that was causing issues
   String? _errorMessage;
@@ -184,6 +187,17 @@ class _DashboardHomeState extends State<DashboardHome>
       print('  - Email: ${profile?['email']}');
       print('  - Role: $role');
       print('  - Full Name: ${profile?['full_name']}');
+
+      // Admins land on the enhanced admin dashboard instead of this screen.
+      if (!_redirectedToAdminDashboard &&
+          ['admin', 'principal_admin', 'instructor_admin'].contains(role)) {
+        _redirectedToAdminDashboard = true;
+        Navigator.pushReplacementNamed(
+          context,
+          AppRoutes.enhancedAdminDashboard,
+        );
+        return;
+      }
     }
 
     // Load next upcoming booking for the notification banner
@@ -578,21 +592,21 @@ class _DashboardHomeState extends State<DashboardHome>
             'title': 'Gestione Registrazioni',
             'subtitle': 'Approva nuove iscrizioni',
             'icon': Icons.how_to_reg,
-            'route': '/registration-management-system',
+            'route': '/admin-management-system',
             'color': Colors.orange,
           },
           {
             'title': 'Gestione Utenti',
             'subtitle': 'Amministra tutti gli utenti',
             'icon': Icons.group,
-            'route': '/user-management-system',
+            'route': '/admin-management-system',
             'color': Colors.blue,
           },
           {
             'title': 'communication.title'.tr(),
             'subtitle': 'Messaggi e notifiche',
             'icon': Icons.message,
-            'route': '/communication-center',
+            'route': '/admin-management-system',
             'color': Colors.teal,
           },
           {
@@ -1070,17 +1084,6 @@ class _DashboardHomeState extends State<DashboardHome>
                         vertical: 1.h,
                       ),
                       child: const ComplianceBannerWidget(),
-                    ),
-
-                  // Compliance alert for admins: overdue students not yet
-                  // blocked, decides whether to block bookings.
-                  if (_userRole == 'admin' || _userRole == 'principal_admin')
-                    Container(
-                      margin: EdgeInsets.symmetric(
-                        horizontal: 4.w,
-                        vertical: 1.h,
-                      ),
-                      child: const AdminComplianceAlertWidget(),
                     ),
 
                   // Notification Banner — only shown when user has a real upcoming booking

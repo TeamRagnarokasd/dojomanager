@@ -247,7 +247,7 @@ class _InstructorSelectionDialogWidgetState
           ElevatedButton.icon(
             onPressed: () {
               Navigator.pop(context);
-              Navigator.pushNamed(context, '/instructor-management');
+              Navigator.pushNamed(context, AppRoutes.instructorManagementSystem);
             },
             icon: const Icon(Icons.person_add),
             label: Text('admin_discipline.add_instructor'.tr()),

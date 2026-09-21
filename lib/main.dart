@@ -436,7 +436,11 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
           if (currentRoute == lastRoute) return;
 
           debugPrint('Restoring navigation to: $lastRoute');
-          nav.pushNamedAndRemoveUntil(lastRoute, (route) => false);
+          final defaultRoute = await _getDefaultRouteForRole();
+          nav.pushNamedAndRemoveUntil(defaultRoute, (route) => false);
+          if (lastRoute != defaultRoute) {
+            nav.pushNamed(lastRoute);
+          }
         }
       }
     } catch (e) {

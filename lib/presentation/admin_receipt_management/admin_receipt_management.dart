@@ -582,7 +582,7 @@ class _AdminReceiptManagementState extends State<AdminReceiptManagement>
           ),
         ),
         leading: IconButton(
-          onPressed: () => Navigator.pushNamed(context, '/dashboard-home'),
+          onPressed: () => Navigator.pop(context),
           icon: CustomIconWidget(
             iconName: 'arrow_back',
             color: AppTheme.lightTheme.colorScheme.onSurface,
