@@ -23,6 +23,11 @@ class _InstructorWeeklyScheduleWidgetState
   String? _error;
   bool _reminderDismissed = false;
 
+  // schedule_instance_id -> number of registered bookings, loaded alongside
+  // the week's classes. A class id missing from this map means the count
+  // couldn't be loaded (falls back to showing capacity only).
+  Map<String, int> _bookedByClass = {};
+
   // Dynamic discipline colors fetched from DB (custom_disciplines.color_hex)
   Map<String, Color> _disciplineColors = {};
 
@@ -130,11 +135,38 @@ class _InstructorWeeklyScheduleWidgetState
           .order('class_date', ascending: true)
           .order('start_time', ascending: true);
 
+      final classes = List<Map<String, dynamic>>.from(response);
+
       if (mounted) {
         setState(() {
-          _weekClasses = List<Map<String, dynamic>>.from(response);
+          _weekClasses = classes;
           _isLoading = false;
         });
+      }
+
+      // Booked counts per class, in a separate try/catch: on failure the
+      // list still shows, just falling back to capacity only (as today).
+      try {
+        final ids = classes.map((c) => c['id'] as String).toList();
+        final counts = <String, int>{for (final id in ids) id: 0};
+        if (ids.isNotEmpty) {
+          final bookings = await _client
+              .from('class_registrations')
+              .select('schedule_instance_id')
+              .inFilter('schedule_instance_id', ids)
+              .eq('registration_status', 'registered');
+          for (final row in bookings) {
+            final id = row['schedule_instance_id'] as String?;
+            if (id != null && counts.containsKey(id)) {
+              counts[id] = counts[id]! + 1;
+            }
+          }
+        }
+        if (mounted) {
+          setState(() => _bookedByClass = counts);
+        }
+      } catch (_) {
+        // Not critical — cards fall back to showing capacity only.
       }
     } catch (e) {
       if (mounted)
@@ -420,6 +452,10 @@ class _InstructorWeeklyScheduleWidgetState
     final dayLabel = DateFormat('EEEE d MMMM', 'it_IT').format(date);
     final isCancelled = cls['is_cancelled'] == true;
     final isMyLesson = cls['instructor_id'] == widget.instructorId;
+    final maxCapacity = (cls['max_capacity'] as int?) ?? 0;
+    final classId = cls['id'] as String?;
+    final booked = classId != null ? _bookedByClass[classId] : null;
+    final isFull = booked != null && booked >= maxCapacity;
 
     return Container(
       margin: EdgeInsets.only(bottom: 2.h),
@@ -570,15 +606,15 @@ class _InstructorWeeklyScheduleWidgetState
                 Icon(Icons.group, size: 18, color: color),
                 SizedBox(height: 0.5.h),
                 Text(
-                  '${cls['max_capacity'] ?? 0}',
+                  booked != null ? '$booked/$maxCapacity' : '$maxCapacity',
                   style: GoogleFonts.dmSans(
                     fontSize: 13.sp,
                     fontWeight: FontWeight.w700,
-                    color: color,
+                    color: isFull ? const Color(0xFFCC0000) : color,
                   ),
                 ),
                 Text(
-                  'max',
+                  booked != null ? 'prenotati' : 'max',
                   style: GoogleFonts.dmSans(fontSize: 9.sp, color: Colors.grey),
                 ),
               ],
