@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'feature_flags_service.dart';
 import 'subscription_service.dart';
 
 /// Result of one subscription activation performed by [PaidIntentsService].
@@ -59,6 +60,12 @@ class PaidIntentsService {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) return [];
 
+      // SumUp intents only join in when 'sumup_auto_confirm' is on — off,
+      // this query is identical to before (satispay only).
+      final sumupEnabled =
+          await FeatureFlagsService.instance.isEnabled('sumup_auto_confirm');
+      final providers = sumupEnabled ? ['satispay', 'sumup'] : ['satispay'];
+
       List<Map<String, dynamic>> intents;
       try {
         final response = await _supabase
@@ -68,7 +75,7 @@ class PaidIntentsService {
               'plan_name, amount, beneficiary_profile_id, created_at',
             )
             .eq('user_id', userId)
-            .eq('provider', 'satispay')
+            .inFilter('provider', providers)
             .inFilter('status', ['pending', 'matched']);
         intents = List<Map<String, dynamic>>.from(response as List);
       } catch (e) {
@@ -111,28 +118,34 @@ class PaidIntentsService {
     final intentId = intent['id'] as String?;
     if (intentId == null) return null;
 
+    final provider = intent['provider'] as String? ?? 'satispay';
     var status = intent['status'] as String?;
     final providerPaymentId = intent['provider_payment_id'] as String?;
 
-    // For 'pending' intents that already have a provider_payment_id, ask
-    // Satispay for the latest status.
-    if (status == 'pending' &&
-        providerPaymentId != null &&
-        providerPaymentId.isNotEmpty) {
-      try {
-        final checkResponse = await _supabase.functions.invoke(
-          'satispay/check',
-          body: {'intent_id': intentId},
-        );
-        final data = checkResponse.data;
-        if (data is Map && data['status'] is String) {
-          status = data['status'] as String;
+    if (status == 'pending') {
+      if (provider == 'satispay' &&
+          providerPaymentId != null &&
+          providerPaymentId.isNotEmpty) {
+        // Ask Satispay for the latest status.
+        try {
+          final checkResponse = await _supabase.functions.invoke(
+            'satispay/check',
+            body: {'intent_id': intentId},
+          );
+          final data = checkResponse.data;
+          if (data is Map && data['status'] is String) {
+            status = data['status'] as String;
+          }
+        } catch (e) {
+          debugPrint(
+            '⚠️ PaidIntentsService: satispay/check failed for $intentId: $e',
+          );
+          return null; // try again next time
         }
-      } catch (e) {
-        debugPrint(
-          '⚠️ PaidIntentsService: satispay/check failed for $intentId: $e',
-        );
-        return null; // try again next time
+      } else {
+        // A pending SumUp (or other non-Satispay) intent is reconciled by
+        // the server-side matcher, not from here — nothing to do yet.
+        return null;
       }
     }
 
@@ -184,7 +197,7 @@ class PaidIntentsService {
         items: [
           {'name': planName, 'price': claimAmount},
         ],
-        paymentMethod: 'satispay',
+        paymentMethod: intent['provider'] as String? ?? provider,
         amount: claimAmount,
         description: planName,
         discipline: null,

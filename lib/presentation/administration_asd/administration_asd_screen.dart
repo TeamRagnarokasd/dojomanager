@@ -64,6 +64,13 @@ const List<AdminAsdSection> kAdminAsdSections = [
     route: AppRoutes.italianReceiptGeneration,
   ),
   AdminAsdSection(
+    key: 'payment_review',
+    title: 'Pagamenti da verificare',
+    subtitle: 'Pagamenti SumUp da abbinare',
+    icon: Icons.fact_check_outlined,
+    route: AppRoutes.paymentReview,
+  ),
+  AdminAsdSection(
     key: 'attendance_compensation',
     title: 'Presenze e compensi',
     subtitle: 'Lezioni, compenso, buoni pasto e rimborso km',
