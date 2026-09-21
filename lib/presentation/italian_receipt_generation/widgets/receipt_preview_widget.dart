@@ -75,7 +75,12 @@ class ReceiptPreviewWidget extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14)),
               clipBehavior: Clip.antiAlias,
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  16,
+                  16,
+                  MediaQuery.of(context).viewPadding.bottom + 16,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [

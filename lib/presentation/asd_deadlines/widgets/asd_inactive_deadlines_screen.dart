@@ -102,7 +102,12 @@ class _AsdInactiveDeadlinesScreenState extends State<AsdInactiveDeadlinesScreen>
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView(
-                        padding: const EdgeInsets.all(16),
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          16,
+                          16,
+                          MediaQuery.of(context).viewPadding.bottom + 16,
+                        ),
                         children: _inactiveDeadlines.map((deadline) {
                           return Card(
                             margin: const EdgeInsets.symmetric(vertical: 3),

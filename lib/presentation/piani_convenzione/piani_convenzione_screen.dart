@@ -720,7 +720,11 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
               ),
             ),
 
-          SliverToBoxAdapter(child: SizedBox(height: 2.h)),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: MediaQuery.of(context).viewPadding.bottom + 2.h,
+            ),
+          ),
         ],
       ),
     );

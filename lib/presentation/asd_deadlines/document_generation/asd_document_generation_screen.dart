@@ -846,7 +846,12 @@ class _AsdDocumentGenerationScreenState
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                MediaQuery.of(context).viewPadding.bottom + 16,
+              ),
               children: [
                 if (widget.template.description != null &&
                     widget.template.description!.trim().isNotEmpty) ...[
