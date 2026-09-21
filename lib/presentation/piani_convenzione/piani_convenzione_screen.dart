@@ -35,6 +35,17 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
   bool _hasAnnualRegistration = false;
   bool _isLoadingEnrollmentStatus = true;
 
+  // 🆕 Read ahead of time (never awaited right before launchUrl) so that
+  // with the flag off, tapping a plan launches the fixed SumUp link
+  // synchronously — exactly like today. See _startSumUpPayment.
+  bool _sumupAutoConfirm = false;
+
+  void _loadSumUpAutoConfirmFlag() {
+    FeatureFlagsService.instance.isEnabled('sumup_auto_confirm').then((v) {
+      if (mounted) setState(() => _sumupAutoConfirm = v);
+    });
+  }
+
   int _getColorForPlanName(String name) {
     final lower = name.toLowerCase();
     if (lower.contains('mma')) return 0xFFFF5722;
@@ -59,6 +70,7 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSumUpAutoConfirmFlag();
     _checkPrincipalAdminStatus();
     _loadConvenzionePlans();
     _checkEnrollmentStatus();
@@ -405,12 +417,15 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
   /// 'sumup_auto_confirm' is on and the plan has a valid id, otherwise
   /// falls back to today's fixed-link flow unchanged — with the flag off
   /// this always takes the fixed-link branch, so nothing changes.
-  Future<void> _startSumUpPayment(Map<String, dynamic> plan) async {
+  ///
+  /// _sumupAutoConfirm is read synchronously (no await before deciding):
+  /// with the flag off (or not loaded yet), _launchFixedSumUpUrl fires
+  /// immediately after the tap exactly like today, with no extra wait
+  /// before its own launchUrl.
+  void _startSumUpPayment(Map<String, dynamic> plan) {
     final planId = (plan['id'] ?? plan['dbId'])?.toString();
-    final sumupEnabled =
-        await FeatureFlagsService.instance.isEnabled('sumup_auto_confirm');
-    if (sumupEnabled && planId != null && planId.isNotEmpty) {
-      await _launchSumUpForPlan(plan);
+    if (_sumupAutoConfirm && planId != null && planId.isNotEmpty) {
+      _launchSumUpForPlan(plan);
       return;
     }
     _launchFixedSumUpUrl(plan);

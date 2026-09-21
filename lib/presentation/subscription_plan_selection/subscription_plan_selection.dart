@@ -40,6 +40,19 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   bool _isLoading = false;
   int? _selectedPlanId;
 
+  // 🆕 Read ahead of time (never awaited right before launchUrl) so that
+  // with the flag off, tapping a plan launches the fixed SumUp link
+  // synchronously — exactly like today — instead of waiting on a network
+  // read first, which would consume Safari's "user gesture" allowance on
+  // iPhone web and silently block the popup. See _startSumUpPayment.
+  bool _sumupAutoConfirm = false;
+
+  void _loadSumUpAutoConfirmFlag() {
+    FeatureFlagsService.instance.isEnabled('sumup_auto_confirm').then((v) {
+      if (mounted) setState(() => _sumupAutoConfirm = v);
+    });
+  }
+
   // Realtime subscription for admin data changes
   StreamSubscription<RealtimeDataChangeEvent>? _realtimeSubscription;
 
@@ -184,6 +197,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadSumUpAutoConfirmFlag();
     if (_isSatispayMode) {
       // Satispay entry point: go straight to the plan list, load only the
       // Satispay-specific plan list, skip the SumUp/admin data loads below.
@@ -501,15 +515,17 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   /// 'sumup_auto_confirm' is on and the plan has a valid id, otherwise
   /// falls back to today's fixed-link flow unchanged — with the flag off
   /// this always takes the fixed-link branch, so nothing changes.
-  Future<void> _startSumUpPayment(
-    Map<String, dynamic> plan,
-    String planTitle,
-  ) async {
+  ///
+  /// _sumupAutoConfirm is read synchronously (no await before deciding):
+  /// with the flag off (or not loaded yet), _launchSumUpUrl fires
+  /// immediately after the tap exactly like today, which matters on web —
+  /// an await here first would consume Safari's "user gesture" allowance
+  /// on iPhone and silently block the popup (see RULE 2 in
+  /// _handlePlanSelection for the same reasoning).
+  void _startSumUpPayment(Map<String, dynamic> plan, String planTitle) {
     final planId = plan['id']?.toString();
-    final sumupEnabled =
-        await FeatureFlagsService.instance.isEnabled('sumup_auto_confirm');
-    if (sumupEnabled && planId != null && planId.isNotEmpty) {
-      await _launchSumUpForPlan(plan, planTitle);
+    if (_sumupAutoConfirm && planId != null && planId.isNotEmpty) {
+      _launchSumUpForPlan(plan, planTitle);
       return;
     }
     _launchSumUpUrl(plan['sumupUrl'] as String? ?? '', planTitle);
@@ -528,12 +544,14 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   /// Called when this screen is pushed onto the navigator stack
   @override
   void didPush() {
+    _loadSumUpAutoConfirmFlag();
     _refreshAllPlans();
   }
 
   /// Called when a screen on top of this one is popped (user navigates back here)
   @override
   void didPopNext() {
+    _loadSumUpAutoConfirmFlag();
     _refreshAllPlans();
   }
 
@@ -1732,6 +1750,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
+      _loadSumUpAutoConfirmFlag();
       _checkPaymentConfirmation();
       // Fresh fetch every time app comes back to foreground
       _loadStandardPlans();
