@@ -37,6 +37,7 @@ import '../presentation/asd_documents_archive/asd_documents_archive_screen.dart'
 import '../presentation/work_attendance/work_attendance_screen.dart';
 import '../presentation/social_events/social_events_screen.dart';
 import '../presentation/payment_review/payment_review_screen.dart';
+import '../presentation/compliance_docs/compliance_docs_screen.dart';
 
 class AppRoutes {
   // Global RouteObserver — add to MaterialApp.navigatorObservers
@@ -89,6 +90,7 @@ class AppRoutes {
   static const String workAttendance = '/presenze-compensi';
   static const String socialEvents = '/eventi-sociali';
   static const String paymentReview = '/pagamenti-da-verificare';
+  static const String complianceDocs = '/documenti-mancanti';
 
   static Map<String, WidgetBuilder> get routes {
     return {
@@ -145,6 +147,7 @@ class AppRoutes {
       workAttendance: (context) => const WorkAttendanceScreen(),
       socialEvents: (context) => const SocialEventsScreen(),
       paymentReview: (context) => const PaymentReviewScreen(),
+      complianceDocs: (context) => const ComplianceDocsScreen(),
     };
   }
 }

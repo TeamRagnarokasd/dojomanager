@@ -394,13 +394,17 @@ class _ClassScheduleState extends State<ClassSchedule>
         if (mounted) {
           final error = result['error'] as String? ??
               'class_schedule.booking_failed_detail'.tr();
-          Fluttertoast.showToast(
-            msg: error,
-            toastLength: Toast.LENGTH_LONG,
-            gravity: ToastGravity.BOTTOM,
-            backgroundColor: theme.colorScheme.error,
-            textColor: theme.colorScheme.onError,
-          );
+          if (error.startsWith('Prenotazioni sospese')) {
+            await _showComplianceBlockedDialog(error);
+          } else {
+            Fluttertoast.showToast(
+              msg: error,
+              toastLength: Toast.LENGTH_LONG,
+              gravity: ToastGravity.BOTTOM,
+              backgroundColor: theme.colorScheme.error,
+              textColor: theme.colorScheme.onError,
+            );
+          }
         }
         return false;
       }
@@ -416,6 +420,33 @@ class _ClassScheduleState extends State<ClassSchedule>
       }
       return false;
     }
+  }
+
+  /// Shown instead of the generic booking-failure toast when
+  /// `register_for_class` reports the student's bookings are suspended for
+  /// missing mandatory documents (minor 14-17 forms / medical certificate).
+  Future<void> _showComplianceBlockedDialog(String message) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Prenotazioni sospese'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Chiudi'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pushNamed(context, AppRoutes.userProfile);
+            },
+            child: const Text('Vai al profilo'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _onCancelBooking(String classId) async {
