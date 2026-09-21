@@ -7,20 +7,25 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../services/paid_intents_service.dart';
 
-enum _SumUpWaitStage { checking, needsReview, timedOut, reported }
+enum _SumUpWaitStage { checking, notFound, needsReview, timedOut, reported }
 
 /// Shown instead of PaymentConfirmationDialog when the user returns from a
-/// SumUp payment link and 'sumup_auto_confirm' is on: the backend matches
-/// the payment on its own, so this only watches the click's own
-/// `payment_intents` row (never calls SumUp itself) and reacts:
+/// SumUp or Satispay payment page and the click can be watched
+/// automatically (see subscription_plan_selection.dart/payment_history.dart
+/// for exactly when): watches the click's own `payment_intents` row and,
+/// when it has a `provider_payment_id`, also asks the matching provider
+/// directly (`sumup/check` or `satispay/check`) for the latest status.
 ///
-/// - 'matched'/'confirmed': activates the subscription the same way
-///   Satispay already does (PaidIntentsService.processPaidIntents), shows
-///   the same success toast, then closes.
+/// - 'matched'/'confirmed': activates the subscription
+///   (PaidIntentsService.processPaidIntents), shows the same success toast,
+///   then closes.
+/// - still pending after 5s: asks "hai pagato?" — "Sì" rechecks for 30
+///   more seconds, then reports the click on its own (report_intent_paid)
+///   if still nothing; "No" just closes.
 /// - 'needs_review': tells the student the payment will be checked by an
 ///   admin; polling stops.
-/// - still nothing after 150s: offers "Ho pagato ma non si attiva"
-///   (report_intent_paid) alongside "Chiudi".
+/// - nothing resolved within 2 minutes of opening: tells the student to
+///   contact the office.
 ///
 /// Not dismissible by tapping outside, dragging or the back button — see
 /// the showModalBottomSheet call in payment_history.dart — only its own
@@ -38,32 +43,52 @@ class SumUpWaitingSheet extends StatefulWidget {
 }
 
 class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
-  static const _pollInterval = Duration(seconds: 6);
-  static const _timeout = Duration(seconds: 150);
+  // Payments that actually went through confirm almost instantly, so the
+  // first window is short and fast; the question only appears once that
+  // window has passed with nothing resolved.
+  static const _initialCheckDuration = Duration(seconds: 5);
+  static const _initialPollInterval = Duration(seconds: 3);
+  static const _backgroundPollInterval = Duration(seconds: 6);
+  static const _recheckDuration = Duration(seconds: 30);
+  static const _absoluteTimeout = Duration(minutes: 2);
   static const _fallbackLookback = Duration(hours: 6);
 
   final SupabaseClient _client = Supabase.instance.client;
 
-  Timer? _timer;
-  DateTime? _startedAt;
+  Timer? _pollTimer;
+  Timer? _absoluteTimer;
+  Timer? _phaseTimer;
   String? _intentId;
   _SumUpWaitStage _stage = _SumUpWaitStage.checking;
-  bool _isReporting = false;
+
+  // True only while re-checking after the student tapped "Sì, ho pagato"
+  // — same _stage.checking UI, different message.
+  bool _isRechecking = false;
+  bool _reportFailed = false;
+
+  // Set as soon as activation or closing starts, so an in-flight sequence
+  // (e.g. _onYesIPaid's own immediate _checkOnce resolving to a match)
+  // never re-arms a timer on a sheet that's already on its way out —
+  // _stage alone doesn't change during activation/closing.
+  bool _isClosing = false;
 
   @override
   void initState() {
     super.initState();
-    _startedAt = DateTime.now();
     _start();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _pollTimer?.cancel();
+    _absoluteTimer?.cancel();
+    _phaseTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _start() async {
+    _absoluteTimer = Timer(_absoluteTimeout, _onAbsoluteTimeout);
+
     String? intentId;
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -76,17 +101,19 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
     }
     if (!mounted) return;
     if (intentId == null) {
-      // Nothing to watch — guide the user the same way a timeout would,
-      // rather than leaving a spinner with nothing behind it.
-      setState(() => _stage = _SumUpWaitStage.timedOut);
+      // Nothing to watch — go straight to the question. A "Sì" here has
+      // nothing to recheck or report against, so it goes straight to
+      // timedOut instead of the usual recheck window.
+      setState(() => _stage = _SumUpWaitStage.notFound);
       return;
     }
     _intentId = intentId;
-    await _checkOnce();
-    if (!mounted) return;
-    if (_stage == _SumUpWaitStage.checking) {
-      _timer = Timer.periodic(_pollInterval, (_) => _checkOnce());
-    }
+
+    // First check fires immediately; further checks follow every 3s until
+    // the 5s window elapses, then the question shows if nothing resolved.
+    unawaited(_checkOnce());
+    _pollTimer = Timer.periodic(_initialPollInterval, (_) => _checkOnce());
+    _phaseTimer = Timer(_initialCheckDuration, _onInitialCheckTimeout);
   }
 
   Future<String?> _findFallbackIntentId() async {
@@ -98,7 +125,7 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
           .from('payment_intents')
           .select('id')
           .eq('user_id', userId)
-          .eq('provider', 'sumup')
+          .inFilter('provider', ['sumup', 'satispay'])
           .eq('status', 'pending')
           .gte('created_at', since.toIso8601String())
           .order('created_at', ascending: false)
@@ -111,35 +138,50 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
     }
   }
 
-  Future<void> _checkOnce() async {
-    final intentId = _intentId;
-    final startedAt = _startedAt;
-    if (intentId == null || startedAt == null || !mounted) return;
-
-    if (DateTime.now().difference(startedAt) >= _timeout) {
-      _timer?.cancel();
-      if (mounted) setState(() => _stage = _SumUpWaitStage.timedOut);
+  void _onInitialCheckTimeout() {
+    if (!mounted ||
+        _isClosing ||
+        _stage != _SumUpWaitStage.checking ||
+        _isRechecking) {
       return;
     }
+    _pollTimer?.cancel();
+    setState(() => _stage = _SumUpWaitStage.notFound);
+    _pollTimer = Timer.periodic(_backgroundPollInterval, (_) => _checkOnce());
+  }
+
+  void _onAbsoluteTimeout() {
+    if (!mounted || _isClosing || _stage == _SumUpWaitStage.reported) return;
+    _pollTimer?.cancel();
+    _phaseTimer?.cancel();
+    setState(() => _stage = _SumUpWaitStage.timedOut);
+  }
+
+  Future<void> _checkOnce() async {
+    final intentId = _intentId;
+    if (intentId == null || !mounted || _isClosing) return;
 
     try {
       final row = await _client
           .from('payment_intents')
-          .select('status, provider_payment_id')
+          .select('status, provider, provider_payment_id')
           .eq('id', intentId)
           .maybeSingle();
       var status = row?['status'] as String?;
+      final provider = row?['provider'] as String?;
       final providerPaymentId = row?['provider_payment_id'] as String?;
 
-      if (providerPaymentId != null && providerPaymentId.isNotEmpty) {
-        // This click was created via 'sumup/create-payment', so its
-        // provider_payment_id is already known — ask SumUp directly for
-        // the latest status instead of waiting for the server-side
+      if (providerPaymentId != null &&
+          providerPaymentId.isNotEmpty &&
+          (provider == 'sumup' || provider == 'satispay')) {
+        // This click was created via '<provider>/create-payment', so its
+        // provider_payment_id is already known — ask the provider directly
+        // for the latest status instead of waiting for the server-side
         // matcher, same as PaidIntentsService does for the reconciliation
         // pass.
         try {
           final checkResponse = await _client.functions.invoke(
-            'sumup/check',
+            '$provider/check',
             body: {'intent_id': intentId},
           );
           final data = checkResponse.data;
@@ -152,26 +194,94 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
       }
 
       if (status == 'matched' || status == 'confirmed') {
-        _timer?.cancel();
-        await PaidIntentsService.instance.processPaidIntents();
-        if (!mounted) return;
-        Fluttertoast.showToast(
-          msg: 'Abbonamento attivato',
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.BOTTOM,
-          backgroundColor: Colors.green,
-          textColor: Colors.white,
-        );
-        widget.onConfirmed?.call();
-        if (mounted) await _closeSheet();
+        await _activate();
       } else if (status == 'needs_review') {
-        _timer?.cancel();
+        _pollTimer?.cancel();
+        _phaseTimer?.cancel();
+        _absoluteTimer?.cancel();
         if (mounted) setState(() => _stage = _SumUpWaitStage.needsReview);
       }
       // 'pending' (or a transient read failure below): keep polling until
-      // the timeout above takes over.
+      // whichever timeout above takes over.
     } catch (_) {
       // Transient error — retried on the next tick.
+    }
+  }
+
+  Future<void> _activate() async {
+    _isClosing = true;
+    _pollTimer?.cancel();
+    _phaseTimer?.cancel();
+    _absoluteTimer?.cancel();
+    await PaidIntentsService.instance.processPaidIntents();
+    if (!mounted) return;
+    Fluttertoast.showToast(
+      msg: 'Abbonamento attivato',
+      toastLength: Toast.LENGTH_LONG,
+      gravity: ToastGravity.BOTTOM,
+      backgroundColor: Colors.green,
+      textColor: Colors.white,
+    );
+    widget.onConfirmed?.call();
+    if (mounted) await _closeSheet();
+  }
+
+  /// "Sì, ho pagato": rechecks for 30 more seconds before falling back to
+  /// reporting the click automatically — no manual button for that.
+  Future<void> _onYesIPaid() async {
+    final intentId = _intentId;
+    if (intentId == null) {
+      // Nothing to actually recheck or report against.
+      _pollTimer?.cancel();
+      _absoluteTimer?.cancel();
+      if (mounted) setState(() => _stage = _SumUpWaitStage.timedOut);
+      return;
+    }
+
+    _pollTimer?.cancel();
+    setState(() {
+      _stage = _SumUpWaitStage.checking;
+      _isRechecking = true;
+    });
+
+    await _checkOnce();
+    if (!mounted || _isClosing || _stage != _SumUpWaitStage.checking) return;
+    _pollTimer = Timer.periodic(_backgroundPollInterval, (_) => _checkOnce());
+    _phaseTimer = Timer(_recheckDuration, _onRecheckTimeout);
+  }
+
+  void _onRecheckTimeout() {
+    if (!mounted ||
+        _isClosing ||
+        _stage != _SumUpWaitStage.checking ||
+        !_isRechecking) {
+      return;
+    }
+    _pollTimer?.cancel();
+    unawaited(_reportNotActivated());
+  }
+
+  Future<void> _reportNotActivated() async {
+    final intentId = _intentId;
+    if (intentId == null) return;
+    try {
+      final result = await _client.rpc(
+        'report_intent_paid',
+        params: {'p_intent_id': intentId},
+      );
+      if (!mounted) return;
+      setState(() {
+        _stage = _SumUpWaitStage.reported;
+        _reportFailed = result != true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _stage = _SumUpWaitStage.reported;
+        _reportFailed = true;
+      });
+    } finally {
+      _absoluteTimer?.cancel();
     }
   }
 
@@ -181,7 +291,10 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
   /// a later resume/route event reopen this same sheet, and no polling
   /// tick can fire once it's gone.
   Future<void> _closeSheet() async {
-    _timer?.cancel();
+    _isClosing = true;
+    _pollTimer?.cancel();
+    _absoluteTimer?.cancel();
+    _phaseTimer?.cancel();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('isPaymentPending');
@@ -195,33 +308,55 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  Future<void> _reportNotActivated() async {
-    final intentId = _intentId;
-    if (intentId == null || _isReporting) return;
-    setState(() => _isReporting = true);
-    try {
-      await _client.rpc('report_intent_paid', params: {'p_intent_id': intentId});
-      if (!mounted) return;
-      setState(() {
-        _stage = _SumUpWaitStage.reported;
-        _isReporting = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isReporting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Errore durante la segnalazione: $e')),
-      );
-    }
-  }
-
-  List<Widget> _buildStageContent() {
+  List<Widget> _buildStageContent(BuildContext context) {
     switch (_stage) {
       case _SumUpWaitStage.checking:
-        return const [
-          Center(child: CircularProgressIndicator()),
-          SizedBox(height: 16),
-          Text('Sto controllando il pagamento…', textAlign: TextAlign.center),
+        return [
+          const Center(child: CircularProgressIndicator()),
+          const SizedBox(height: 16),
+          Text(
+            _isRechecking ? 'Controllo ancora…' : 'Sto verificando il pagamento…',
+            textAlign: TextAlign.center,
+          ),
+          if (!_isRechecking) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Di solito bastano pochi secondi.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ];
+      case _SumUpWaitStage.notFound:
+        return [
+          Text(
+            'Non risulta ancora nessun pagamento',
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Hai completato il pagamento?',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _onYesIPaid,
+              child: const Text('Sì, ho pagato'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: _closeSheet,
+              child: const Text('No, non ho pagato'),
+            ),
+          ),
         ];
       case _SumUpWaitStage.needsReview:
         return [
@@ -241,28 +376,13 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
       case _SumUpWaitStage.timedOut:
         return [
           const Text(
-            'Non vedo ancora il pagamento. Se hai pagato, l\'abbonamento si attiva '
-            'da solo appena arriva: può volerci qualche minuto e puoi chiudere l\'app.',
+            'Non vedo il pagamento. Contatta la segreteria.',
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _isReporting ? null : _reportNotActivated,
-              child: _isReporting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Ho pagato ma non si attiva'),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
               onPressed: _closeSheet,
               child: const Text('Chiudi'),
             ),
@@ -270,8 +390,10 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
         ];
       case _SumUpWaitStage.reported:
         return [
-          const Text(
-            'Segnalazione inviata: il pagamento sarà controllato',
+          Text(
+            _reportFailed
+                ? 'Non sono riuscito a segnalare il pagamento: contatta la segreteria.'
+                : 'Ho segnalato il tuo pagamento: lo controlleremo e l\'abbonamento si attiva appena verificato. Puoi chiudere l\'app.',
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
@@ -301,14 +423,7 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ..._buildStageContent(),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: _closeSheet,
-                child: const Text('Non ho pagato'),
-              ),
-            ],
+            children: _buildStageContent(context),
           ),
         ),
       ),
