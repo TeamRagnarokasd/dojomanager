@@ -7,6 +7,7 @@ import 'package:sizer/sizer.dart';
 import '../../core/app_export.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/admin_compliance_alert_widget.dart';
 import './widgets/enhanced_admin_header_widget.dart';
 import './widgets/instructor_management_widget.dart';
 import './widgets/management_cards_widget.dart';
@@ -597,6 +598,16 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
                   key: ValueKey(_statsRefreshKey),
                 ),
               ),
+
+              // Compliance alert: overdue students not yet blocked, decides
+              // whether to block bookings.
+              if (_userRole == 'admin' || _userRole == 'principal_admin')
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: AdminComplianceAlertWidget(),
+                  ),
+                ),
 
               // Notification Center
               SliverToBoxAdapter(child: NotificationCenterWidget()),

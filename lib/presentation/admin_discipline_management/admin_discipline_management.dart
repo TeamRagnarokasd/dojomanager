@@ -445,7 +445,7 @@ class _AdminDisciplineManagementState extends State<AdminDisciplineManagement> {
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);
-                Navigator.pushNamed(context, '/instructor-management');
+                Navigator.pushNamed(context, AppRoutes.instructorManagementSystem);
               },
               child: Text('admin_discipline.manage_instructors'.tr()),
             ),
@@ -1153,7 +1153,7 @@ class _AdminDisciplineManagementState extends State<AdminDisciplineManagement> {
             subtitle: Text('admin_discipline.menu_manage_instructors_sub'.tr()),
             onTap: () {
               Navigator.pop(context);
-              Navigator.pushNamed(context, '/instructor-management');
+              Navigator.pushNamed(context, AppRoutes.instructorManagementSystem);
             },
           ),
           ListTile(

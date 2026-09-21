@@ -487,7 +487,7 @@ class _DisciplineEditorWidgetState extends State<DisciplineEditorWidget> {
 
   void _navigateToManagement() {
     widget.onCancel();
-    Navigator.pushNamed(context, '/instructor-management');
+    Navigator.pushNamed(context, AppRoutes.instructorManagementSystem);
   }
 
   void _navigateToCreate() {

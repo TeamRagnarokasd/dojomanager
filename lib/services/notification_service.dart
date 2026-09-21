@@ -209,7 +209,7 @@ class NotificationService {
           'priority': 'high',
           'icon': Icons.person_add,
           'time': timeAgo,
-          'route': '/registration-management-system',
+          'route': '/admin-management-system',
           'data': registration,
         });
       }
@@ -268,7 +268,7 @@ class NotificationService {
           'priority': 'low',
           'icon': Icons.payment,
           'time': timeAgo,
-          'route': '/admin-receipt-management',
+          'route': '/italian-receipt-generation',
           'data': payment,
         });
       }
