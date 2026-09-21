@@ -145,14 +145,23 @@ class _PaymentHistoryState extends State<PaymentHistory>
         final planAmount = prefs.getDouble('pendingPlanAmount');
         final paymentMethod =
             prefs.getString('pendingPaymentMethod') ?? 'sumup';
+        final pendingIntentId = prefs.getString('pendingIntentId');
+        final hasIntentId =
+            pendingIntentId != null && pendingIntentId.isNotEmpty;
 
-        // SumUp with auto-confirm on: the backend matches the payment on
-        // its own, so watch the click's own status instead of asking the
-        // student "did you pay?". Everything else (including SumUp with
-        // the flag off) keeps using PaymentConfirmationDialog exactly as
-        // before.
-        if (paymentMethod == 'sumup' &&
-            await FeatureFlagsService.instance.isEnabled('sumup_auto_confirm')) {
+        // Satispay's own create-payment flow always sets pendingIntentId,
+        // and SumUp's does too when auto-confirm is on: watch the click's
+        // own status with the shared waiting sheet instead of asking the
+        // student "did you pay?". Everything else (Satispay's fixed-link
+        // fallback, and SumUp with the flag off) keeps using
+        // PaymentConfirmationDialog exactly as before.
+        final showWaitingSheet = hasIntentId &&
+            (paymentMethod == 'satispay' ||
+                (paymentMethod == 'sumup' &&
+                    await FeatureFlagsService.instance.isEnabled(
+                      'sumup_auto_confirm',
+                    )));
+        if (showWaitingSheet) {
           if (mounted && !_sumupSheetOpen) {
             _sumupSheetOpen = true;
             showModalBottomSheet<void>(

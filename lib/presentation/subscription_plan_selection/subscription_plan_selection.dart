@@ -297,11 +297,14 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
 
   /// 🆕 SATISPAY MODE: tapping a plan creates a Satispay payment intent via
   /// the 'satispay/create-payment' Edge Function and opens the redirect URL
-  /// in the external browser. isPaymentPending/pendingPaymentMethod are
-  /// intentionally NOT set — the old "did you pay?" dialog must not appear
-  /// for this flow; activation happens automatically via PaidIntentsService.
-  /// On failure, shows a message and offers (asks, doesn't auto-switch)
-  /// today's fixed-link Satispay flow as a fallback.
+  /// in the external browser. isPaymentPending/pendingIntentId ARE now set
+  /// (before opening the page) so the shared waiting sheet in
+  /// _checkPaymentConfirmation can watch this click on return — the old
+  /// "did you pay?" dialog is skipped there whenever pendingIntentId is
+  /// present. On failure, shows a message and offers (asks, doesn't
+  /// auto-switch) today's fixed-link Satispay flow as a fallback — that
+  /// fallback stays exactly as it was (no pendingIntentId, today's manual
+  /// confirmation flow).
   Future<void> _launchSatispayForPlan(Map<String, dynamic> rawPlan) async {
     final planId = rawPlan['id'] as String?;
     final planName = rawPlan['name'] as String? ?? '';
@@ -327,10 +330,23 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       final data = response.data;
       final redirectUrl =
           data is Map ? data['redirect_url'] as String? : null;
+      final intentId = data is Map ? data['intent_id'] as String? : null;
 
-      if (redirectUrl == null || redirectUrl.isEmpty) {
-        throw Exception('Missing redirect_url in create-payment response');
+      if (redirectUrl == null ||
+          redirectUrl.isEmpty ||
+          intentId == null ||
+          intentId.isEmpty) {
+        throw Exception(
+          'Missing redirect_url/intent_id in create-payment response',
+        );
       }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isPaymentPending', true);
+      await prefs.setString('pendingPaymentMethod', 'satispay');
+      await prefs.setString('pendingPlanTitle', planName);
+      await prefs.setString('pendingPlanId', planId);
+      await prefs.setString('pendingIntentId', intentId);
 
       final opened = await _launchPaymentRedirectUrl(Uri.parse(redirectUrl));
       if (!opened) {
@@ -1777,13 +1793,22 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       final isPaymentPending = prefs.getBool('isPaymentPending') ?? false;
       if (!isPaymentPending || !mounted) return;
 
-      // SumUp with auto-confirm on: watch the click's own status with the
-      // same waiting sheet payment_history.dart uses, instead of navigating
-      // away to the "did you pay?" flow. Everything else (including SumUp
-      // with the flag off) keeps today's behaviour unchanged.
+      // Satispay's own create-payment flow always sets pendingIntentId, and
+      // SumUp's does too when auto-confirm is on: watch the click's own
+      // status with the shared waiting sheet instead of navigating away to
+      // the "did you pay?" flow. Everything else (Satispay's fixed-link
+      // fallback, and SumUp with the flag off) keeps today's behaviour
+      // unchanged.
       final paymentMethod = prefs.getString('pendingPaymentMethod');
-      if (paymentMethod == 'sumup' &&
-          await FeatureFlagsService.instance.isEnabled('sumup_auto_confirm')) {
+      final pendingIntentId = prefs.getString('pendingIntentId');
+      final hasIntentId = pendingIntentId != null && pendingIntentId.isNotEmpty;
+      final showWaitingSheet = hasIntentId &&
+          (paymentMethod == 'satispay' ||
+              (paymentMethod == 'sumup' &&
+                  await FeatureFlagsService.instance.isEnabled(
+                    'sumup_auto_confirm',
+                  )));
+      if (showWaitingSheet) {
         if (!mounted || _sumupSheetOpen) return;
 
         // Clear the pending flag now — the sheet itself reads
