@@ -125,10 +125,31 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
     try {
       final row = await _client
           .from('payment_intents')
-          .select('status')
+          .select('status, provider_payment_id')
           .eq('id', intentId)
           .maybeSingle();
-      final status = row?['status'] as String?;
+      var status = row?['status'] as String?;
+      final providerPaymentId = row?['provider_payment_id'] as String?;
+
+      if (providerPaymentId != null && providerPaymentId.isNotEmpty) {
+        // This click was created via 'sumup/create-payment', so its
+        // provider_payment_id is already known — ask SumUp directly for
+        // the latest status instead of waiting for the server-side
+        // matcher, same as PaidIntentsService does for the reconciliation
+        // pass.
+        try {
+          final checkResponse = await _client.functions.invoke(
+            'sumup/check',
+            body: {'intent_id': intentId},
+          );
+          final data = checkResponse.data;
+          if (data is Map && data['status'] is String) {
+            status = data['status'] as String;
+          }
+        } catch (_) {
+          // Keep the status just read above — retried on the next tick.
+        }
+      }
 
       if (status == 'matched' || status == 'confirmed') {
         _timer?.cancel();

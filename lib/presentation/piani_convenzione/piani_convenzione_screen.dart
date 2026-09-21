@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -11,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/app_export.dart';
 import '../../services/auth_service.dart';
 import '../../services/child_profile_service.dart';
+import '../../services/feature_flags_service.dart';
 import '../../services/payment_service.dart';
 import '../subscription_plan_selection/widgets/subscription_option_card_widget.dart';
 
@@ -267,7 +269,156 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
       _showAnnualRegistrationRequiredDialog();
       return;
     }
-    // User has annual registration — launch the payment URL directly
+    // User has annual registration — start the payment
+    _startSumUpPayment(plan);
+  }
+
+  /// Opens a payment redirect page created via 'sumup/create-payment'. On
+  /// mobile this is the usual external-browser hand-off; on web (kIsWeb) it
+  /// navigates the SAME tab (webOnlyWindowName: '_self') instead of a new
+  /// one — by the time create-payment returns, the network wait has used up
+  /// the browser's "user gesture" allowance and Safari on iPhone silently
+  /// blocks a new-tab window.open() in that case.
+  Future<bool> _launchPaymentRedirectUrl(Uri uri) {
+    if (kIsWeb) {
+      return launchUrl(uri, webOnlyWindowName: '_self');
+    }
+    return launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  /// 🆕 SumUp, 'sumup_auto_confirm' on: creates the payment intent via the
+  /// 'sumup/create-payment' Edge Function (the server creates the
+  /// payment_intents click, with provider_payment_id set) and opens the
+  /// redirect page. isPaymentPending/pendingIntentId ARE set, same as
+  /// today's fixed-link flow, so SumUpWaitingSheet (opened by whichever
+  /// screen reads isPaymentPending on resume) can watch this specific
+  /// click by id instead of showing the old "did you pay?" dialog. On
+  /// failure, shows a message and offers (only if the user agrees) today's
+  /// fixed-link SumUp flow, unchanged.
+  Future<void> _launchSumUpForPlan(Map<String, dynamic> plan) async {
+    final planId = (plan['id'] ?? plan['dbId'])?.toString();
+    final planTitle = plan['title'] as String? ?? plan['name'] as String? ?? '';
+    final planAmount = (plan['price'] as num?)?.toDouble() ??
+        (plan['amount'] as num?)?.toDouble() ??
+        0.0;
+    if (planId == null || planId.isEmpty) {
+      await _offerFixedSumUpLinkFallback(plan);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'sumup/create-payment',
+        body: {
+          'plan_id': planId,
+          'beneficiary_profile_id': ChildProfileService.getActiveUserId(),
+          'redirect_url':
+              'https://teamragnarokasd.github.io/dojomanager/payment-done.html',
+        },
+      );
+
+      final data = response.data;
+      final redirectUrl =
+          data is Map ? data['redirect_url'] as String? : null;
+      final intentId = data is Map ? data['intent_id'] as String? : null;
+
+      if (redirectUrl == null ||
+          redirectUrl.isEmpty ||
+          intentId == null ||
+          intentId.isEmpty) {
+        throw Exception(
+          'Missing redirect_url/intent_id in sumup create-payment response',
+        );
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isPaymentPending', true);
+      await prefs.setString('pendingPaymentMethod', 'sumup');
+      await prefs.setString('pendingPlanTitle', planTitle);
+      await prefs.setString('pendingPlanId', planId);
+      if (planAmount > 0) {
+        await prefs.setDouble('pendingPlanAmount', planAmount);
+      }
+      await prefs.setString('pendingIntentId', intentId);
+
+      final opened = await _launchPaymentRedirectUrl(Uri.parse(redirectUrl));
+      if (!opened) {
+        throw Exception('launchUrl returned false');
+      }
+    } catch (e) {
+      print('Error creating SumUp payment: $e');
+      await _offerFixedSumUpLinkFallback(plan);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _selectedPlanId = null;
+        });
+      }
+    }
+  }
+
+  /// 🆕 SumUp create-payment fallback: shows a message explaining the new
+  /// flow couldn't start, and — only if the user explicitly agrees —
+  /// reproduces today's fixed-link SumUp flow (_launchSumUpUrl, unchanged).
+  Future<void> _offerFixedSumUpLinkFallback(Map<String, dynamic> plan) async {
+    if (!mounted) return;
+    final useOldFlow = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: AppTheme.darkTheme.cardColor,
+            title: Text(
+              'Pagamento non avviato',
+              style: AppTheme.darkTheme.textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            content: Text(
+              'Non è stato possibile avviare il pagamento SumUp per questo '
+              'piano. Vuoi provare con il link diretto di SumUp?',
+              style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
+                height: 1.4,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(
+                  'common.cancel'.tr(),
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text('Usa link diretto'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!useOldFlow) return;
+    _launchFixedSumUpUrl(plan);
+  }
+
+  /// Dispatches a SumUp payment: uses the new create-payment flow when
+  /// 'sumup_auto_confirm' is on and the plan has a valid id, otherwise
+  /// falls back to today's fixed-link flow unchanged — with the flag off
+  /// this always takes the fixed-link branch, so nothing changes.
+  Future<void> _startSumUpPayment(Map<String, dynamic> plan) async {
+    final planId = (plan['id'] ?? plan['dbId'])?.toString();
+    final sumupEnabled =
+        await FeatureFlagsService.instance.isEnabled('sumup_auto_confirm');
+    if (sumupEnabled && planId != null && planId.isNotEmpty) {
+      await _launchSumUpForPlan(plan);
+      return;
+    }
+    _launchFixedSumUpUrl(plan);
+  }
+
+  /// Today's fixed-link SumUp flow, unchanged — used both when the flag is
+  /// off and as the fallback when the create-payment flow fails.
+  void _launchFixedSumUpUrl(Map<String, dynamic> plan) {
     final url =
         plan['sumupUrl'] as String? ?? plan['external_url'] as String? ?? '';
     final title = plan['title'] as String? ?? plan['name'] as String? ?? '';
