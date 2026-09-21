@@ -417,7 +417,12 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
-                    padding: EdgeInsets.all(4.w),
+                    padding: EdgeInsets.fromLTRB(
+                      4.w,
+                      4.w,
+                      4.w,
+                      MediaQuery.of(context).viewPadding.bottom + 88,
+                    ),
                     children: _buildBody(),
                   ),
                 ),

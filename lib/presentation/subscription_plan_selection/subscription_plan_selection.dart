@@ -2185,7 +2185,12 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                 )
               : GridView.builder(
                   key: const ValueKey('satispay-plans'),
-                  padding: EdgeInsets.all(4.w),
+                  padding: EdgeInsets.fromLTRB(
+                    4.w,
+                    4.w,
+                    4.w,
+                    MediaQuery.of(context).viewPadding.bottom + 4.w,
+                  ),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
                     crossAxisSpacing: 3.w,
@@ -2771,7 +2776,11 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
           ),
 
         // Bottom spacing
-        SliverToBoxAdapter(child: SizedBox(height: 2.h)),
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: MediaQuery.of(context).viewPadding.bottom + 2.h,
+          ),
+        ),
       ],
     );
   }

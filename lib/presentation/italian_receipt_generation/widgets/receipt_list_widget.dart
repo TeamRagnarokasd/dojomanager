@@ -211,7 +211,12 @@ class _ReceiptListWidgetState extends State<ReceiptListWidget> {
             filtered.isEmpty
                 ? SliverFillRemaining(child: _buildEmptyState())
                 : SliverPadding(
-                    padding: EdgeInsets.fromLTRB(16.sp, 0, 16.sp, 100.sp),
+                    padding: EdgeInsets.fromLTRB(
+                      16.sp,
+                      0,
+                      16.sp,
+                      MediaQuery.of(context).viewPadding.bottom + 100.sp,
+                    ),
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, index) => _buildReceiptCard(filtered[index]),
@@ -223,7 +228,7 @@ class _ReceiptListWidgetState extends State<ReceiptListWidget> {
         ),
         // FAB for selection mode toggle
         Positioned(
-          bottom: 16.sp,
+          bottom: MediaQuery.of(context).viewPadding.bottom + 16.sp,
           right: 16.sp,
           child: _isSelectionMode
               ? FloatingActionButton.extended(

@@ -363,7 +363,12 @@ class _ReceiptFormWidgetState extends State<ReceiptFormWidget> {
     }
 
     return Container(
-      padding: EdgeInsets.all(16.sp),
+      padding: EdgeInsets.fromLTRB(
+        16.sp,
+        16.sp,
+        16.sp,
+        MediaQuery.of(context).viewPadding.bottom + 24,
+      ),
       child: Form(
         key: _formKey,
         child: Scrollbar(
