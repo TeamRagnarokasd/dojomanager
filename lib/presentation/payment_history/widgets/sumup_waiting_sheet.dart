@@ -163,7 +163,7 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
           textColor: Colors.white,
         );
         widget.onConfirmed?.call();
-        if (mounted) Navigator.pop(context);
+        if (mounted) await _closeSheet();
       } else if (status == 'needs_review') {
         _timer?.cancel();
         if (mounted) setState(() => _stage = _SumUpWaitStage.needsReview);
@@ -173,6 +173,26 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
     } catch (_) {
       // Transient error — retried on the next tick.
     }
+  }
+
+  /// Closes only this sheet and drops the pending-payment bookkeeping in
+  /// SharedPreferences — every exit (a button, or a successful activation
+  /// in _checkOnce) goes through here, so nothing is left that could make
+  /// a later resume/route event reopen this same sheet, and no polling
+  /// tick can fire once it's gone.
+  Future<void> _closeSheet() async {
+    _timer?.cancel();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('isPaymentPending');
+      await prefs.remove('pendingIntentId');
+      await prefs.remove('pendingPlanTitle');
+      await prefs.remove('pendingPlanId');
+      await prefs.remove('pendingPlanAmount');
+    } catch (_) {
+      // Best-effort cleanup — nothing more to do if this fails.
+    }
+    if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _reportNotActivated() async {
@@ -213,7 +233,7 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: _closeSheet,
               child: const Text('Chiudi'),
             ),
           ),
@@ -243,7 +263,7 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: _closeSheet,
               child: const Text('Chiudi'),
             ),
           ),
@@ -258,7 +278,7 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: _closeSheet,
               child: const Text('Chiudi'),
             ),
           ),
@@ -285,7 +305,7 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
               ..._buildStageContent(),
               const SizedBox(height: 12),
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: _closeSheet,
                 child: const Text('Non ho pagato'),
               ),
             ],
