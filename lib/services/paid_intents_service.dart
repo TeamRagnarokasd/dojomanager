@@ -142,9 +142,31 @@ class PaidIntentsService {
           );
           return null; // try again next time
         }
+      } else if (provider == 'sumup' &&
+          providerPaymentId != null &&
+          providerPaymentId.isNotEmpty) {
+        // This click was created via 'sumup/create-payment' (the new
+        // single-page flow), so its own provider_payment_id is known —
+        // ask SumUp for the latest status the same way as Satispay above.
+        try {
+          final checkResponse = await _supabase.functions.invoke(
+            'sumup/check',
+            body: {'intent_id': intentId},
+          );
+          final data = checkResponse.data;
+          if (data is Map && data['status'] is String) {
+            status = data['status'] as String;
+          }
+        } catch (e) {
+          debugPrint(
+            '⚠️ PaidIntentsService: sumup/check failed for $intentId: $e',
+          );
+          return null; // try again next time
+        }
       } else {
-        // A pending SumUp (or other non-Satispay) intent is reconciled by
-        // the server-side matcher, not from here — nothing to do yet.
+        // A pending intent with no provider_payment_id yet (fixed-link
+        // SumUp) is reconciled by the server-side matcher, not from here —
+        // nothing to do yet.
         return null;
       }
     }
