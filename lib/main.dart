@@ -9,7 +9,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:dio/dio.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import './routes/app_routes.dart';
@@ -496,6 +498,8 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
         // 🆕 Reconcile any Satispay payment_intents on startup for an
         // already-authenticated session (e.g. app was killed and reopened).
         _runPaidIntentsCheck();
+        // 🆕 Log this launch's access (already-signed-in session).
+        _logSessionActivity(userId);
       }
 
       // React to future sign-in / sign-out events
@@ -508,6 +512,9 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
                 RealtimeNotificationService.instance.subscribe(uid);
                 // 🆕 Reconcile right after login too.
                 _runPaidIntentsCheck();
+                // 🆕 Log this login (email/password or fingerprint alike —
+                // both fire this same event).
+                _logSessionActivity(uid);
               }
             } else if (data.event == AuthChangeEvent.signedOut) {
               RealtimeNotificationService.instance.unsubscribe();
@@ -522,6 +529,57 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
       );
     } catch (e) {
       debugPrint('❌ Failed to initialize realtime subscription: $e');
+    }
+  }
+
+  /// 🆕 Records one access in `user_session_activity`, so we know who uses
+  /// Android vs. the website and with which app version. Called after a
+  /// successful login (email/password or fingerprint — both surface as
+  /// AuthChangeEvent.signedIn) and once per app launch for an
+  /// already-signed-in session. Never blocks startup or shows anything to
+  /// the user — failures are swallowed. To avoid writing on every single
+  /// launch, a new row is only inserted when the app version changed, the
+  /// device changed, or more than 90 days passed since the last write (a
+  /// periodic confirmation check) — the last version/device/write time are
+  /// kept in SharedPreferences.
+  Future<void> _logSessionActivity(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final versionKey = 'session_activity_last_version_$userId';
+      final deviceKey = 'session_activity_last_device_$userId';
+      final writeKey = 'session_activity_last_write_$userId';
+
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion =
+          '${packageInfo.version}+${packageInfo.buildNumber}';
+      final currentDevice = kIsWeb ? 'web' : Platform.operatingSystem;
+
+      final lastVersion = prefs.getString(versionKey);
+      final lastDevice = prefs.getString(deviceKey);
+      final lastWriteMillis = prefs.getInt(writeKey);
+
+      final now = DateTime.now();
+      bool periodicCheckDue = true;
+      if (lastWriteMillis != null) {
+        final lastWrite = DateTime.fromMillisecondsSinceEpoch(lastWriteMillis);
+        periodicCheckDue = now.difference(lastWrite) > const Duration(days: 90);
+      }
+
+      final versionChanged = currentVersion != lastVersion;
+      final deviceChanged = currentDevice != lastDevice;
+      if (!versionChanged && !deviceChanged && !periodicCheckDue) return;
+
+      await Supabase.instance.client.from('user_session_activity').insert({
+        'user_id': userId,
+        'app_version': currentVersion,
+        'device_info': currentDevice,
+      });
+
+      await prefs.setString(versionKey, currentVersion);
+      await prefs.setString(deviceKey, currentDevice);
+      await prefs.setInt(writeKey, now.millisecondsSinceEpoch);
+    } catch (e) {
+      debugPrint('⚠️ Session activity log failed: $e');
     }
   }
 
