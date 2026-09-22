@@ -92,6 +92,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   static const String _chipPending = 'pending';
   static const String _chipNoSub = 'no_sub';
   static const String _chipNoReg = 'no_reg';
+  static const String _chipWithReg = 'with_reg';
 
   Set<String> _subscribedUserIds = {};
   Set<String> _annualRegisteredIds = {};
@@ -171,6 +172,13 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         }
         final userId = user['id']?.toString() ?? '';
         chipMatch = userId.isEmpty || !_annualRegisteredIds.contains(userId);
+      } else if (chip == _chipWithReg) {
+        final role = user['role']?.toString() ?? '';
+        if (role != 'student' && role != 'instructor_student') {
+          return false; // other roles are excluded entirely from this filter
+        }
+        final userId = user['id']?.toString() ?? '';
+        chipMatch = _annualRegisteredIds.contains(userId);
       }
 
       if (!chipMatch) return false; // AND logic
@@ -1154,6 +1162,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
             _buildFilterChip('Senza certificato medico', _chipNoCert),
             _buildFilterChip('In attesa di approvazione', _chipPending),
             _buildFilterChip('Senza abbonamento', _chipNoSub),
+            _buildFilterChip('Con iscrizione', _chipWithReg),
             _buildFilterChip('Senza iscrizione', _chipNoReg),
           ],
         ),

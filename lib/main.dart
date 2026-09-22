@@ -9,7 +9,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:dio/dio.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import './routes/app_routes.dart';
@@ -496,6 +498,8 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
         // 🆕 Reconcile any Satispay payment_intents on startup for an
         // already-authenticated session (e.g. app was killed and reopened).
         _runPaidIntentsCheck();
+        // 🆕 Log this launch's access (already-signed-in session).
+        _logSessionActivity(userId);
       }
 
       // React to future sign-in / sign-out events
@@ -508,6 +512,9 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
                 RealtimeNotificationService.instance.subscribe(uid);
                 // 🆕 Reconcile right after login too.
                 _runPaidIntentsCheck();
+                // 🆕 Log this login (email/password or fingerprint alike —
+                // both fire this same event).
+                _logSessionActivity(uid);
               }
             } else if (data.event == AuthChangeEvent.signedOut) {
               RealtimeNotificationService.instance.unsubscribe();
@@ -522,6 +529,40 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
       );
     } catch (e) {
       debugPrint('❌ Failed to initialize realtime subscription: $e');
+    }
+  }
+
+  /// 🆕 Records one access in `user_session_activity`, so we know who uses
+  /// Android vs. the website and with which app version. Called after a
+  /// successful login (email/password or fingerprint — both surface as
+  /// AuthChangeEvent.signedIn) and once per app launch for an
+  /// already-signed-in session. Never blocks startup or shows anything to
+  /// the user — failures are swallowed — and writes at most once every 6
+  /// hours per user (tracked in SharedPreferences).
+  Future<void> _logSessionActivity(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final prefsKey = 'session_activity_last_write_$userId';
+      final lastWriteMillis = prefs.getInt(prefsKey);
+      final now = DateTime.now();
+      if (lastWriteMillis != null) {
+        final lastWrite = DateTime.fromMillisecondsSinceEpoch(lastWriteMillis);
+        if (now.difference(lastWrite) < const Duration(hours: 6)) return;
+      }
+
+      final packageInfo = await PackageInfo.fromPlatform();
+      final appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
+      final deviceInfo = kIsWeb ? 'web' : Platform.operatingSystem;
+
+      await Supabase.instance.client.from('user_session_activity').insert({
+        'user_id': userId,
+        'app_version': appVersion,
+        'device_info': deviceInfo,
+      });
+
+      await prefs.setInt(prefsKey, now.millisecondsSinceEpoch);
+    } catch (e) {
+      debugPrint('⚠️ Session activity log failed: $e');
     }
   }
 
