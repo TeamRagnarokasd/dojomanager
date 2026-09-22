@@ -537,30 +537,47 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
   /// successful login (email/password or fingerprint — both surface as
   /// AuthChangeEvent.signedIn) and once per app launch for an
   /// already-signed-in session. Never blocks startup or shows anything to
-  /// the user — failures are swallowed — and writes at most once every 6
-  /// hours per user (tracked in SharedPreferences).
+  /// the user — failures are swallowed. To avoid writing on every single
+  /// launch, a new row is only inserted when the app version changed, the
+  /// device changed, or more than 90 days passed since the last write (a
+  /// periodic confirmation check) — the last version/device/write time are
+  /// kept in SharedPreferences.
   Future<void> _logSessionActivity(String userId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final prefsKey = 'session_activity_last_write_$userId';
-      final lastWriteMillis = prefs.getInt(prefsKey);
-      final now = DateTime.now();
-      if (lastWriteMillis != null) {
-        final lastWrite = DateTime.fromMillisecondsSinceEpoch(lastWriteMillis);
-        if (now.difference(lastWrite) < const Duration(hours: 6)) return;
-      }
+      final versionKey = 'session_activity_last_version_$userId';
+      final deviceKey = 'session_activity_last_device_$userId';
+      final writeKey = 'session_activity_last_write_$userId';
 
       final packageInfo = await PackageInfo.fromPlatform();
-      final appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
-      final deviceInfo = kIsWeb ? 'web' : Platform.operatingSystem;
+      final currentVersion =
+          '${packageInfo.version}+${packageInfo.buildNumber}';
+      final currentDevice = kIsWeb ? 'web' : Platform.operatingSystem;
+
+      final lastVersion = prefs.getString(versionKey);
+      final lastDevice = prefs.getString(deviceKey);
+      final lastWriteMillis = prefs.getInt(writeKey);
+
+      final now = DateTime.now();
+      bool periodicCheckDue = true;
+      if (lastWriteMillis != null) {
+        final lastWrite = DateTime.fromMillisecondsSinceEpoch(lastWriteMillis);
+        periodicCheckDue = now.difference(lastWrite) > const Duration(days: 90);
+      }
+
+      final versionChanged = currentVersion != lastVersion;
+      final deviceChanged = currentDevice != lastDevice;
+      if (!versionChanged && !deviceChanged && !periodicCheckDue) return;
 
       await Supabase.instance.client.from('user_session_activity').insert({
         'user_id': userId,
-        'app_version': appVersion,
-        'device_info': deviceInfo,
+        'app_version': currentVersion,
+        'device_info': currentDevice,
       });
 
-      await prefs.setInt(prefsKey, now.millisecondsSinceEpoch);
+      await prefs.setString(versionKey, currentVersion);
+      await prefs.setString(deviceKey, currentDevice);
+      await prefs.setInt(writeKey, now.millisecondsSinceEpoch);
     } catch (e) {
       debugPrint('⚠️ Session activity log failed: $e');
     }
