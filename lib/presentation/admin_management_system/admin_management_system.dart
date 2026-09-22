@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_export.dart';
@@ -93,9 +94,11 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   static const String _chipNoSub = 'no_sub';
   static const String _chipNoReg = 'no_reg';
   static const String _chipWithReg = 'with_reg';
+  static const String _chipNotUpdated = 'not_updated';
 
   Set<String> _subscribedUserIds = {};
   Set<String> _annualRegisteredIds = {};
+  Set<String> _updatedUserIds = {};
 
   // Compute age in years from a birth_date string (ISO-8601 or similar)
   int? _ageFromBirthDate(dynamic birthDate) {
@@ -179,6 +182,9 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         }
         final userId = user['id']?.toString() ?? '';
         chipMatch = _annualRegisteredIds.contains(userId);
+      } else if (chip == _chipNotUpdated) {
+        final userId = user['id']?.toString() ?? '';
+        chipMatch = userId.isEmpty || !_updatedUserIds.contains(userId);
       }
 
       if (!chipMatch) return false; // AND logic
@@ -458,6 +464,42 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         print('Error loading subscribed user IDs: $e');
         _subscribedUserIds = {};
         _annualRegisteredIds = {};
+      }
+
+      // Load "not yet updated" status from user_session_activity: for each
+      // user, only the most recent app_version (written at login, see
+      // main.dart) matters. A user is "updated" when that latest version
+      // matches the current app version.
+      try {
+        final currentPackageInfo = await PackageInfo.fromPlatform();
+        final currentVersion =
+            '${currentPackageInfo.version}+${currentPackageInfo.buildNumber}';
+
+        final sessionActivityResponse = await client
+            .from('user_session_activity')
+            .select('user_id, app_version, created_at')
+            .order('created_at', ascending: false);
+
+        final Map<String, String> latestVersionByUser = {};
+        for (final row in (sessionActivityResponse as List)) {
+          final userId = row['user_id']?.toString();
+          if (userId == null) continue;
+          // Rows come newest-first — keep only the first (most recent)
+          // app_version seen per user.
+          latestVersionByUser.putIfAbsent(
+            userId,
+            () => row['app_version']?.toString() ?? '',
+          );
+        }
+
+        final updatedIds = <String>{};
+        latestVersionByUser.forEach((userId, version) {
+          if (version == currentVersion) updatedIds.add(userId);
+        });
+        _updatedUserIds = updatedIds;
+      } catch (e) {
+        print('Error loading user session activity: $e');
+        _updatedUserIds = {};
       }
 
       // Load admin communications with error handling
@@ -1164,6 +1206,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
             _buildFilterChip('Senza abbonamento', _chipNoSub),
             _buildFilterChip('Con iscrizione', _chipWithReg),
             _buildFilterChip('Senza iscrizione', _chipNoReg),
+            _buildFilterChip('Non ancora aggiornati', _chipNotUpdated),
           ],
         ),
         SizedBox(height: 10),
