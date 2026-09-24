@@ -47,6 +47,8 @@ class AsdDeadline {
     this.documentAgenda,
     this.driveUrl,
     required this.createdAt,
+    this.requiredDocumentLabels = const [],
+    this.federation,
   });
 
   final String id;
@@ -72,6 +74,15 @@ class AsdDeadline {
   /// cartella Drive" is offered for this deadline.
   final String? driveUrl;
   final DateTime createdAt;
+
+  /// Document labels required to complete this deadline (e.g. "Certificato
+  /// di affiliazione"), shown as a checklist on the deadline page. Empty for
+  /// deadlines with no such requirement.
+  final List<String> requiredDocumentLabels;
+
+  /// Federation this deadline is for ('federkombat' | 'fijlkam' |
+  /// 'asc_bjj_italia'), null when not federation-specific.
+  final String? federation;
 
   /// True for a "once only in that year" deadline (due_year set).
   bool get isOneTime => dueYear != null;
@@ -100,6 +111,11 @@ class AsdDeadline {
       documentAgenda: map['document_agenda'] as String?,
       driveUrl: map['drive_url'] as String?,
       createdAt: DateTime.parse(map['created_at'] as String),
+      requiredDocumentLabels: (map['required_document_labels'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
+      federation: map['federation'] as String?,
     );
   }
 
@@ -380,6 +396,17 @@ class AsdDeadlinesService {
 
   Future<void> undoCompletion(String completionId) async {
     await _client.from(_completionsTable).delete().eq('id', completionId);
+  }
+
+  /// Most recent completion time for [deadlineId], or null if it was never
+  /// completed. Used to tell whether a document uploaded for a
+  /// required-document deadline is fresh enough for the current cycle.
+  Future<DateTime?> getLastCompletedAt(String deadlineId) async {
+    final completions = await _getCompletions(deadlineId);
+    if (completions.isEmpty) return null;
+    return completions
+        .map((c) => c.completedAt)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
   }
 
   /// Latest completions across all deadlines, joined with the completing

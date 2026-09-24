@@ -45,6 +45,7 @@ class AsdDocument {
     required this.source,
     this.fileName,
     this.mimeType,
+    this.federation,
   });
 
   final String id;
@@ -65,6 +66,10 @@ class AsdDocument {
   final String source;
   final String? fileName;
   final String? mimeType;
+
+  /// Federation this document is for ('federkombat' | 'fijlkam' |
+  /// 'asc_bjj_italia'), null when not federation-specific.
+  final String? federation;
 
   bool get isPdf =>
       mimeType == 'application/pdf' ||
@@ -97,6 +102,7 @@ class AsdDocument {
         source: map['source'] as String? ?? kAsdDocumentSourceGenerated,
         fileName: map['file_name'] as String?,
         mimeType: map['mime_type'] as String?,
+        federation: map['federation'] as String?,
       );
 }
 
@@ -321,6 +327,7 @@ class AsdDocumentsService {
     required String source,
     String? fileName,
     String? mimeType,
+    String? federation,
   }) async {
     final row = await _client
         .from(_table)
@@ -336,10 +343,37 @@ class AsdDocumentsService {
           'source': source,
           'file_name': fileName,
           'mime_type': mimeType,
+          'federation': federation,
         })
         .select()
         .single();
     return AsdDocument.fromMap(row);
+  }
+
+  /// Among [requiredLabels] for a deadline (category/federation), returns
+  /// the ones NOT yet satisfied: a label is satisfied when a document with
+  /// that exact subject exists for this category/federation, uploaded after
+  /// [sinceExclusive] — or any time, if [sinceExclusive] is null (never
+  /// completed yet).
+  Future<List<String>> getMissingRequiredLabels({
+    required String category,
+    String? federation,
+    required List<String> requiredLabels,
+    DateTime? sinceExclusive,
+  }) async {
+    if (requiredLabels.isEmpty) return const [];
+    final documents = await getDocumentsByCategory(category);
+    final satisfied = <String>{};
+    for (final document in documents) {
+      final subject = document.subject;
+      if (subject == null || !requiredLabels.contains(subject)) continue;
+      if (federation != null && document.federation != federation) continue;
+      if (sinceExclusive != null && !document.createdAt.isAfter(sinceExclusive)) {
+        continue;
+      }
+      satisfied.add(subject);
+    }
+    return requiredLabels.where((label) => !satisfied.contains(label)).toList();
   }
 
   Future<void> updateDocument(

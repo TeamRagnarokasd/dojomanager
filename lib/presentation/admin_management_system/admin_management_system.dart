@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_export.dart';
+import '../../services/federation_membership_service.dart';
 import '../../services/italian_receipt_service.dart';
 import '../../services/supabase_service.dart';
 
@@ -99,6 +100,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   Set<String> _subscribedUserIds = {};
   Set<String> _annualRegisteredIds = {};
   Set<String> _updatedUserIds = {};
+  Map<String, List<FederationMembership>> _membershipsByUserId = {};
 
   // Compute age in years from a birth_date string (ISO-8601 or similar)
   int? _ageFromBirthDate(dynamic birthDate) {
@@ -500,6 +502,25 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       } catch (e) {
         print('Error loading user session activity: $e');
         _updatedUserIds = {};
+      }
+
+      // Load federation memberships (Federkombat/FIJLKAM/ASC-BJJ Italia) for
+      // every user shown, in one query.
+      try {
+        final userIds = systemUsers
+            .map((u) => (u as Map<String, dynamic>)['id']?.toString())
+            .whereType<String>()
+            .toList();
+        final memberships =
+            await FederationMembershipService.instance.getMembershipsForUsers(userIds);
+        final Map<String, List<FederationMembership>> byUser = {};
+        for (final membership in memberships) {
+          byUser.putIfAbsent(membership.userId, () => []).add(membership);
+        }
+        _membershipsByUserId = byUser;
+      } catch (e) {
+        print('Error loading federation memberships: $e');
+        _membershipsByUserId = {};
       }
 
       // Load admin communications with error handling
@@ -1296,6 +1317,26 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
     );
   }
 
+  /// One small line per federation this user is tesserato with (a user can
+  /// have more than one), e.g. "FK #123". Empty if not tesserato anywhere.
+  List<Widget> _buildFederationRows(String userId) {
+    final memberships = _membershipsByUserId[userId];
+    if (memberships == null || memberships.isEmpty) return const [];
+    return memberships
+        .map(
+          (membership) => Text(
+            (membership.cardNumber != null && membership.cardNumber!.trim().isNotEmpty)
+                ? '${federationShortLabel(membership.federation)} #${membership.cardNumber}'
+                : federationShortLabel(membership.federation),
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        )
+        .toList();
+  }
+
   Widget _buildUserCard(Map<String, dynamic> user) {
     final role = user['role']?.toString() ?? 'student';
     final isActive = user['is_active'] == true;
@@ -1399,6 +1440,8 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
                                   ).colorScheme.onSurfaceVariant,
                                 ),
                               ),
+                            if (role == 'student' || role == 'instructor_student')
+                              ..._buildFederationRows(userId),
                           ],
                         ),
                       ),
