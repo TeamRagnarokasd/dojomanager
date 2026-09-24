@@ -65,84 +65,84 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
 
       final registeredMembersCount = adultUsersCount + childProfilesCount;
 
-      // Collect all child tax codes (normalized uppercase)
-      final childTaxCodes = <String>{};
-      for (final child in childProfiles) {
-        final tc = (child['tax_code'] ?? child['codice_fiscale'])
-            ?.toString()
-            .trim()
-            .toUpperCase();
-        if (tc != null && tc.isNotEmpty) {
-          childTaxCodes.add(tc);
-        }
-      }
-
-      // MEMBRI ISCRITTI: unique tax codes with 'Iscrizione Annuale' receipt from most recent Aug 28
+      // MEMBRI ISCRITTI / ABBONATI: da pagamenti confermati
+      // (payment_confirmations), non dalle ricevute — quando un genitore
+      // paga per un figlio, la ricevuta riporta il codice fiscale del
+      // genitore, quindi contare per codice fiscale sulle ricevute
+      // sottostima (o azzera) i figli.
       final mostRecentAugust28 = _getMostRecentAugust28();
-      final annualReceipts = await client
-          .from('non_fiscal_receipts')
-          .select('customer_tax_code')
-          .ilike('description', '%Iscrizione Annuale%')
-          .eq('deleted_by_user', false)
-          .gte(
-            'issue_date',
-            mostRecentAugust28.toIso8601String().split('T')[0],
-          );
+      final confirmedPayments = await client
+          .from('payment_confirmations')
+          .select(
+            'user_id, subscription_plan_id, custom_plan_id, '
+            'beneficiary_profile_id, confirmed_at, created_at',
+          )
+          .eq('status', 'confirmed');
 
-      // Collect all tax codes from annual receipts (adults + children together)
-      final allAnnualTaxCodes = <String>{};
-      for (final receipt in annualReceipts) {
-        final taxCode = receipt['customer_tax_code'];
-        if (taxCode != null && taxCode.toString().trim().isNotEmpty) {
-          allAnnualTaxCodes.add(taxCode.toString().trim().toUpperCase());
+      final relevantPayments = (confirmedPayments as List).where((row) {
+        final dateValue = row['confirmed_at'] ?? row['created_at'];
+        final date = dateValue == null
+            ? null
+            : DateTime.tryParse(dateValue.toString());
+        return date != null && !date.isBefore(mostRecentAugust28);
+      }).toList();
+
+      final planIds = <String>{};
+      final customPlanIds = <String>{};
+      for (final row in relevantPayments) {
+        final planId = row['subscription_plan_id'] as String?;
+        final customPlanId = row['custom_plan_id'] as String?;
+        if (planId != null) planIds.add(planId);
+        if (customPlanId != null) customPlanIds.add(customPlanId);
+      }
+
+      final planNamesById = <String, String>{};
+      if (planIds.isNotEmpty) {
+        final plansResponse = await client
+            .from('subscription_plans')
+            .select('id, name')
+            .inFilter('id', planIds.toList());
+        for (final plan in (plansResponse as List)) {
+          planNamesById[plan['id'] as String] =
+              (plan['name'] ?? '').toString();
+        }
+      }
+      if (customPlanIds.isNotEmpty) {
+        final customPlansResponse = await client
+            .from('custom_subscription_plans')
+            .select('id, name')
+            .inFilter('id', customPlanIds.toList());
+        for (final plan in (customPlansResponse as List)) {
+          planNamesById[plan['id'] as String] =
+              (plan['name'] ?? '').toString();
         }
       }
 
-      // Count adults with annual subscription (tax codes NOT belonging to children)
-      int adultSubscribedCount = 0;
-      int childSubscribedCount = 0;
-      for (final tc in allAnnualTaxCodes) {
-        if (childTaxCodes.contains(tc)) {
-          childSubscribedCount++;
+      // Una persona (adulto o figlio) conta una volta sola per riquadro,
+      // anche con più pagamenti dello stesso tipo.
+      final annualSubscriptionPersonIds = <String>{};
+      final courseSubscriptionPersonIds = <String>{};
+      for (final row in relevantPayments) {
+        final personId = (row['beneficiary_profile_id'] as String?) ??
+            row['user_id'] as String?;
+        if (personId == null) continue;
+
+        final planId = row['subscription_plan_id'] as String?;
+        final customPlanId = row['custom_plan_id'] as String?;
+        final planName = (planId != null ? planNamesById[planId] : null) ??
+            (customPlanId != null ? planNamesById[customPlanId] : null);
+        final isAnnualSubscription =
+            planName != null && planName.toLowerCase().contains('iscrizione');
+
+        if (isAnnualSubscription) {
+          annualSubscriptionPersonIds.add(personId);
         } else {
-          adultSubscribedCount++;
+          courseSubscriptionPersonIds.add(personId);
         }
       }
 
-      final subscribedMembersCount =
-          adultSubscribedCount + childSubscribedCount;
-
-      // MEMBRI ABBONATI: unique tax codes with course receipts (NOT Iscrizione Annuale) from most recent Aug 28
-      final courseReceipts = await client
-          .from('non_fiscal_receipts')
-          .select('customer_tax_code')
-          .not('description', 'ilike', '%Iscrizione Annuale%')
-          .eq('deleted_by_user', false)
-          .gte(
-            'issue_date',
-            mostRecentAugust28.toIso8601String().split('T')[0],
-          );
-
-      final allCourseTaxCodes = <String>{};
-      for (final receipt in courseReceipts) {
-        final taxCode = receipt['customer_tax_code'];
-        if (taxCode != null && taxCode.toString().trim().isNotEmpty) {
-          allCourseTaxCodes.add(taxCode.toString().trim().toUpperCase());
-        }
-      }
-
-      // Count adults and children with course subscriptions
-      int adultCourseCount = 0;
-      int childCourseCount = 0;
-      for (final tc in allCourseTaxCodes) {
-        if (childTaxCodes.contains(tc)) {
-          childCourseCount++;
-        } else {
-          adultCourseCount++;
-        }
-      }
-
-      final courseSubscribersCount = adultCourseCount + childCourseCount;
+      final subscribedMembersCount = annualSubscriptionPersonIds.length;
+      final courseSubscribersCount = courseSubscriptionPersonIds.length;
 
       if (mounted) {
         setState(() {
