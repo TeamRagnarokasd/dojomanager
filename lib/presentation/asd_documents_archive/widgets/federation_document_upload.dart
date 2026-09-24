@@ -200,6 +200,17 @@ Future<bool> uploadFederationRosterExcel(
     List<Map<String, String>> rows;
     try {
       rows = parseFederationRosterExcel(bytes);
+    } on FederationRosterInvalidFormatException {
+      if (!context.mounted) return true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Il file non sembra un vero file Excel (.xlsx). Se lo hai scaricato da un sito, '
+            'aprilo con Excel o Google Sheets e salvalo di nuovo come .xlsx, poi ricaricalo qui.',
+          ),
+        ),
+      );
+      return true;
     } on FederationRosterColumnsNotFoundException {
       if (!context.mounted) return true;
       ScaffoldMessenger.of(context).showSnackBar(

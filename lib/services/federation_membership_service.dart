@@ -77,6 +77,13 @@ class FederationRosterColumnsNotFoundException implements Exception {
   const FederationRosterColumnsNotFoundException();
 }
 
+/// Thrown by [parseFederationRosterExcel] when the file's bytes don't start
+/// with the zip signature ("PK") every real .xlsx has — typically an HTML
+/// table exported by a website and just renamed to .xlsx.
+class FederationRosterInvalidFormatException implements Exception {
+  const FederationRosterInvalidFormatException();
+}
+
 /// Client for `user_federation_memberships` and the
 /// `admin_sync_federation_roster` RPC. Additive and isolated: touches only
 /// this table and RPC — nothing here changes payments, bookings,
@@ -155,6 +162,12 @@ String? _cellText(xlsx.CellValue? value) {
   return value.toString();
 }
 
+/// A real .xlsx is a zip file, which always starts with the "PK" signature
+/// (bytes 0x50 0x4B). A file that doesn't is not a real .xlsx — most likely
+/// an HTML table exported by a website and just renamed to .xlsx.
+bool _hasXlsxSignature(Uint8List bytes) =>
+    bytes.length >= 2 && bytes[0] == 0x50 && bytes[1] == 0x4B;
+
 /// Parses a Federkombat-style roster export (also used, same logic, for
 /// FIJLKAM and ASC/BJJ Italia): many columns, one row per discipline per
 /// person, only "Codice Fiscale" and the card-number column matter. The
@@ -164,10 +177,25 @@ String? _cellText(xlsx.CellValue? value) {
 /// Fiscale" cell. Groups by codice fiscale and returns one row per person
 /// (first card number found for that person). Throws
 /// [FederationRosterColumnsNotFoundException] if no header row with the
-/// expected columns can be located, or the file has no readable sheet.
+/// expected columns can be located, or
+/// [FederationRosterInvalidFormatException] if the file isn't a real .xlsx
+/// to begin with (no "PK" zip signature) — typically an HTML table exported
+/// by a website and just renamed to .xlsx.
 List<Map<String, String>> parseFederationRosterExcel(Uint8List bytes) {
-  final workbook = xlsx.Excel.decodeBytes(bytes);
+  xlsx.Excel workbook;
+  try {
+    workbook = xlsx.Excel.decodeBytes(bytes);
+  } catch (_) {
+    if (!_hasXlsxSignature(bytes)) {
+      throw const FederationRosterInvalidFormatException();
+    }
+    throw const FederationRosterColumnsNotFoundException();
+  }
+
   if (workbook.tables.isEmpty) {
+    if (!_hasXlsxSignature(bytes)) {
+      throw const FederationRosterInvalidFormatException();
+    }
     throw const FederationRosterColumnsNotFoundException();
   }
   final sheet = workbook.tables[workbook.tables.keys.first]!;
@@ -188,6 +216,9 @@ List<Map<String, String>> parseFederationRosterExcel(Uint8List bytes) {
     }
   }
   if (headerRowIndex == null) {
+    if (!_hasXlsxSignature(bytes)) {
+      throw const FederationRosterInvalidFormatException();
+    }
     throw const FederationRosterColumnsNotFoundException();
   }
 
