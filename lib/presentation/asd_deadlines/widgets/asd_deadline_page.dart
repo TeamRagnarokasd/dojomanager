@@ -5,7 +5,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../services/asd_deadlines_service.dart';
 import '../../../services/asd_documents_service.dart';
 import '../../../services/asd_governance_service.dart';
+import '../../../services/federation_membership_service.dart';
 import '../../asd_documents_archive/widgets/asd_document_actions.dart';
+import '../../asd_documents_archive/widgets/federation_document_upload.dart';
 import '../document_generation/asd_document_generation_screen.dart';
 import 'asd_deadline_guide_sheet.dart';
 
@@ -33,6 +35,11 @@ class _AsdDeadlinePageState extends State<AsdDeadlinePage> {
   List<AsdDocument> _documents = [];
   String? _driveUrl;
 
+  /// Labels from `required_document_labels` not yet satisfied — null if
+  /// this deadline has no required labels, or the check itself failed.
+  List<String>? _missingRequiredLabels;
+  bool _isUploadingRequiredDocument = false;
+
   @override
   void initState() {
     super.initState();
@@ -53,17 +60,61 @@ class _AsdDeadlinePageState extends State<AsdDeadlinePage> {
           driveUrl = null;
         }
       }
+      List<String>? missingRequiredLabels;
+      if (deadline.requiredDocumentLabels.isNotEmpty) {
+        try {
+          final lastCompletedAt =
+              await AsdDeadlinesService.instance.getLastCompletedAt(deadline.id);
+          missingRequiredLabels = await _documentsService.getMissingRequiredLabels(
+            category: deadline.category,
+            federation: deadline.federation,
+            requiredLabels: deadline.requiredDocumentLabels,
+            sinceExclusive: lastCompletedAt,
+          );
+        } catch (_) {
+          missingRequiredLabels = null;
+        }
+      }
       if (!mounted) return;
       setState(() {
         _templates = templates;
         _documents = documents;
         _driveUrl = driveUrl;
+        _missingRequiredLabels = missingRequiredLabels;
         _isLoading = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _uploadRequiredDocument(String label) async {
+    final deadline = widget.occurrence.deadline;
+    final federation = deadline.federation;
+    if (federation == null || _isUploadingRequiredDocument) return;
+    setState(() => _isUploadingRequiredDocument = true);
+    bool saved;
+    if (label == kFederationCertificateLabel) {
+      saved = await uploadFederationCertificate(
+        context,
+        category: deadline.category,
+        federation: federation,
+        deadlineId: deadline.id,
+      );
+    } else if (label == kFederationRosterLabel) {
+      saved = await uploadFederationRosterExcel(
+        context,
+        category: deadline.category,
+        federation: federation,
+        deadlineId: deadline.id,
+      );
+    } else {
+      saved = false;
+    }
+    if (!mounted) return;
+    setState(() => _isUploadingRequiredDocument = false);
+    if (saved) await _load();
   }
 
   Future<void> _openGuide() async {
@@ -161,6 +212,73 @@ class _AsdDeadlinePageState extends State<AsdDeadlinePage> {
     }
   }
 
+  Widget? _buildRequiredDocumentsBox() {
+    final deadline = widget.occurrence.deadline;
+    final labels = deadline.requiredDocumentLabels;
+    if (labels.isEmpty) return null;
+
+    final missing = _missingRequiredLabels;
+    final allSatisfied = missing != null && missing.isEmpty;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Documenti richiesti per questa scadenza',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              if (allSatisfied)
+                const Icon(Icons.check_circle, color: Colors.green, size: 20),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final label in labels) _buildRequiredDocumentRow(label, missing),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRequiredDocumentRow(String label, List<String>? missing) {
+    final isMissing = missing?.contains(label);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(
+            isMissing == null
+                ? Icons.help_outline
+                : (isMissing ? Icons.radio_button_unchecked : Icons.check_circle),
+            color: isMissing == null
+                ? Colors.grey
+                : (isMissing ? Colors.orange : Colors.green),
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text(label)),
+          if (isMissing == true)
+            TextButton(
+              onPressed: _isUploadingRequiredDocument
+                  ? null
+                  : () => _uploadRequiredDocument(label),
+              child: const Text('Carica'),
+            ),
+        ],
+      ),
+    );
+  }
+
   List<Widget> _buildDocumentsByYear() {
     final byYear = <int, List<AsdDocument>>{};
     for (final document in _documents) {
@@ -228,6 +346,7 @@ class _AsdDeadlinePageState extends State<AsdDeadlinePage> {
       AsdDeadlineUrgency.dueSoon => 'Da fare a breve',
       AsdDeadlineUrgency.normal => 'Da fare',
     };
+    final requiredDocumentsBox = _buildRequiredDocumentsBox();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Scadenza')),
@@ -294,6 +413,7 @@ class _AsdDeadlinePageState extends State<AsdDeadlinePage> {
               ),
             ],
           ),
+          if (requiredDocumentsBox != null) requiredDocumentsBox,
           if (_templates.isNotEmpty) ...[
             const SizedBox(height: 24),
             const Text('Documenti da generare', style: TextStyle(fontWeight: FontWeight.w700)),

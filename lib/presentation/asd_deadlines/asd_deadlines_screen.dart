@@ -4,6 +4,7 @@ import 'package:sizer/sizer.dart';
 
 import '../../services/admin_section_visibility_service.dart';
 import '../../services/asd_deadlines_service.dart';
+import '../../services/asd_documents_service.dart';
 import './widgets/asd_board_members_sheet.dart';
 import './widgets/asd_deadline_detail_sheet.dart';
 import './widgets/asd_deadline_form_screen.dart';
@@ -27,6 +28,7 @@ class AsdDeadlinesScreen extends StatefulWidget {
 
 class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
   final _service = AsdDeadlinesService.instance;
+  final _documentsService = AsdDocumentsService.instance;
 
   bool _isCheckingAccess = true;
   bool _canAccess = false;
@@ -175,7 +177,47 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
     }
   }
 
+  /// Labels from `required_document_labels` not yet satisfied for
+  /// [deadline] — empty if it has none, or the check itself fails (fails
+  /// open: an unrelated error here shouldn't block completing a deadline).
+  Future<List<String>> _missingRequiredLabelsFor(AsdDeadline deadline) async {
+    if (deadline.requiredDocumentLabels.isEmpty) return const [];
+    try {
+      final lastCompletedAt = await _service.getLastCompletedAt(deadline.id);
+      return await _documentsService.getMissingRequiredLabels(
+        category: deadline.category,
+        federation: deadline.federation,
+        requiredLabels: deadline.requiredDocumentLabels,
+        sinceExclusive: lastCompletedAt,
+      );
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _showMissingDocumentsDialog(List<String> missing) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Documenti mancanti'),
+        content: Text('Prima di segnare come fatta, carica: ${missing.join(', ')}'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Chiudi'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _completeOccurrence(AsdDeadlineOccurrence occurrence) async {
+    final missing = await _missingRequiredLabelsFor(occurrence.deadline);
+    if (missing.isNotEmpty) {
+      await _showMissingDocumentsDialog(missing);
+      return;
+    }
     try {
       await _service.completeOccurrence(
         deadlineId: occurrence.deadline.id,

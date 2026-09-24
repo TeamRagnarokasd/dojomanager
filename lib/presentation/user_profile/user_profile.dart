@@ -8,6 +8,7 @@ import '../../services/auth_service.dart';
 import '../../services/child_profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/compliance_banner_widget.dart';
+import '../../widgets/federation_memberships_widget.dart';
 import '../../widgets/main_navigation_wrapper.dart';
 import './widgets/account_security_widget.dart';
 import './widgets/admin_user_credentials_widget.dart';
@@ -385,6 +386,10 @@ class _UserProfileState extends State<UserProfile> {
               SizedBox(height: 3.h),
               if (!_isViewingOtherUser && !_isChildProfile)
                 const ComplianceBannerWidget(),
+              if (!_isViewingOtherUser && !_isChildProfile)
+                SizedBox(height: 2.h),
+              if (!_isViewingOtherUser && !_isChildProfile)
+                const FederationMembershipsWidget(),
               if (!_isViewingOtherUser && !_isChildProfile)
                 SizedBox(height: 2.h),
               UserDocumentsWidget(userId: effectiveUserId),

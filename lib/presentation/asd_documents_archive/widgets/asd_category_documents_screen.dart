@@ -2,8 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../services/asd_documents_service.dart';
+import '../../../services/federation_membership_service.dart';
 import 'asd_add_document_screen.dart';
 import 'asd_document_actions.dart';
+import 'federation_document_upload.dart';
+
+/// Category key for "Affiliazioni e tesseramenti", where the "+" button
+/// offers the federation-specific certificate/roster upload flow (shared
+/// with the required-documents panel on a deadline page) instead of the
+/// generic "Aggiungi documento" screen.
+const String _kAffiliationsCategoryKey = 'affiliazioni';
 
 /// One category's documents, grouped by year of doc_date (most recent
 /// first). Each row: title, subject, date, Drive status (tap to toggle),
@@ -55,6 +63,10 @@ class _AsdCategoryDocumentsScreenState extends State<AsdCategoryDocumentsScreen>
   }
 
   Future<void> _openAddDocument() async {
+    if (widget.category.key == _kAffiliationsCategoryKey) {
+      await _openAffiliationUpload();
+      return;
+    }
     final saved = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
@@ -62,6 +74,42 @@ class _AsdCategoryDocumentsScreenState extends State<AsdCategoryDocumentsScreen>
       ),
     );
     if (saved == true) await _load();
+  }
+
+  /// "Affiliazioni e tesseramenti": ask what's being uploaded first, and for
+  /// the two federation-specific document types, which federation — then
+  /// reuse the exact same save/sync flow as a deadline's required-documents
+  /// panel. "Altro documento" falls back to the generic screen, unchanged.
+  Future<void> _openAffiliationUpload() async {
+    final kind = await pickFederationDocumentKind(context);
+    if (!mounted || kind == null) return;
+
+    if (kind == 'other') {
+      final saved = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AsdAddDocumentScreen(initialCategoryKey: widget.category.key),
+        ),
+      );
+      if (saved == true) await _load();
+      return;
+    }
+
+    final federation = await pickFederation(context);
+    if (!mounted || federation == null) return;
+
+    final saved = kind == 'certificate'
+        ? await uploadFederationCertificate(
+            context,
+            category: widget.category.key,
+            federation: federation,
+          )
+        : await uploadFederationRosterExcel(
+            context,
+            category: widget.category.key,
+            federation: federation,
+          );
+    if (saved) await _load();
   }
 
   Future<void> _toggleDriveUploaded(AsdDocument document) async {
@@ -227,11 +275,39 @@ class _AsdCategoryDocumentsScreenState extends State<AsdCategoryDocumentsScreen>
                 onPressed: () => _toggleDriveUploaded(document),
               ),
               title: Text(document.title),
-              subtitle: Text(
-                [
-                  if (document.subject != null && document.subject!.isNotEmpty) document.subject!,
-                  dayFormat.format(document.docDate),
-                ].join(' · '),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    [
+                      if (document.subject != null && document.subject!.isNotEmpty)
+                        document.subject!,
+                      dayFormat.format(document.docDate),
+                    ].join(' · '),
+                  ),
+                  if (document.federation != null && document.federation!.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(top: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        [
+                          if (document.subject != null && document.subject!.isNotEmpty)
+                            document.subject!,
+                          federationFullLabel(document.federation!),
+                        ].join(' · '),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
+                      ),
+                    ),
+                ],
               ),
               onTap: () => openAsdDocument(context, document),
               trailing: PopupMenuButton<String>(

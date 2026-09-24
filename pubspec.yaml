@@ -51,6 +51,7 @@ dependencies:
   easy_localization: ^3.0.8
   package_info_plus: ^8.2.1   # Read app version code for update comparison
   android_intent_plus: ^6.1.0 # Launch Android APK install intent for sideloaded updates
+  excel: ^4.0.6                # Pure-Dart .xlsx reading for federation roster imports (works on web)
 
 dev_dependencies:
   flutter_test:    # CRITICAL: Required for Flutter project testing - DO NOT REMOVE
