@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../services/federation_membership_service.dart';
 
-/// "Affiliazioni": a small section on the student's own profile listing
-/// each federation they're tesserato with (a student can have more than
-/// one) — just the federation name and card number, nothing else. RLS
-/// already limits `user_federation_memberships` reads to the caller's own
-/// rows, so this only ever shows the signed-in user's own memberships.
-/// Hidden entirely when there are none, or on any load error.
+/// "Affiliazioni": a small section listing each federation the profile's
+/// owner is tesserato with (a student can have more than one) — just the
+/// federation name and card number, nothing else. With [userId] null, shows
+/// the signed-in user's own memberships (RLS already limits the read to
+/// their own rows). With [userId] set, shows that user's memberships
+/// instead — used when an admin is viewing someone else's profile (RLS
+/// already lets admins read any user's rows). Hidden entirely when there
+/// are none, or on any load error.
 class FederationMembershipsWidget extends StatefulWidget {
-  const FederationMembershipsWidget({super.key});
+  const FederationMembershipsWidget({super.key, this.userId});
+
+  final String? userId;
 
   @override
   State<FederationMembershipsWidget> createState() =>
@@ -27,7 +31,11 @@ class _FederationMembershipsWidgetState extends State<FederationMembershipsWidge
 
   Future<void> _load() async {
     try {
-      final memberships = await FederationMembershipService.instance.getMyMemberships();
+      final userId = widget.userId;
+      final memberships = userId == null
+          ? await FederationMembershipService.instance.getMyMemberships()
+          : await FederationMembershipService.instance
+              .getMembershipsForUsers([userId]);
       if (!mounted) return;
       setState(() => _memberships = memberships);
     } catch (_) {
