@@ -469,9 +469,11 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       }
 
       // Load "not yet updated" status from user_session_activity: for each
-      // user, only the most recent app_version (written at login, see
-      // main.dart) matters. A user is "updated" when that latest version
-      // matches the current app version.
+      // user, only the most recent row (written at login, see main.dart)
+      // matters. On the web build_number never changes between deploys
+      // (device_info == 'web'), so opening the site always means the latest
+      // code — the app_version comparison only makes sense for Android
+      // (or any row missing device_info, treated the same as before).
       try {
         final currentPackageInfo = await PackageInfo.fromPlatform();
         final currentVersion =
@@ -479,24 +481,27 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
 
         final sessionActivityResponse = await client
             .from('user_session_activity')
-            .select('user_id, app_version, created_at')
+            .select('user_id, app_version, device_info, created_at')
             .order('created_at', ascending: false);
 
         final Map<String, String> latestVersionByUser = {};
+        final Map<String, String?> latestDeviceByUser = {};
         for (final row in (sessionActivityResponse as List)) {
           final userId = row['user_id']?.toString();
           if (userId == null) continue;
-          // Rows come newest-first — keep only the first (most recent)
-          // app_version seen per user.
-          latestVersionByUser.putIfAbsent(
-            userId,
-            () => row['app_version']?.toString() ?? '',
-          );
+          // Rows come newest-first — keep only the first (most recent) row
+          // seen per user.
+          if (latestVersionByUser.containsKey(userId)) continue;
+          latestVersionByUser[userId] = row['app_version']?.toString() ?? '';
+          latestDeviceByUser[userId] = row['device_info']?.toString();
         }
 
         final updatedIds = <String>{};
         latestVersionByUser.forEach((userId, version) {
-          if (version == currentVersion) updatedIds.add(userId);
+          final deviceInfo = latestDeviceByUser[userId];
+          final isUpToDate =
+              deviceInfo == 'web' || version == currentVersion;
+          if (isUpToDate) updatedIds.add(userId);
         });
         _updatedUserIds = updatedIds;
       } catch (e) {
