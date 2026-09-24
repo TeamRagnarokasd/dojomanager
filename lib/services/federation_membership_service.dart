@@ -157,21 +157,41 @@ String? _cellText(xlsx.CellValue? value) {
 
 /// Parses a Federkombat-style roster export (also used, same logic, for
 /// FIJLKAM and ASC/BJJ Italia): many columns, one row per discipline per
-/// person, only "Codice Fiscale" and the card-number column matter. Groups
-/// by codice fiscale and returns one row per person (first card number
-/// found for that person). Throws [FederationRosterColumnsNotFoundException]
-/// if the two expected columns can't be located.
+/// person, only "Codice Fiscale" and the card-number column matter. The
+/// real header row isn't always the first one — some exports put a title
+/// (e.g. "Estrazione tesserati") on row 1 and the actual column headers on
+/// row 2 — so the first 5 rows are scanned for the one that has a "Codice
+/// Fiscale" cell. Groups by codice fiscale and returns one row per person
+/// (first card number found for that person). Throws
+/// [FederationRosterColumnsNotFoundException] if no header row with the
+/// expected columns can be located, or the file has no readable sheet.
 List<Map<String, String>> parseFederationRosterExcel(Uint8List bytes) {
   final workbook = xlsx.Excel.decodeBytes(bytes);
   if (workbook.tables.isEmpty) {
     throw const FederationRosterColumnsNotFoundException();
   }
   final sheet = workbook.tables[workbook.tables.keys.first]!;
-  if (sheet.maxRows == 0) {
+  final rows = sheet.rows;
+  if (rows.isEmpty) {
     throw const FederationRosterColumnsNotFoundException();
   }
 
-  final headerRow = sheet.rows.first;
+  int? headerRowIndex;
+  final rowsToScan = rows.length < 5 ? rows.length : 5;
+  for (var r = 0; r < rowsToScan; r++) {
+    final hasCodiceFiscale = rows[r].any((cell) {
+      return _reduceHeader(_cellText(cell?.value) ?? '') == 'codicefiscale';
+    });
+    if (hasCodiceFiscale) {
+      headerRowIndex = r;
+      break;
+    }
+  }
+  if (headerRowIndex == null) {
+    throw const FederationRosterColumnsNotFoundException();
+  }
+
+  final headerRow = rows[headerRowIndex];
   int? cfColumnIndex;
   int? tesseraColumnIndex;
 
@@ -199,12 +219,11 @@ List<Map<String, String>> parseFederationRosterExcel(Uint8List bytes) {
   final cfIndex = cfColumnIndex;
   final tesseraIndex = tesseraColumnIndex;
 
-  final rows = sheet.rows;
   final orderedKeys = <String>[];
   final codiceFiscaleByKey = <String, String>{};
   final tesseraByKey = <String, String>{};
 
-  for (var r = 1; r < rows.length; r++) {
+  for (var r = headerRowIndex + 1; r < rows.length; r++) {
     final row = rows[r];
     if (cfIndex >= row.length) continue;
     final codiceFiscale = (_cellText(row[cfIndex]?.value) ?? '').trim();
