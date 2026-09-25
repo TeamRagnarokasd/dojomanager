@@ -89,6 +89,12 @@ serve(async (req) => {
     }
     const userId = userData.user.id;
 
+    const { data: shopEnabled, error: shopEnabledError } = await userClient
+      .rpc("shop_enabled_for_me");
+    if (shopEnabledError || shopEnabled !== true) {
+      return jsonResponse({ error: "Funzione non disponibile." }, 403);
+    }
+
     if (!screenshot_path.startsWith(`${userId}/`)) {
       return jsonResponse(
         { error: "Lo screenshot non appartiene all'utente corrente." },
@@ -292,6 +298,7 @@ Rispondi SOLO con un array JSON valido (nessun testo prima o dopo, nessun blocco
           in_listino: false,
         });
         memberTotal += prezzoPieno;
+        costTotal += prezzoPieno;
       }
     }
 

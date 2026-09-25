@@ -442,6 +442,8 @@ BEGIN
 END;
 $$;
 
+REVOKE EXECUTE ON FUNCTION public._shop_close_window(uuid) FROM PUBLIC, anon, authenticated;
+
 -- Admin: chiude subito una finestra ancora aperta.
 CREATE OR REPLACE FUNCTION public.shop_close_window(p_window_id uuid)
 RETURNS void
@@ -522,6 +524,8 @@ BEGIN
   END LOOP;
 END;
 $$;
+
+REVOKE EXECUTE ON FUNCTION public.shop_close_expired_windows() FROM PUBLIC, anon, authenticated;
 
 -- ============================================================================
 -- 13) pg_cron ogni 15 minuti (ri-pianificato in modo idempotente).
