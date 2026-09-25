@@ -1,5 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/shop_service.dart';
 
@@ -137,9 +138,30 @@ class _ShopCartScreenState extends State<ShopCartScreen> {
     }
   }
 
-  void _copySatispayTag(String tag) {
-    Clipboard.setData(ClipboardData(text: tag));
-    _showMessage('Copiato: $tag');
+  /// Tenta di aprire l'app Satispay con il suo URL scheme; se il lancio
+  /// fallisce o ritorna false (app non installata), apre in fallback la
+  /// pagina di ricerca "Satispay" dello store giusto per la piattaforma.
+  /// Non blocca comunque il passo successivo (dichiarare il pagamento).
+  Future<void> _openSatispayApp() async {
+    var opened = false;
+    try {
+      opened = await launchUrl(
+        Uri.parse('satispay://'),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      opened = false;
+    }
+    if (opened) return;
+
+    final storeUrl = defaultTargetPlatform == TargetPlatform.iOS
+        ? 'https://apps.apple.com/search?term=Satispay'
+        : 'https://play.google.com/store/search?q=Satispay&c=apps';
+    try {
+      await launchUrl(Uri.parse(storeUrl), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // Non blocchiamo il flusso di pagamento se anche lo store non si apre.
+    }
   }
 
   @override
@@ -436,7 +458,6 @@ class _ShopCartScreenState extends State<ShopCartScreen> {
     final satispayTotal = memberTotal + shippingShare;
     final cashSurcharge = (_settings?['cash_surcharge'] as num?)?.toDouble() ?? 5;
     final cashTotal = satispayTotal + cashSurcharge;
-    final satispayTag = (_settings?['satispay_tag'] as String?) ?? '@prizzi_d';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -459,19 +480,22 @@ class _ShopCartScreenState extends State<ShopCartScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(satispayTag, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  IconButton(
-                    icon: const Icon(Icons.copy, size: 18),
-                    onPressed: () => _copySatispayTag(satispayTag),
-                  ),
-                ],
-              ),
               Text(
-                'Paga €${satispayTotal.toStringAsFixed(2)} a $satispayTag su '
-                'Satispay, poi tocca "Ho pagato".',
+                '€${satispayTotal.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Completa il pagamento su Satispay come da accordi in palestra.',
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _openSatispayApp,
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Apri Satispay'),
               ),
               const SizedBox(height: 8),
               ElevatedButton(
