@@ -148,14 +148,23 @@ class _InstructorMainDashboardState extends State<InstructorMainDashboard>
       final startStr = DateFormat('yyyy-MM-dd').format(weekStart);
       final endStr = DateFormat('yyyy-MM-dd').format(weekEnd);
 
-      // Classes this week for this instructor
-      final classes = await _client
+      // Il capo istruttore (principal_admin) vede le lezioni e le
+      // statistiche di tutti gli istruttori e tutte le discipline, senza
+      // filtro per instructor_id. _userRole è già stato letto da
+      // user_profiles in _loadInstructorData prima di ogni chiamata a
+      // _loadStats.
+      final isPrincipalAdmin = _userRole == 'principal_admin';
+
+      // Classes this week for this instructor (or all, for principal_admin)
+      final baseClassesQuery = _client
           .from('schedule_instances')
           .select('id')
-          .eq('instructor_id', _instructorId)
           .gte('class_date', startStr)
           .lte('class_date', endStr)
           .eq('is_cancelled', false);
+      final classes = isPrincipalAdmin
+          ? await baseClassesQuery
+          : await baseClassesQuery.eq('instructor_id', _instructorId);
 
       final classIds = (classes as List).map((c) => c['id'] as String).toList();
 

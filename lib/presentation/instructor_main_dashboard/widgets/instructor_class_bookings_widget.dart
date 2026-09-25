@@ -95,15 +95,36 @@ class _InstructorClassBookingsWidgetState
         'yyyy-MM-dd',
       ).format(DateTime.now().add(const Duration(days: 14)));
 
-      final classes = await _client
+      // Il capo istruttore (principal_admin) vede le lezioni di tutti gli
+      // istruttori e tutte le discipline, senza filtro per instructor_id.
+      var isPrincipalAdmin = false;
+      final currentUserId = _client.auth.currentUser?.id;
+      if (currentUserId != null) {
+        try {
+          final currentUserProfile = await _client
+              .from('user_profiles')
+              .select('role')
+              .eq('id', currentUserId)
+              .maybeSingle();
+          isPrincipalAdmin = currentUserProfile?['role'] == 'principal_admin';
+        } catch (_) {
+          isPrincipalAdmin = false;
+        }
+      }
+
+      final baseQuery = _client
           .from('schedule_instances')
           .select(
             'id, class_date, start_time, end_time, discipline, location, max_capacity, is_cancelled',
           )
-          .eq('instructor_id', widget.instructorId)
           .eq('is_cancelled', false)
           .gte('class_date', today)
-          .lte('class_date', endDate)
+          .lte('class_date', endDate);
+      final scopedQuery = isPrincipalAdmin
+          ? baseQuery
+          : baseQuery.eq('instructor_id', widget.instructorId);
+
+      final classes = await scopedQuery
           .order('class_date', ascending: true)
           .order('start_time', ascending: true);
 
