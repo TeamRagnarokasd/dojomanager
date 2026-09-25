@@ -388,10 +388,11 @@ class _UserProfileState extends State<UserProfile> {
                 const ComplianceBannerWidget(),
               if (!_isViewingOtherUser && !_isChildProfile)
                 SizedBox(height: 2.h),
-              if (!_isViewingOtherUser && !_isChildProfile)
-                const FederationMembershipsWidget(),
-              if (!_isViewingOtherUser && !_isChildProfile)
-                SizedBox(height: 2.h),
+              if (!_isChildProfile)
+                FederationMembershipsWidget(
+                  userId: _isViewingOtherUser ? effectiveUserId : null,
+                ),
+              if (!_isChildProfile) SizedBox(height: 2.h),
               UserDocumentsWidget(userId: effectiveUserId),
               SizedBox(height: 3.h),
               SubscriptionDetailsWidget(
