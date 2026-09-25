@@ -38,6 +38,8 @@ import '../presentation/work_attendance/work_attendance_screen.dart';
 import '../presentation/social_events/social_events_screen.dart';
 import '../presentation/payment_review/payment_review_screen.dart';
 import '../presentation/compliance_docs/compliance_docs_screen.dart';
+import '../presentation/shop_cart/shop_cart_screen.dart';
+import '../presentation/admin_sponsor_management/shop_admin_orders_screen.dart';
 
 class AppRoutes {
   // Global RouteObserver — add to MaterialApp.navigatorObservers
@@ -91,6 +93,8 @@ class AppRoutes {
   static const String socialEvents = '/eventi-sociali';
   static const String paymentReview = '/pagamenti-da-verificare';
   static const String complianceDocs = '/documenti-mancanti';
+  static const String shopCart = '/shop-cart';
+  static const String shopAdminOrders = '/shop-admin-orders';
 
   static Map<String, WidgetBuilder> get routes {
     return {
@@ -148,6 +152,15 @@ class AppRoutes {
       socialEvents: (context) => const SocialEventsScreen(),
       paymentReview: (context) => const PaymentReviewScreen(),
       complianceDocs: (context) => const ComplianceDocsScreen(),
+      shopCart: (context) {
+        final args = ModalRoute.of(context)?.settings.arguments;
+        final map = args is Map ? args : const {};
+        return ShopCartScreen(
+          sponsorId: (map['sponsorId'] ?? '').toString(),
+          sponsorName: (map['sponsorName'] ?? 'Sponsor').toString(),
+        );
+      },
+      shopAdminOrders: (context) => const ShopAdminOrdersScreen(),
     };
   }
 }

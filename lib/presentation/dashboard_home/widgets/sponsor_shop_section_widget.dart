@@ -4,6 +4,7 @@ import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/app_export.dart';
+import '../../../services/shop_service.dart';
 import '../../../services/sponsor_service.dart';
 
 class SponsorShopSectionWidget extends StatefulWidget {
@@ -17,6 +18,8 @@ class SponsorShopSectionWidget extends StatefulWidget {
 class _SponsorShopSectionWidgetState extends State<SponsorShopSectionWidget> {
   List<Map<String, dynamic>> _sponsors = [];
   bool _isLoading = true;
+  bool _shopEnabledForMe = false;
+  Set<String> _sponsorIdsWithShop = {};
 
   @override
   void initState() {
@@ -33,6 +36,7 @@ class _SponsorShopSectionWidgetState extends State<SponsorShopSectionWidget> {
           _isLoading = false;
         });
       }
+      _loadShopEligibility(sponsors);
     } catch (error) {
       print('Error loading sponsors: $error');
       if (mounted) {
@@ -41,6 +45,114 @@ class _SponsorShopSectionWidgetState extends State<SponsorShopSectionWidget> {
         });
       }
     }
+  }
+
+  // Il "carrello sponsor" è una funzione aggiuntiva, dietro
+  // shop_enabled_for_me(): se il flag è spento, l'utente non è tester, o
+  // qualcosa va storto, questa resta semplicemente a false e il banner si
+  // comporta esattamente come oggi.
+  Future<void> _loadShopEligibility(List<Map<String, dynamic>> sponsors) async {
+    if (sponsors.isEmpty) return;
+    try {
+      final enabled = await ShopService.instance.isEnabledForMe();
+      if (!enabled) return;
+
+      final sponsorIds = sponsors
+          .map((sponsor) => sponsor['id']?.toString())
+          .whereType<String>()
+          .toList();
+      final idsWithShop =
+          await ShopService.instance.getSponsorIdsWithShop(sponsorIds);
+      if (mounted) {
+        setState(() {
+          _shopEnabledForMe = true;
+          _sponsorIdsWithShop = idsWithShop;
+        });
+      }
+    } catch (_) {
+      // La funzione shop resta nascosta in caso di errore.
+    }
+  }
+
+  bool _hasShopFor(Map<String, dynamic> sponsor) {
+    final sponsorId = sponsor['id']?.toString();
+    return _shopEnabledForMe &&
+        sponsorId != null &&
+        _sponsorIdsWithShop.contains(sponsorId);
+  }
+
+  void _openCartScreen(Map<String, dynamic> sponsor) {
+    HapticFeedback.lightImpact();
+    Navigator.pushNamed(
+      context,
+      AppRoutes.shopCart,
+      arguments: {
+        'sponsorId': sponsor['id'],
+        'sponsorName': sponsor['name'],
+      },
+    );
+  }
+
+  Future<void> _handleBannerTap(Map<String, dynamic> sponsor) async {
+    if (_hasShopFor(sponsor)) {
+      await _showShopTipDialogIfNeeded(sponsor);
+      if (!mounted) return;
+    }
+    _launchUrl(sponsor['external_url']);
+  }
+
+  Future<void> _showShopTipDialogIfNeeded(Map<String, dynamic> sponsor) async {
+    final sponsorId = sponsor['id']?.toString();
+    if (sponsorId == null) return;
+
+    final alreadyDismissed =
+        await ShopService.instance.isShopTipDismissed(sponsorId);
+    if (alreadyDismissed || !mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Ordina con lo sconto del team'),
+        content: const Text(
+          'Per ordinare con lo sconto del team: fai il carrello sul sito, '
+          'fai uno screenshot con tutti i prodotti e il totale, poi '
+          'caricalo toccando l\'icona del carrello su questo banner.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await ShopService.instance.dismissShopTip(sponsorId);
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            },
+            child: const Text('Non mostrare più'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Continua'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShopCartIcon(Map<String, dynamic> sponsor) {
+    return Material(
+      color: Theme.of(context).colorScheme.primary,
+      shape: const CircleBorder(),
+      elevation: 3,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () => _openCartScreen(sponsor),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Icon(
+            Icons.shopping_cart,
+            color: Theme.of(context).colorScheme.onPrimary,
+            size: 20,
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _launchUrl(String url) async {
@@ -152,10 +264,10 @@ class _SponsorShopSectionWidgetState extends State<SponsorShopSectionWidget> {
   }
 
   Widget _buildSingleSponsorCard(Map<String, dynamic> sponsor) {
-    return Material(
+    final card = Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => _launchUrl(sponsor['external_url']),
+        onTap: () => _handleBannerTap(sponsor),
         borderRadius: BorderRadius.circular(16),
         child: Container(
           width: double.infinity,
@@ -288,6 +400,15 @@ class _SponsorShopSectionWidgetState extends State<SponsorShopSectionWidget> {
         ),
       ),
     );
+
+    if (!_hasShopFor(sponsor)) return card;
+
+    return Stack(
+      children: [
+        card,
+        Positioned(top: 8, right: 8, child: _buildShopCartIcon(sponsor)),
+      ],
+    );
   }
 
   Widget _buildSponsorsGrid() {
@@ -309,10 +430,10 @@ class _SponsorShopSectionWidgetState extends State<SponsorShopSectionWidget> {
   }
 
   Widget _buildSponsorGridItem(Map<String, dynamic> sponsor) {
-    return Material(
+    final card = Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => _launchUrl(sponsor['external_url']),
+        onTap: () => _handleBannerTap(sponsor),
         borderRadius: BorderRadius.circular(12),
         child: Container(
           decoration: BoxDecoration(
@@ -392,6 +513,15 @@ class _SponsorShopSectionWidgetState extends State<SponsorShopSectionWidget> {
           ),
         ),
       ),
+    );
+
+    if (!_hasShopFor(sponsor)) return card;
+
+    return Stack(
+      children: [
+        card,
+        Positioned(top: 4, right: 4, child: _buildShopCartIcon(sponsor)),
+      ],
     );
   }
 }

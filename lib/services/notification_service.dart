@@ -301,6 +301,39 @@ class NotificationService {
         // Table may not exist yet — skip silently
       }
 
+      // 5. Get shop orders with a payment declared, awaiting admin confirmation
+      try {
+        final shopPayments = await client
+            .from('shop_orders')
+            .select('''
+              id, payment_method, final_total, member_total, updated_at,
+              user_profiles!inner(full_name)
+            ''')
+            .eq('status', 'pagamento_dichiarato')
+            .order('updated_at', ascending: false)
+            .limit(5);
+
+        for (final order in shopPayments) {
+          final timeAgo = _getTimeAgo(DateTime.parse(order['updated_at']));
+          final amount = order['final_total'] ?? order['member_total'] ?? 0;
+          notifications.add({
+            'id': order['id'],
+            'title': 'Shop: pagamento dichiarato',
+            'description':
+                'Shop: ${order['user_profiles']['full_name']} ha pagato con '
+                '${order['payment_method']} €$amount',
+            'type': 'system_alert',
+            'priority': 'low',
+            'icon': Icons.shopping_cart,
+            'time': timeAgo,
+            'route': '/shop-admin-orders',
+            'data': order,
+          });
+        }
+      } catch (_) {
+        // Table may not exist yet — skip silently
+      }
+
       // Sort notifications by priority and time
       notifications.sort((a, b) {
         final priorityOrder = {'high': 0, 'medium': 1, 'low': 2, 'normal': 3};

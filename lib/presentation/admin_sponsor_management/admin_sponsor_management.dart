@@ -216,6 +216,12 @@ class _AdminSponsorManagementState extends State<AdminSponsorManagement> {
               tooltip: 'Aggiorna',
             ),
             IconButton(
+              onPressed: () =>
+                  Navigator.pushNamed(context, AppRoutes.shopAdminOrders),
+              icon: const Icon(Icons.shopping_cart),
+              tooltip: 'Ordini Shop',
+            ),
+            IconButton(
               onPressed: _showCreateSponsorDialog,
               icon: const Icon(Icons.add),
               tooltip: 'Aggiungi Sponsor',
