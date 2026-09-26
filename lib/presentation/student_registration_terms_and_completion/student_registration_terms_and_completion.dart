@@ -710,21 +710,18 @@ class _StudentRegistrationTermsAndCompletionState
           ),
           SizedBox(height: 2.h),
           Container(
-            height: 35.h,
             padding: EdgeInsets.all(2.w),
             decoration: BoxDecoration(
               color: const Color(0xFF1A1A1A),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: const Color(0xFF404040)),
             ),
-            child: SingleChildScrollView(
-              child: Text(
-                termsText,
-                style: TextStyle(
-                  fontSize: 11.sp,
-                  color: Colors.grey.shade300,
-                  height: 1.5,
-                ),
+            child: Text(
+              termsText,
+              style: TextStyle(
+                fontSize: 11.sp,
+                color: Colors.grey.shade300,
+                height: 1.5,
               ),
             ),
           ),
