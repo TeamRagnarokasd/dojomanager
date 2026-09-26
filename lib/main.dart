@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import './routes/app_routes.dart';
+import './services/admin_ask_claude_service.dart';
 import './services/app_update_service.dart';
 import './services/android_install_intent.dart';
 import './services/android_uninstall_intent.dart';
@@ -138,6 +139,10 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
 
   // Auth state stream subscription — cancelled on dispose to prevent leaks
   StreamSubscription<AuthState>? _authStateSub;
+
+  // "Chiedi a Claude" floating bubble — visible only for 'admin' and
+  // 'principal_admin'. Checked at startup, on signedIn, cleared on signedOut.
+  bool _showAskClaudeBubble = false;
 
   @override
   void initState() {
@@ -477,11 +482,22 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
           },
           navigatorObservers: [_routeObserver, AppRoutes.routeObserver],
           builder: (context, child) {
+            final bottomSafeInset = MediaQuery.of(context).padding.bottom;
             return MediaQuery(
               data: MediaQuery.of(
                 context,
               ).copyWith(textScaler: const TextScaler.linear(1.0)),
-              child: child!,
+              child: Stack(
+                children: [
+                  child!,
+                  if (_showAskClaudeBubble)
+                    Positioned(
+                      right: 16,
+                      bottom: bottomSafeInset + 16,
+                      child: const _AskClaudeBubble(),
+                    ),
+                ],
+              ),
             );
           },
         );
@@ -501,6 +517,9 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
         // 🆕 Log this launch's access (already-signed-in session).
         _logSessionActivity(userId);
       }
+      // Recheck the "Chiedi a Claude" bubble once at app startup too, in
+      // case a session is already restored without a fresh signedIn event.
+      _checkAskClaudeBubbleVisibility();
 
       // React to future sign-in / sign-out events
       _authStateSub = _authService.onAuthStateChange.listen(
@@ -516,8 +535,10 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
                 // both fire this same event).
                 _logSessionActivity(uid);
               }
+              _checkAskClaudeBubbleVisibility();
             } else if (data.event == AuthChangeEvent.signedOut) {
               RealtimeNotificationService.instance.unsubscribe();
+              if (mounted) setState(() => _showAskClaudeBubble = false);
             }
           } catch (e) {
             debugPrint('❌ Error handling auth state change in realtime: $e');
@@ -529,6 +550,18 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
       );
     } catch (e) {
       debugPrint('❌ Failed to initialize realtime subscription: $e');
+    }
+  }
+
+  /// "Chiedi a Claude" bubble shows only for 'admin' and 'principal_admin'.
+  /// Fails safely to hidden on any error.
+  Future<void> _checkAskClaudeBubbleVisibility() async {
+    try {
+      final show = await AdminAskClaudeService.instance.canUse();
+      if (mounted) setState(() => _showAskClaudeBubble = show);
+    } catch (e) {
+      debugPrint('❌ Error checking Ask Claude bubble visibility: $e');
+      if (mounted) setState(() => _showAskClaudeBubble = false);
     }
   }
 
@@ -666,6 +699,39 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
       debugPrint('⚠️ Mandatory update check failed: $e');
       return true; // on error, allow navigation rather than blocking forever
     }
+  }
+}
+
+/// Floating "Chiedi a Claude" bubble shown bottom-right, above the app's
+/// content, only for 'admin' and 'principal_admin' (see
+/// AdminAskClaudeService.canUse). Tapping it opens the Ask Claude screen
+/// using the global appNavigatorKey, since this widget lives above the
+/// app's own Navigator (inside MaterialApp.builder).
+class _AskClaudeBubble extends StatelessWidget {
+  const _AskClaudeBubble();
+
+  void _open() {
+    final nav = appNavigatorKey.currentState;
+    if (nav != null) {
+      nav.pushNamed(AppRoutes.adminAskClaude);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.cyan,
+      shape: const CircleBorder(),
+      elevation: 4,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: _open,
+        child: const Padding(
+          padding: EdgeInsets.all(14),
+          child: Icon(Icons.smart_toy_outlined, color: Colors.white),
+        ),
+      ),
+    );
   }
 }
 
