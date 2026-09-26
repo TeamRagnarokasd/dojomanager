@@ -4,6 +4,7 @@ import '../../../core/app_export.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
+import '../../../services/admin_ask_claude_service.dart';
 import '../../../services/admin_section_visibility_service.dart';
 import '../../../services/asd_deadlines_service.dart';
 import '../../../services/auth_service.dart';
@@ -24,6 +25,10 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
     with WidgetsBindingObserver {
   bool _showAdministrationAsdCard = false;
 
+  /// "Chiedi a Claude (dati app)" card — only for 'admin' and
+  /// 'principal_admin' (not instructor_admin).
+  bool _showAskClaudeCard = false;
+
   /// Badge shown on the "Amministrazione ASD" card — overdue/due-soon count
   /// from the Scadenzario, only for admins with access to 'deadlines'.
   int? _asdDeadlinesBadgeCount;
@@ -33,6 +38,7 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkAdministrationAsdVisibility();
+    _checkAskClaudeVisibility();
     _loadAsdDeadlinesBadgeAndNotify();
   }
 
@@ -98,6 +104,14 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
       show = isPrincipal;
     }
     if (mounted) setState(() => _showAdministrationAsdCard = show);
+  }
+
+  /// "Chiedi a Claude (dati app)" shows only for 'admin' and
+  /// 'principal_admin' — not instructor_admin, unlike most other admin
+  /// cards here.
+  Future<void> _checkAskClaudeVisibility() async {
+    final show = await AdminAskClaudeService.instance.canUse();
+    if (mounted) setState(() => _showAskClaudeCard = show);
   }
 
   @override
@@ -221,6 +235,21 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
           'category': 'admin',
           'notificationCount':
               (_asdDeadlinesBadgeCount ?? 0) > 0 ? _asdDeadlinesBadgeCount : null,
+        },
+      // NEW: "Chiedi a Claude (dati app)" — chat AI di sola lettura sui
+      // dati dell'app. Visibile solo per admin e admin principale.
+      if (_showAskClaudeCard)
+        {
+          'title': 'Chiedi a Claude (dati app)',
+          'subtitle': 'Domande in linguaggio naturale sui dati dell\'app',
+          'icon': Icons.smart_toy_outlined,
+          'color': Colors.cyan,
+          'route': AppRoutes.adminAskClaude,
+          'description':
+              'Fai domande sui dati dell\'app: Claude legge dal database e risponde',
+          'status': 'Riservato',
+          'badgeColor': Colors.cyan,
+          'category': 'admin',
         },
     ];
 

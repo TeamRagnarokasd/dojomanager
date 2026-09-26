@@ -39,6 +39,7 @@ import '../presentation/social_events/social_events_screen.dart';
 import '../presentation/payment_review/payment_review_screen.dart';
 import '../presentation/compliance_docs/compliance_docs_screen.dart';
 import '../presentation/shop_cart/shop_cart_screen.dart';
+import '../presentation/admin_ask_claude/admin_ask_claude_screen.dart';
 import '../presentation/admin_sponsor_management/shop_admin_orders_screen.dart';
 
 class AppRoutes {
@@ -95,6 +96,7 @@ class AppRoutes {
   static const String complianceDocs = '/documenti-mancanti';
   static const String shopCart = '/shop-cart';
   static const String shopAdminOrders = '/shop-admin-orders';
+  static const String adminAskClaude = '/admin-ask-claude';
 
   static Map<String, WidgetBuilder> get routes {
     return {
@@ -161,6 +163,7 @@ class AppRoutes {
         );
       },
       shopAdminOrders: (context) => const ShopAdminOrdersScreen(),
+      adminAskClaude: (context) => const AdminAskClaudeScreen(),
     };
   }
 }

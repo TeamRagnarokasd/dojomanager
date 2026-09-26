@@ -7,6 +7,7 @@ import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../routes/app_routes.dart';
+import '../../services/admin_ask_claude_service.dart';
 import '../../services/admin_section_visibility_service.dart';
 import '../../services/asd_deadlines_service.dart';
 import '../../services/asd_governance_service.dart';
@@ -158,6 +159,10 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
   bool _isLoading = true;
   bool _isPrincipalAdmin = false;
   List<AdminAsdSection> _visibleSections = [];
+
+  /// "Chiedi a Claude (dati app)" AppBar action — only for 'admin' and
+  /// 'principal_admin' (not instructor_admin).
+  bool _canAskClaude = false;
 
   /// section_key -> visible_to_admins, only loaded/shown for the principal
   /// admin (the switches).
@@ -392,6 +397,7 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     final isPrincipal = await AuthService.instance.isPrincipalAdmin();
+    final canAskClaude = await AdminAskClaudeService.instance.canUse();
 
     if (isPrincipal) {
       // Principal admin always sees everything; still load the raw
@@ -408,6 +414,7 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
         _isPrincipalAdmin = true;
         _visibleSections = kAdminAsdSections;
         _visibilityMap = visibilityMap;
+        _canAskClaude = canAskClaude;
         _isLoading = false;
       });
       _loadDeadlinesBadge(kAdminAsdSections);
@@ -431,6 +438,7 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
     setState(() {
       _isPrincipalAdmin = false;
       _visibleSections = visible;
+      _canAskClaude = canAskClaude;
       _isLoading = false;
     });
     _loadDeadlinesBadge(visible);
@@ -575,7 +583,16 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Amministrazione ASD'),
-        actions: [_buildAssistantAction()],
+        actions: [
+          if (_canAskClaude)
+            IconButton(
+              icon: const Icon(Icons.smart_toy_outlined),
+              tooltip: 'Chiedi a Claude (dati app)',
+              onPressed: () =>
+                  Navigator.pushNamed(context, AppRoutes.adminAskClaude),
+            ),
+          _buildAssistantAction(),
+        ],
       ),
       body: ListView(
         padding: EdgeInsets.all(4.w),
