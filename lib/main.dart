@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import './presentation/admin_ask_claude/admin_ask_claude_screen.dart';
 import './routes/app_routes.dart';
 import './services/admin_ask_claude_service.dart';
 import './services/app_update_service.dart';
@@ -143,6 +144,11 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
   // "Chiedi a Claude" floating bubble — visible only for 'admin' and
   // 'principal_admin'. Checked at startup, on signedIn, cleared on signedOut.
   bool _showAskClaudeBubble = false;
+
+  // Vertical drag position of the bubble along the right edge (top offset in
+  // logical pixels). Null until first dragged or laid out, then defaults to
+  // ~60% of the screen height. Not persisted across app restarts.
+  double? _askClaudeBubbleTop;
 
   @override
   void initState() {
@@ -482,19 +488,41 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
           },
           navigatorObservers: [_routeObserver, AppRoutes.routeObserver],
           builder: (context, child) {
-            final bottomSafeInset = MediaQuery.of(context).padding.bottom;
+            final mediaQuery = MediaQuery.of(context);
+            final screenHeight = mediaQuery.size.height;
+            final minBubbleTop = mediaQuery.padding.top + 8;
+            final maxBubbleTop =
+                screenHeight -
+                mediaQuery.padding.bottom -
+                _AskClaudeBubble.size -
+                8;
+            final safeMaxBubbleTop = maxBubbleTop < minBubbleTop
+                ? minBubbleTop
+                : maxBubbleTop;
+            final bubbleTop = (_askClaudeBubbleTop ?? screenHeight * 0.6)
+                .clamp(minBubbleTop, safeMaxBubbleTop)
+                .toDouble();
+
             return MediaQuery(
-              data: MediaQuery.of(
-                context,
-              ).copyWith(textScaler: const TextScaler.linear(1.0)),
+              data: mediaQuery.copyWith(
+                textScaler: const TextScaler.linear(1.0),
+              ),
               child: Stack(
                 children: [
                   child!,
                   if (_showAskClaudeBubble)
                     Positioned(
                       right: 16,
-                      bottom: bottomSafeInset + 16,
-                      child: const _AskClaudeBubble(),
+                      top: bubbleTop,
+                      child: _AskClaudeBubble(
+                        onVerticalDragDelta: (deltaY) {
+                          setState(() {
+                            _askClaudeBubbleTop = (bubbleTop + deltaY)
+                                .clamp(minBubbleTop, safeMaxBubbleTop)
+                                .toDouble();
+                          });
+                        },
+                      ),
                     ),
                 ],
               ),
@@ -702,33 +730,89 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
   }
 }
 
-/// Floating "Chiedi a Claude" bubble shown bottom-right, above the app's
-/// content, only for 'admin' and 'principal_admin' (see
-/// AdminAskClaudeService.canUse). Tapping it opens the Ask Claude screen
-/// using the global appNavigatorKey, since this widget lives above the
-/// app's own Navigator (inside MaterialApp.builder).
+/// Floating "Chiedi a Claude" bubble anchored to the right edge, draggable
+/// vertically, above the app's content, only for 'admin' and
+/// 'principal_admin' (see AdminAskClaudeService.canUse). Tapping it opens
+/// the Ask Claude content in a modal bottom sheet using the global
+/// appNavigatorKey's context, since this widget lives above the app's own
+/// Navigator (inside MaterialApp.builder).
 class _AskClaudeBubble extends StatelessWidget {
-  const _AskClaudeBubble();
+  const _AskClaudeBubble({required this.onVerticalDragDelta});
+
+  /// Called with the drag's vertical delta (logical pixels) so the parent
+  /// can update the bubble's saved top offset, clamped to the safe area.
+  final ValueChanged<double> onVerticalDragDelta;
+
+  /// Diameter of the bubble — used here and by the parent's clamping math,
+  /// so both agree on how much room the bubble actually needs.
+  static const double size = 56;
 
   void _open() {
-    final nav = appNavigatorKey.currentState;
-    if (nav != null) {
-      nav.pushNamed(AppRoutes.adminAskClaude);
-    }
+    final context = appNavigatorKey.currentContext;
+    if (context == null) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => const _AskClaudeSheet(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.cyan,
-      shape: const CircleBorder(),
-      elevation: 4,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: _open,
-        child: const Padding(
-          padding: EdgeInsets.all(14),
-          child: Icon(Icons.smart_toy_outlined, color: Colors.white),
+    return GestureDetector(
+      onVerticalDragUpdate: (details) =>
+          onVerticalDragDelta(details.delta.dy),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Material(
+          color: Colors.cyan,
+          shape: const CircleBorder(),
+          elevation: 4,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: _open,
+            child: const Center(
+              child: Icon(Icons.smart_toy_outlined, color: Colors.white),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Modal sheet opened by [_AskClaudeBubble]: 85% of the screen height,
+/// rounded top corners, a drag handle, and the "Chiedi a Claude" content
+/// (no second AppBar — the screen below stays visible and in place).
+class _AskClaudeSheet extends StatelessWidget {
+  const _AskClaudeSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[400],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Expanded(child: AdminAskClaudeBody()),
+          ],
         ),
       ),
     );

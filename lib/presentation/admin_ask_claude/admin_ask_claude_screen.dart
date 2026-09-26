@@ -6,14 +6,29 @@ import '../../services/admin_ask_claude_service.dart';
 /// naturale sui dati dell'app; Claude la legge da sé (query di sola
 /// lettura lato server) ed elabora la risposta. Mostra anche le proprie
 /// domande/risposte precedenti.
-class AdminAskClaudeScreen extends StatefulWidget {
+class AdminAskClaudeScreen extends StatelessWidget {
   const AdminAskClaudeScreen({super.key});
 
   @override
-  State<AdminAskClaudeScreen> createState() => _AdminAskClaudeScreenState();
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Chiedi a Claude')),
+      body: const AdminAskClaudeBody(),
+    );
+  }
 }
 
-class _AdminAskClaudeScreenState extends State<AdminAskClaudeScreen> {
+/// Corpo di "Chiedi a Claude", senza AppBar propria: usato sia dalla
+/// route a schermo intero [AdminAskClaudeScreen] sia dal foglio modale
+/// aperto dalla bolla flottante globale in lib/main.dart.
+class AdminAskClaudeBody extends StatefulWidget {
+  const AdminAskClaudeBody({super.key});
+
+  @override
+  State<AdminAskClaudeBody> createState() => _AdminAskClaudeBodyState();
+}
+
+class _AdminAskClaudeBodyState extends State<AdminAskClaudeBody> {
   final _service = AdminAskClaudeService.instance;
   final _questionController = TextEditingController();
 
@@ -73,66 +88,63 @@ class _AdminAskClaudeScreenState extends State<AdminAskClaudeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Chiedi a Claude')),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: _questionController,
-                  minLines: 1,
-                  maxLines: 4,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => _submit(),
-                  decoration: const InputDecoration(
-                    hintText: 'Fai una domanda sui dati dell\'app...',
-                    border: OutlineInputBorder(),
-                  ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _questionController,
+                minLines: 1,
+                maxLines: 4,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _submit(),
+                decoration: const InputDecoration(
+                  hintText: 'Fai una domanda sui dati dell\'app...',
+                  border: OutlineInputBorder(),
                 ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _isAsking ? null : _submit,
-                    icon: _isAsking
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.send),
-                    label: Text(_isAsking ? 'Sto pensando...' : 'Invia'),
-                  ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _isAsking ? null : _submit,
+                  icon: _isAsking
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send),
+                  label: Text(_isAsking ? 'Sto pensando...' : 'Invia'),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          const Divider(height: 1),
-          Expanded(
-            child: _isLoadingHistory
-                ? const Center(child: CircularProgressIndicator())
-                : _history.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Nessuna domanda ancora.',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: _isLoadingHistory
+              ? const Center(child: CircularProgressIndicator())
+              : _history.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Nessuna domanda ancora.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _history.length,
-                        itemBuilder: (context, index) =>
-                            _buildHistoryItem(_history[index]),
                       ),
-          ),
-        ],
-      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _history.length,
+                      itemBuilder: (context, index) =>
+                          _buildHistoryItem(_history[index]),
+                    ),
+        ),
+      ],
     );
   }
 
