@@ -797,22 +797,30 @@ class _AskClaudeSheet extends StatelessWidget {
         color: Theme.of(context).scaffoldBackgroundColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[400],
-                borderRadius: BorderRadius.circular(2),
+      // Rises with the keyboard: pads the content by the keyboard's height
+      // so the TextField inside AdminAskClaudeBody never ends up hidden
+      // behind it.
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[400],
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Expanded(child: AdminAskClaudeBody()),
-          ],
+              const SizedBox(height: 8),
+              const Expanded(child: AdminAskClaudeBody()),
+            ],
+          ),
         ),
       ),
     );
