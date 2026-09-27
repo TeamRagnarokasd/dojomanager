@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/auth_service.dart';
+import '../../services/child_profile_service.dart';
 
 class StudentProgressScreen extends StatefulWidget {
   const StudentProgressScreen({super.key});
@@ -98,6 +99,7 @@ class _StudentProgressScreenState extends State<StudentProgressScreen>
     try {
       final userId = AuthService.instance.currentUser?.id;
       if (userId == null) throw Exception('Utente non autenticato');
+      final activeUserId = ChildProfileService.getActiveUserId() ?? userId;
 
       // Load belts
       final beltsRaw = await _client
@@ -110,14 +112,19 @@ class _StudentProgressScreenState extends State<StudentProgressScreen>
         beltsRaw,
       );
 
-      // Load bookings (class_registrations joined with schedule instances)
-      // We fetch all bookings for this user
+      // Load bookings (class_registrations joined with schedule instances).
+      // user_id resta l'adulto autenticato; beneficiary_profile_id è chi si
+      // è davvero prenotato (adulto o figlio attivo), con fallback a user_id
+      // per le righe storiche senza beneficiary_profile_id.
       final bookingsRaw = await _client
           .from('class_registrations')
           .select(
             'id, created_at, schedule_instance_id, schedule_instances(discipline, class_date)',
           )
           .eq('user_id', userId)
+          .or(
+            'beneficiary_profile_id.eq.$activeUserId,and(beneficiary_profile_id.is.null,user_id.eq.$activeUserId)',
+          )
           .eq('registration_status', 'registered');
 
       final Map<String, Map<String, dynamic>> stats = {};

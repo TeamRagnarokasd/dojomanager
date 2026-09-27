@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/app_export.dart';
 import '../models/class_schedule_model.dart';
+import '../services/child_profile_service.dart';
 import '../services/supabase_service.dart';
 
 class ClassScheduleService {
@@ -313,7 +314,7 @@ class ClassScheduleService {
     await _ensureDisciplineColorsLoaded();
     try {
       final targetDate = date.toIso8601String().split('T')[0];
-      final userId = _client.auth.currentUser?.id;
+      final activeUserId = ChildProfileService.getActiveUserId();
 
       final response = await _client
           .from('schedule_instances')
@@ -349,7 +350,9 @@ class ClassScheduleService {
 
       final registrations = await _client
           .from('class_registrations')
-          .select('schedule_instance_id, user_id, registration_status')
+          .select(
+            'schedule_instance_id, user_id, beneficiary_profile_id, registration_status',
+          )
           .inFilter('schedule_instance_id', instanceIds)
           .eq('registration_status', 'registered');
 
@@ -361,7 +364,9 @@ class ClassScheduleService {
         enrolledByInstance[instanceId] =
             (enrolledByInstance[instanceId] ?? 0) + 1;
 
-        if (userId != null && reg['user_id'] == userId) {
+        final beneficiary =
+            (reg['beneficiary_profile_id'] as String?) ?? reg['user_id'];
+        if (activeUserId != null && beneficiary == activeUserId) {
           bookedByUser[instanceId] = true;
         }
       }
@@ -450,7 +455,12 @@ class ClassScheduleService {
       if (userId == null) {
         return [];
       }
+      final activeUserId = ChildProfileService.getActiveUserId() ?? userId;
 
+      // user_id resta sempre l'adulto autenticato (vincolo di FK e proprietà
+      // RLS). beneficiary_profile_id è chi si è davvero prenotato: filtriamo
+      // per il profilo attivo (adulto o figlio), con fallback a user_id per
+      // le righe storiche senza beneficiary_profile_id.
       var query = _client.from('class_registrations').select('''
         id,
         registration_status,
@@ -469,7 +479,9 @@ class ClassScheduleService {
             full_name
           )
         )
-      ''').eq('user_id', userId);
+      ''').eq('user_id', userId).or(
+            'beneficiary_profile_id.eq.$activeUserId,and(beneficiary_profile_id.is.null,user_id.eq.$activeUserId)',
+          );
 
       if (startDate != null) {
         query = query.gte(
@@ -1221,6 +1233,9 @@ class ClassScheduleService {
         print('❌ Booking failed: User not authenticated');
         return {'success': false, 'error': 'User not authenticated'};
       }
+      // Chi si sta davvero prenotando (l'adulto per sé stesso o uno dei suoi
+      // figli). Il credito resta sull'abbonamento dell'adulto — invariato.
+      final beneficiaryId = ChildProfileService.getActiveUserId() ?? userId;
 
       String resolvedClassId = classId;
 
@@ -1264,6 +1279,7 @@ class ClassScheduleService {
         params: {
           'instance_id': resolvedClassId,
           'subscription_id': subscriptionIdToUse,
+          'p_beneficiary_profile_id': beneficiaryId,
         },
       );
 
@@ -1300,11 +1316,15 @@ class ClassScheduleService {
   /// 'entries_remaining' for entry-based subscriptions.
   Future<Map<String, dynamic>> cancelBooking(String classId) async {
     try {
+      // Stesso profilo attivo usato per prenotare, così se l'adulto ha più
+      // figli prenotati sulla stessa lezione si cancella quella giusta.
+      final beneficiaryId = ChildProfileService.getActiveUserId();
       final response = await _client.rpc(
         'cancel_class_registration',
         params: {
           'instance_id': classId,
           'cancellation_reason': 'class_schedule.cancelled_by_user'.tr(),
+          'p_beneficiary_profile_id': beneficiaryId,
         },
       );
 
