@@ -5,7 +5,9 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/app_export.dart';
 import '../../../services/paid_intents_service.dart';
+import '../../../services/payment_block_error.dart';
 
 enum _SumUpWaitStage { checking, notFound, needsReview, timedOut, reported }
 
@@ -215,6 +217,23 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
     _absoluteTimer?.cancel();
     await PaidIntentsService.instance.processPaidIntents();
     if (!mounted) return;
+
+    final blockedBy = PaidIntentsService.instance.lastBlockingError;
+    if (blockedBy != null) {
+      // Il pagamento è stato rifiutato da un controllo di sicurezza sul
+      // database (dati del genitore mancanti, o iscrizione annuale non
+      // ancora fatta): mostralo chiaramente invece del toast di successo.
+      final goToProfile = await blockedBy.show(context);
+      if (mounted) await _closeSheet();
+      // Naviga al Profilo solo DOPO aver chiuso questo foglio, altrimenti
+      // la schermata Profilo finirebbe impilata sotto il foglio che sta
+      // per chiudersi.
+      if (goToProfile && mounted) {
+        Navigator.of(context).pushNamed(AppRoutes.userProfile);
+      }
+      return;
+    }
+
     Fluttertoast.showToast(
       msg: 'Abbonamento attivato',
       toastLength: Toast.LENGTH_LONG,

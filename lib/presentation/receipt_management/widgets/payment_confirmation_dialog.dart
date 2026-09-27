@@ -3,6 +3,7 @@ import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
 import '../../../services/discipline_service.dart';
+import '../../../services/payment_block_error.dart';
 import '../../../services/subscription_service.dart';
 
 class PaymentConfirmationDialog extends StatefulWidget {
@@ -919,6 +920,16 @@ class _PaymentConfirmationDialogState extends State<PaymentConfirmationDialog> {
       setState(() {
         _isSubmitting = false;
       });
+
+      final blockedBy = PaymentBlockError.fromError(e);
+      if (blockedBy != null) {
+        // L'admin sta confermando il pagamento per conto dello studente:
+        // "Vai al Profilo" porterebbe al profilo dell'admin, non a quello
+        // giusto, quindi qui si mostra solo il messaggio (nessun bottone,
+        // niente da navigare).
+        await blockedBy.show(context, showProfileButton: false);
+        return;
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

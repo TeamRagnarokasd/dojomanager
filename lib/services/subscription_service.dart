@@ -570,9 +570,10 @@ class SubscriptionService {
               .trim();
       final customerName = adultName.isEmpty ? 'Cliente' : adultName;
 
-      // 🔥 TEEN MINOR CHECK (14-17): if the purchasing user is 14-17 years old,
-      // the receipt must be addressed to the parent/guardian, not to the user.
-      // This mirrors the existing child-profile behaviour for under-14 purchases.
+      // 🔥 MINOR CHECK (<18): if the purchasing user is a minor with their
+      // own user_profiles account, the receipt must be addressed to the
+      // parent/guardian, not to the user. This mirrors the existing
+      // child-profile behaviour for purchases made through a child profile.
       String effectiveCustomerName = customerName;
       String effectiveTaxCode = finalTaxCode;
       String? teenMinorNote;
@@ -591,7 +592,7 @@ class SubscriptionService {
 
           if (adultProfile != null) {
             final birthDateStr = adultProfile['birth_date'] as String?;
-            if (birthDateStr != null && _isMinorAge14to17(birthDateStr)) {
+            if (birthDateStr != null && _isMinor(birthDateStr)) {
               final guardianName =
                   adultProfile['parent_guardian_name'] as String?;
               final guardianSurname =
@@ -629,13 +630,23 @@ class SubscriptionService {
                 teenMinorNote = noteParts.join(' | ');
 
                 print(
-                  '🔍 DEBUG: Teen minor (14-17) detected. Receipt addressed to guardian: $effectiveCustomerName',
+                  '🔍 DEBUG: Minor detected. Receipt addressed to guardian: $effectiveCustomerName',
+                );
+              } else {
+                // Should no longer happen: the payment_confirmations trigger
+                // blocks confirming a payment for a minor without guardian
+                // data. If it does, keep today's behaviour (receipt to the
+                // minor) instead of blocking receipt generation.
+                print(
+                  '⚠️ DEBUG: Minor beneficiary $adultUserId has confirmed '
+                  'payment with incomplete guardian data — receipt addressed '
+                  'to the minor instead.',
                 );
               }
             }
           }
         } catch (e) {
-          print('⚠️ DEBUG: Teen minor check failed, using default: $e');
+          print('⚠️ DEBUG: Minor check failed, using default: $e');
         }
       }
 
@@ -1069,9 +1080,9 @@ class SubscriptionService {
       String customerName = userProfile['full_name'] ?? 'Cliente';
       String? receiptNotes;
 
-      // 🔥 TEEN MINOR CHECK (14-17): receipt addressed to parent/guardian
+      // 🔥 MINOR CHECK (<18): receipt addressed to parent/guardian
       final birthDateStr = userProfile['birth_date'] as String?;
-      if (birthDateStr != null && _isMinorAge14to17(birthDateStr)) {
+      if (birthDateStr != null && _isMinor(birthDateStr)) {
         final guardianName = userProfile['parent_guardian_name'] as String?;
         final guardianSurname =
             userProfile['parent_guardian_surname'] as String?;
@@ -1099,6 +1110,15 @@ class SubscriptionService {
           if (minorCF.isNotEmpty) noteParts.add('Codice Fiscale: $minorCF');
           noteParts.add('Data di nascita: $birthDateStr');
           receiptNotes = noteParts.join(' | ');
+        } else {
+          // Should no longer happen: the payment_confirmations trigger
+          // blocks confirming a payment for a minor without guardian data.
+          // If it does, keep today's behaviour instead of blocking the
+          // receipt.
+          print(
+            '⚠️ Minor beneficiary has confirmed payment with incomplete '
+            'guardian data — receipt addressed to the minor instead.',
+          );
         }
       }
 
@@ -1155,8 +1175,8 @@ class SubscriptionService {
     }
   }
 
-  /// Returns true if [birthDateStr] (yyyy-MM-dd) corresponds to an age of 14–17 today (inclusive).
-  static bool _isMinorAge14to17(String birthDateStr) {
+  /// Returns true if [birthDateStr] (yyyy-MM-dd) corresponds to an age under 18 today.
+  static bool _isMinor(String birthDateStr) {
     try {
       final birthDate = DateTime.parse(birthDateStr);
       final today = DateTime.now();
@@ -1165,7 +1185,7 @@ class SubscriptionService {
           (today.month == birthDate.month && today.day < birthDate.day)) {
         age--;
       }
-      return age >= 14 && age <= 17;
+      return age < 18;
     } catch (_) {
       return false;
     }

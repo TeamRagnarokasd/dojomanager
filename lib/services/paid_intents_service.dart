@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'feature_flags_service.dart';
+import 'payment_block_error.dart';
 import 'subscription_service.dart';
 
 /// Result of one subscription activation performed by [PaidIntentsService].
@@ -37,6 +38,12 @@ class PaidIntentsService {
   // startup call is still in flight).
   bool _isProcessing = false;
 
+  /// Set when the last activation attempt was blocked by one of the two
+  /// server-side payment checks (see payment_block_error.dart), so the UI
+  /// that called processPaidIntents() can show a clear dialog instead of a
+  /// false "Abbonamento attivato" toast. Reset at the start of every call.
+  PaymentBlockError? lastBlockingError;
+
   // When the last subscription activation actually created a
   // payment_confirmations receipt. A database trigger discards a receipt
   // that arrives within 60s of another one with the same customer name and
@@ -54,6 +61,7 @@ class PaidIntentsService {
   Future<List<PaidIntentActivationResult>> processPaidIntents() async {
     if (_isProcessing) return [];
     _isProcessing = true;
+    lastBlockingError = null;
     final results = <PaidIntentActivationResult>[];
 
     try {
@@ -235,6 +243,7 @@ class PaidIntentsService {
         '⚠️ PaidIntentsService: createBatchPaymentAndReceipts failed for '
         '$intentId: $e',
       );
+      lastBlockingError ??= PaymentBlockError.fromError(e);
       confirmationId = '';
     }
 
