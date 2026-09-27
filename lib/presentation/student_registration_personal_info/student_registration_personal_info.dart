@@ -360,6 +360,23 @@ class _StudentRegistrationPersonalInfoState
                           color: Color(0xFFFF0000)),
                       validator: (value) {
                         if (value?.isEmpty ?? true) return 'Campo obbligatorio';
+                        final date = _selectedBirthDate;
+                        if (date != null) {
+                          final now = DateTime.now();
+                          final today = DateTime(now.year, now.month, now.day);
+                          if (date.isAfter(today)) {
+                            return 'Data di nascita non valida.';
+                          }
+                          int age = today.year - date.year;
+                          if (today.month < date.month ||
+                              (today.month == date.month &&
+                                  today.day < date.day)) {
+                            age--;
+                          }
+                          if (age > 100) {
+                            return 'Data di nascita non valida.';
+                          }
+                        }
                         return null;
                       },
                     ),

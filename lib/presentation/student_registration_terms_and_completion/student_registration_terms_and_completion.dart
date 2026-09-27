@@ -59,6 +59,42 @@ class _StudentRegistrationTermsAndCompletionState
       return;
     }
 
+    // Ricalcola l'età da capo, senza fidarsi di _isMinor1417 (calcolato una
+    // sola volta in initState — potrebbe non essere aggiornato se l'utente
+    // torna indietro e cambia la data di nascita).
+    final birthDate = RegistrationDataManager.dataNascita;
+    if (birthDate != null) {
+      final today = DateTime.now();
+      int age = today.year - birthDate.year;
+      if (today.month < birthDate.month ||
+          (today.month == birthDate.month && today.day < birthDate.day)) {
+        age--;
+      }
+      final isMinorNow = age >= 14 && age < 18;
+      final parentName = RegistrationDataManager.parentGuardianName;
+      final parentSurname = RegistrationDataManager.parentGuardianSurname;
+      final parentCF = RegistrationDataManager.parentGuardianCodiceFiscale;
+      final missingParentData =
+          (parentName == null || parentName.trim().isEmpty) ||
+              (parentSurname == null || parentSurname.trim().isEmpty) ||
+              (parentCF == null || parentCF.trim().isEmpty);
+
+      if (isMinorNow && missingParentData) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Compila i dati del genitore/tutore nella pagina precedente prima di completare la registrazione.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        Navigator.of(context).popUntil(
+          ModalRoute.withName(AppRoutes.studentRegistrationPersonalInfo),
+        );
+        return;
+      }
+    }
+
     setState(() => _isSubmitting = true);
 
     try {
