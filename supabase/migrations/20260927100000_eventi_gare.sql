@@ -411,7 +411,7 @@ BEGIN
   LEFT JOIN public.child_profiles cp ON cp.id = ci.user_id
   WHERE ci.competition_id = p_competition_id
     AND (ci.interested = true OR ci.self_registered = true)
-  ORDER BY full_name ASC;
+  ORDER BY 2 ASC;
 END;
 $$;
 
