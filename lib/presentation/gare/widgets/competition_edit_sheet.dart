@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
-import '../../../core/app_export.dart';
 import '../../../services/competitions_service.dart';
+import './competition_list_item.dart' show kCompetitionPosterCardAspectRatio;
 
 /// Foglio di modifica di una gara esistente in `competitions`, con
 /// salvataggio vero (update) ed eliminazione (con conferma) tramite
@@ -37,6 +37,8 @@ class _CompetitionEditSheetState extends State<CompetitionEditSheet> {
   DateTime? _startDate;
   DateTime? _endDate;
   String? _posterPath;
+  String _posterDisplayMode = 'riempi';
+  double _posterFocusY = 0.5;
   bool _isSaving = false;
   bool _isDeleting = false;
   bool _isUploadingPoster = false;
@@ -50,6 +52,14 @@ class _CompetitionEditSheetState extends State<CompetitionEditSheet> {
     _notesController.text = (c['notes'] ?? '').toString();
     _linkController.text = (c['registration_link'] ?? '').toString();
     _posterPath = c['poster_path'] as String?;
+    final rawMode = c['poster_display_mode'] as String?;
+    _posterDisplayMode = (rawMode == 'intera' || rawMode == 'riempi')
+        ? rawMode!
+        : 'riempi';
+    final rawFocusY = c['poster_focus_y'];
+    _posterFocusY = rawFocusY is num
+        ? rawFocusY.toDouble().clamp(0.0, 1.0)
+        : 0.5;
     final category = c['category'] as String?;
     _category = CompetitionsService.categories.contains(category)
         ? category!
@@ -281,6 +291,7 @@ class _CompetitionEditSheetState extends State<CompetitionEditSheet> {
           width: double.infinity,
           height: 20.h,
           decoration: BoxDecoration(
+            color: Colors.black,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Theme.of(context).dividerColor),
           ),
@@ -299,9 +310,9 @@ class _CompetitionEditSheetState extends State<CompetitionEditSheet> {
                     )
                   : ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: CustomImageWidget(
-                        imageUrl: posterUrl,
-                        fit: BoxFit.cover,
+                      child: Image.network(
+                        posterUrl,
+                        fit: BoxFit.contain,
                         width: double.infinity,
                         height: 20.h,
                       ),
@@ -331,6 +342,73 @@ class _CompetitionEditSheetState extends State<CompetitionEditSheet> {
             ],
           ],
         ),
+        if (posterUrl != null) ...[
+          SizedBox(height: 3.h),
+          Text(
+            'Come mostrarla nella scheda',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          SizedBox(height: 1.h),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(
+                value: 'intera',
+                label: Text('Locandina intera'),
+                icon: Icon(Icons.crop_free),
+              ),
+              ButtonSegment(
+                value: 'riempi',
+                label: Text('Riempi scheda'),
+                icon: Icon(Icons.crop),
+              ),
+            ],
+            selected: {_posterDisplayMode},
+            onSelectionChanged: (selection) {
+              setState(() => _posterDisplayMode = selection.first);
+            },
+          ),
+          if (_posterDisplayMode == 'riempi') ...[
+            SizedBox(height: 2.h),
+            Text(
+              'Anteprima nella scheda',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            SizedBox(height: 1.h),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AspectRatio(
+                aspectRatio: kCompetitionPosterCardAspectRatio,
+                child: Container(
+                  color: Colors.black,
+                  child: Image.network(
+                    posterUrl,
+                    fit: BoxFit.cover,
+                    alignment: Alignment(0, _posterFocusY * 2 - 1),
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: 1.h),
+            Row(
+              children: [
+                const Icon(Icons.vertical_align_top, size: 18),
+                Expanded(
+                  child: Slider(
+                    value: _posterFocusY,
+                    onChanged: (value) {
+                      setState(() => _posterFocusY = value);
+                    },
+                  ),
+                ),
+                const Icon(Icons.vertical_align_bottom, size: 18),
+              ],
+            ),
+          ],
+        ],
       ],
     );
   }
@@ -402,6 +480,8 @@ class _CompetitionEditSheetState extends State<CompetitionEditSheet> {
             ? null
             : _linkController.text.trim(),
         'poster_path': _posterPath,
+        'poster_display_mode': _posterDisplayMode,
+        'poster_focus_y': _posterFocusY,
       };
 
       await CompetitionsService.instance.updateCompetition(

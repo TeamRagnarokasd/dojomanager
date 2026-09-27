@@ -5,6 +5,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../services/competitions_service.dart';
 
+/// Proporzioni indicative della scheda gara con locandina di sfondo, usate
+/// anche come riferimento per l'anteprima "riempi scheda" nel modulo di
+/// modifica. L'altezza reale della scheda dipende dal contenuto (note,
+/// bottoni), quindi è un'approssimazione a scopo di anteprima.
+const double kCompetitionPosterCardAspectRatio = 16 / 11;
+
 class CompetitionListItem extends StatelessWidget {
   final Map<String, dynamic> competition;
   final bool isInterested;
@@ -41,6 +47,12 @@ class CompetitionListItem extends StatelessWidget {
       competition['poster_path'] as String?,
     );
     final hasPoster = posterUrl != null;
+    final posterDisplayMode =
+        (competition['poster_display_mode'] as String?) ?? 'riempi';
+    final rawFocusY = competition['poster_focus_y'];
+    final posterFocusY = rawFocusY is num
+        ? rawFocusY.toDouble().clamp(0.0, 1.0)
+        : 0.5;
 
     DateTime? start;
     DateTime? end;
@@ -193,7 +205,19 @@ class CompetitionListItem extends StatelessWidget {
           ? Stack(
               children: [
                 Positioned.fill(
-                  child: Image.network(posterUrl, fit: BoxFit.cover),
+                  child: posterDisplayMode == 'intera'
+                      ? Container(
+                          color: Colors.black,
+                          child: Image.network(
+                            posterUrl,
+                            fit: BoxFit.contain,
+                          ),
+                        )
+                      : Image.network(
+                          posterUrl,
+                          fit: BoxFit.cover,
+                          alignment: Alignment(0, posterFocusY * 2 - 1),
+                        ),
                 ),
                 Positioned.fill(
                   child: DecoratedBox(
