@@ -197,6 +197,7 @@ class _GareScreenState extends State<GareScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
           tabs: CompetitionsService.categories
               .map((c) => Tab(text: CompetitionsService.categoryLabel(c)))
               .toList(),

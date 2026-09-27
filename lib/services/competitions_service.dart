@@ -21,7 +21,12 @@ class CompetitionsService {
   static const String _sourcesBucket = 'competition-sources';
   static const String _postersBucket = 'event-posters';
 
-  static const List<String> categories = ['mma', 'bjj_grappling', 'sambo'];
+  static const List<String> categories = [
+    'mma',
+    'bjj_grappling',
+    'sambo',
+    'k1',
+  ];
 
   static String categoryLabel(String category) {
     switch (category) {
@@ -31,6 +36,8 @@ class CompetitionsService {
         return 'BJJ/Grappling';
       case 'sambo':
         return 'Sambo';
+      case 'k1':
+        return 'K1';
       default:
         return category;
     }
