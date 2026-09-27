@@ -145,11 +145,6 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
   // 'principal_admin'. Checked at startup, on signedIn, cleared on signedOut.
   bool _showAskClaudeBubble = false;
 
-  // Vertical drag position of the bubble along the right edge (top offset in
-  // logical pixels). Null until first dragged or laid out, then defaults to
-  // ~60% of the screen height. Not persisted across app restarts.
-  double? _askClaudeBubbleTop;
-
   @override
   void initState() {
     super.initState();
@@ -489,19 +484,6 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
           navigatorObservers: [_routeObserver, AppRoutes.routeObserver],
           builder: (context, child) {
             final mediaQuery = MediaQuery.of(context);
-            final screenHeight = mediaQuery.size.height;
-            final minBubbleTop = mediaQuery.padding.top + 8;
-            final maxBubbleTop =
-                screenHeight -
-                mediaQuery.padding.bottom -
-                _AskClaudeBubble.size -
-                8;
-            final safeMaxBubbleTop = maxBubbleTop < minBubbleTop
-                ? minBubbleTop
-                : maxBubbleTop;
-            final bubbleTop = (_askClaudeBubbleTop ?? screenHeight * 0.6)
-                .clamp(minBubbleTop, safeMaxBubbleTop)
-                .toDouble();
 
             return MediaQuery(
               data: mediaQuery.copyWith(
@@ -510,20 +492,7 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
               child: Stack(
                 children: [
                   child!,
-                  if (_showAskClaudeBubble)
-                    Positioned(
-                      right: 16,
-                      top: bubbleTop,
-                      child: _AskClaudeBubble(
-                        onVerticalDragDelta: (deltaY) {
-                          setState(() {
-                            _askClaudeBubbleTop = (bubbleTop + deltaY)
-                                .clamp(minBubbleTop, safeMaxBubbleTop)
-                                .toDouble();
-                          });
-                        },
-                      ),
-                    ),
+                  if (_showAskClaudeBubble) const _AskClaudeBubble(),
                 ],
               ),
             );
@@ -730,22 +699,108 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
   }
 }
 
-/// Floating "Chiedi a Claude" bubble anchored to the right edge, draggable
-/// vertically, above the app's content, only for 'admin' and
-/// 'principal_admin' (see AdminAskClaudeService.canUse). Tapping it opens
-/// the Ask Claude content in a modal bottom sheet using the global
-/// appNavigatorKey's context, since this widget lives above the app's own
-/// Navigator (inside MaterialApp.builder).
-class _AskClaudeBubble extends StatelessWidget {
-  const _AskClaudeBubble({required this.onVerticalDragDelta});
+/// Floating "Chiedi a Claude" bubble, draggable freely in every direction
+/// above the app's content, only for 'admin' and 'principal_admin' (see
+/// AdminAskClaudeService.canUse). Released, it snaps to whichever side
+/// (left/right) it's nearest to, keeping the height where it was left.
+/// Tapping it (without dragging) opens the Ask Claude content in a modal
+/// bottom sheet using the global appNavigatorKey's context, since this
+/// widget lives above the app's own Navigator (inside MaterialApp.builder).
+/// Manages its own position entirely: it builds a [Positioned] itself, which
+/// Flutter attaches to the nearest [Stack] ancestor regardless of the
+/// non-RenderObject widgets (this StatefulWidget included) in between.
+class _AskClaudeBubble extends StatefulWidget {
+  const _AskClaudeBubble();
 
-  /// Called with the drag's vertical delta (logical pixels) so the parent
-  /// can update the bubble's saved top offset, clamped to the safe area.
-  final ValueChanged<double> onVerticalDragDelta;
+  @override
+  State<_AskClaudeBubble> createState() => _AskClaudeBubbleState();
+}
 
-  /// Diameter of the bubble — used here and by the parent's clamping math,
-  /// so both agree on how much room the bubble actually needs.
-  static const double size = 56;
+class _AskClaudeBubbleState extends State<_AskClaudeBubble>
+    with SingleTickerProviderStateMixin {
+  /// Diameter of the bubble.
+  static const double _size = 56;
+
+  /// Gap kept between the bubble and the screen edges it snaps to / the
+  /// top/bottom safe area.
+  static const double _edgeMargin = 8;
+
+  /// Extra clearance kept above the bottom safe area so the bubble never
+  /// sits on top of a bottom navigation bar (not all screens report one
+  /// through MediaQuery, so this is a fixed, generous allowance).
+  static const double _bottomNavClearance = 90;
+
+  Offset? _position; // top-left, in the Stack's local coordinate space.
+  bool _dragging = false;
+  late final AnimationController _snapController;
+  Animation<Offset>? _snapAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _snapController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 220),
+        )..addListener(() {
+          final animation = _snapAnimation;
+          if (animation != null) setState(() => _position = animation.value);
+        });
+  }
+
+  @override
+  void dispose() {
+    _snapController.dispose();
+    super.dispose();
+  }
+
+  Rect _bounds(Size screenSize, EdgeInsets padding) {
+    final minX = _edgeMargin;
+    final maxX = screenSize.width - _size - _edgeMargin;
+    final minY = padding.top + _edgeMargin;
+    final maxY =
+        screenSize.height - padding.bottom - _bottomNavClearance - _size;
+    return Rect.fromLTRB(
+      minX,
+      minY,
+      maxX < minX ? minX : maxX,
+      maxY < minY ? minY : maxY,
+    );
+  }
+
+  Offset _clampToBounds(Offset offset, Rect bounds) {
+    return Offset(
+      offset.dx.clamp(bounds.left, bounds.right),
+      offset.dy.clamp(bounds.top, bounds.bottom),
+    );
+  }
+
+  void _onPanStart(DragStartDetails details) {
+    _snapController.stop();
+    setState(() => _dragging = true);
+  }
+
+  void _onPanUpdate(DragUpdateDetails details, Rect bounds) {
+    final current = _position;
+    if (current == null) return;
+    setState(() => _position = _clampToBounds(current + details.delta, bounds));
+  }
+
+  void _onPanEnd(DragEndDetails details, Rect bounds) {
+    setState(() => _dragging = false);
+    final current = _position;
+    if (current == null) return;
+
+    final bubbleCenterX = current.dx + _size / 2;
+    final boundsCenterX = (bounds.left + bounds.right + _size) / 2;
+    final targetX = bubbleCenterX > boundsCenterX ? bounds.right : bounds.left;
+    final target = Offset(targetX, current.dy);
+
+    _snapAnimation = Tween<Offset>(begin: current, end: target).animate(
+      CurvedAnimation(parent: _snapController, curve: Curves.easeOut),
+    );
+    _snapController.forward(from: 0);
+  }
 
   void _open() {
     final context = appNavigatorKey.currentContext;
@@ -760,21 +815,69 @@ class _AskClaudeBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onVerticalDragUpdate: (details) =>
-          onVerticalDragDelta(details.delta.dy),
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Material(
-          color: Colors.cyan,
-          shape: const CircleBorder(),
-          elevation: 4,
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: _open,
-            child: const Center(
-              child: Icon(Icons.smart_toy_outlined, color: Colors.white),
+    final mediaQuery = MediaQuery.of(context);
+    final bounds = _bounds(mediaQuery.size, mediaQuery.padding);
+
+    // Default position (first build): bottom-right, roughly where the old
+    // admin dashboard's floating action button used to sit.
+    _position = _clampToBounds(
+      _position ?? Offset(bounds.right, bounds.bottom),
+      bounds,
+    );
+
+    return Positioned(
+      left: _position!.dx,
+      top: _position!.dy,
+      child: GestureDetector(
+        onPanStart: _onPanStart,
+        onPanUpdate: (details) => _onPanUpdate(details, bounds),
+        onPanEnd: (details) => _onPanEnd(details, bounds),
+        onTap: _dragging ? null : _open,
+        child: SizedBox(
+          width: _size,
+          height: _size,
+          child: Material(
+            color: Colors.black,
+            shape: const CircleBorder(
+              side: BorderSide(color: Colors.red, width: 1.5),
+            ),
+            elevation: 4,
+            child: ClipOval(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.asset(
+                    'assets/images/ai_bear.png',
+                    fit: BoxFit.cover,
+                  ),
+                  Positioned(
+                    top: 5,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'I.A.',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
