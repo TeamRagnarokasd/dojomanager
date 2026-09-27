@@ -5,6 +5,7 @@ import '../../services/discipline_service.dart';
 import '../../services/events_service.dart';
 import './widgets/event_form_sheet.dart';
 import './widgets/event_list_item.dart';
+import './widgets/event_participants_sheet.dart';
 
 /// Gestione Eventi e Seminari, collegata a `events_seminars` /
 /// `event_registrations` (nessun dato finto, nessuna simulazione: ogni
@@ -91,6 +92,18 @@ class _AdminEventManagementState extends State<AdminEventManagement> {
         existingEvent: event,
         disciplines: _disciplines,
         onSaved: _loadEvents,
+      ),
+    );
+  }
+
+  void _showParticipants(Map<String, dynamic> event) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => EventParticipantsSheet(
+        eventId: event['id'].toString(),
+        eventTitle: (event['title'] ?? '').toString(),
       ),
     );
   }
@@ -228,6 +241,7 @@ class _AdminEventManagementState extends State<AdminEventManagement> {
           onEdit: () => _openEditForm(event),
           onDelete: () => _deleteEvent(event),
           onToggleStatus: () => _toggleStatus(event),
+          onShowParticipants: () => _showParticipants(event),
         );
       },
     );

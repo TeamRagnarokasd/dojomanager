@@ -116,6 +116,7 @@ AS $$
 DECLARE
   v_capacity integer;
   v_status text;
+  v_event_datetime timestamptz;
   v_registered_count integer;
   v_existing_id uuid;
   v_existing_status text;
@@ -127,7 +128,8 @@ BEGIN
     RAISE EXCEPTION 'Non puoi prenotare per questo utente.';
   END IF;
 
-  SELECT capacity, status INTO v_capacity, v_status
+  SELECT capacity, status, event_datetime
+  INTO v_capacity, v_status, v_event_datetime
   FROM public.events_seminars
   WHERE id = p_event_id
   FOR UPDATE;
@@ -137,6 +139,9 @@ BEGIN
   END IF;
   IF v_status <> 'pubblicato' THEN
     RAISE EXCEPTION 'Questo evento non è più disponibile.';
+  END IF;
+  IF v_event_datetime <= now() THEN
+    RAISE EXCEPTION 'Questo evento è già passato.';
   END IF;
 
   SELECT id, status INTO v_existing_id, v_existing_status
@@ -338,7 +343,82 @@ $$;
 GRANT EXECUTE ON FUNCTION public.competition_set_self_registered(uuid, uuid, boolean) TO authenticated;
 
 -- ============================================================================
--- 7) Bucket pubblico 'event-posters' — locandine eventi. Lettura pubblica
+-- 7) admin_event_participants / admin_competition_participants — elenco
+--    nominativo per l'admin (prenotati a un evento, interessati/iscritti a
+--    una gara). Il nome viene da user_profiles.full_name per un adulto, o
+--    da child_profiles.full_name se l'id è un figlio (is_child = true).
+-- ============================================================================
+CREATE OR REPLACE FUNCTION public.admin_event_participants(p_event_id uuid)
+RETURNS TABLE(
+  user_id uuid,
+  full_name text,
+  is_child boolean,
+  registered_at timestamptz
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT public.is_admin_from_auth() THEN
+    RAISE EXCEPTION 'Funzione riservata agli amministratori.';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    er.user_id,
+    COALESCE(up.full_name, cp.full_name) AS full_name,
+    (cp.id IS NOT NULL) AS is_child,
+    er.registered_at
+  FROM public.event_registrations er
+  LEFT JOIN public.user_profiles up ON up.id = er.user_id
+  LEFT JOIN public.child_profiles cp ON cp.id = er.user_id
+  WHERE er.event_id = p_event_id AND er.status = 'prenotato'
+  ORDER BY er.registered_at ASC;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.admin_event_participants(uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.admin_competition_participants(p_competition_id uuid)
+RETURNS TABLE(
+  user_id uuid,
+  full_name text,
+  is_child boolean,
+  interested boolean,
+  self_registered boolean
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT public.is_admin_from_auth() THEN
+    RAISE EXCEPTION 'Funzione riservata agli amministratori.';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    ci.user_id,
+    COALESCE(up.full_name, cp.full_name) AS full_name,
+    (cp.id IS NOT NULL) AS is_child,
+    ci.interested,
+    ci.self_registered
+  FROM public.competition_interest ci
+  LEFT JOIN public.user_profiles up ON up.id = ci.user_id
+  LEFT JOIN public.child_profiles cp ON cp.id = ci.user_id
+  WHERE ci.competition_id = p_competition_id
+    AND (ci.interested = true OR ci.self_registered = true)
+  ORDER BY full_name ASC;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.admin_competition_participants(uuid) TO authenticated;
+
+-- ============================================================================
+-- 8) Bucket pubblico 'event-posters' — locandine eventi. Lettura pubblica
 --    (anche senza login, per l'anteprima sul sito), scrittura solo admin.
 -- ============================================================================
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -363,7 +443,7 @@ CREATE POLICY event_posters_admin_write
   WITH CHECK (bucket_id = 'event-posters' AND public.is_admin_from_auth());
 
 -- ============================================================================
--- 8) Bucket privato 'competition-sources' — foto dei calendari gare caricati
+-- 9) Bucket privato 'competition-sources' — foto dei calendari gare caricati
 --    dall'admin. Solo admin legge/scrive; l'edge function
 --    competition-calendar-read la legge con la service role.
 -- ============================================================================

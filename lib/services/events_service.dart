@@ -117,6 +117,20 @@ class EventsService {
 
   // ─── Amministrazione (admin) ─────────────────────────────────────────────
 
+  /// I prenotati ('prenotato') all'evento [eventId], con nome e se sono un
+  /// figlio. Riservato agli admin lato database (RPC SECURITY DEFINER).
+  Future<List<Map<String, dynamic>>> getParticipants(String eventId) async {
+    try {
+      final rows = await _client.rpc(
+        'admin_event_participants',
+        params: {'p_event_id': eventId},
+      );
+      return List<Map<String, dynamic>>.from(rows as List);
+    } on PostgrestException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+
   Future<void> createEvent(Map<String, dynamic> data) async {
     await _client.from('events_seminars').insert(data);
   }

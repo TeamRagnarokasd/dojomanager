@@ -5,6 +5,7 @@ import '../../services/child_profile_service.dart';
 import '../../services/competitions_service.dart';
 import './widgets/competition_calendar_upload_screen.dart';
 import './widgets/competition_list_item.dart';
+import './widgets/competition_participants_sheet.dart';
 
 /// "Gare" (MMA / BJJ-Grappling / Sambo): calendario gare letto da
 /// `competitions`, con interesse/iscrizione dell'allievo. Per admin, un
@@ -155,6 +156,18 @@ class _GareScreenState extends State<GareScreen>
     }
   }
 
+  void _showParticipants(Map<String, dynamic> competition) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => CompetitionParticipantsSheet(
+        competitionId: competition['id'].toString(),
+        competitionName: (competition['name'] ?? '').toString(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -226,6 +239,8 @@ class _GareScreenState extends State<GareScreen>
                 _toggleInterested(competitionId, value),
             onToggleSelfRegistered: (value) =>
                 _toggleSelfRegistered(competitionId, value),
+            showParticipantsButton: _isAdmin,
+            onShowParticipants: () => _showParticipants(competition),
           );
         },
       ),

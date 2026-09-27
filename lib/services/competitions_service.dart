@@ -161,6 +161,23 @@ class CompetitionsService {
 
   // ─── Amministrazione (admin) ─────────────────────────────────────────────
 
+  /// Chi ha segnato interesse o iscrizione per la gara [competitionId], con
+  /// nome e se sono un figlio. Riservato agli admin lato database (RPC
+  /// SECURITY DEFINER).
+  Future<List<Map<String, dynamic>>> getParticipants(
+    String competitionId,
+  ) async {
+    try {
+      final rows = await _client.rpc(
+        'admin_competition_participants',
+        params: {'p_competition_id': competitionId},
+      );
+      return List<Map<String, dynamic>>.from(rows as List);
+    } on PostgrestException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+
   /// Apre la galleria, carica la foto del calendario in
   /// `competition-sources/` e ritorna il percorso salvato. Ritorna null se
   /// l'utente annulla la selezione o se qualcosa va storto.

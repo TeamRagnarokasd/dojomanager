@@ -11,6 +11,7 @@ class EventListItem extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onToggleStatus;
+  final VoidCallback onShowParticipants;
 
   const EventListItem({
     super.key,
@@ -20,6 +21,7 @@ class EventListItem extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onToggleStatus,
+    required this.onShowParticipants,
   });
 
   @override
@@ -155,6 +157,14 @@ class EventListItem extends StatelessWidget {
                 ),
                 Column(
                   children: [
+                    IconButton(
+                      onPressed: onShowParticipants,
+                      icon: const Icon(Icons.people_outline, size: 20),
+                      tooltip: 'Partecipanti',
+                      constraints: const BoxConstraints(),
+                      padding: EdgeInsets.zero,
+                    ),
+                    SizedBox(height: 1.h),
                     IconButton(
                       onPressed: onToggleStatus,
                       icon: Icon(

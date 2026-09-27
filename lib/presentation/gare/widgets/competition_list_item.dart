@@ -10,6 +10,8 @@ class CompetitionListItem extends StatelessWidget {
   final bool isPending;
   final ValueChanged<bool> onToggleInterested;
   final ValueChanged<bool> onToggleSelfRegistered;
+  final bool showParticipantsButton;
+  final VoidCallback? onShowParticipants;
 
   const CompetitionListItem({
     super.key,
@@ -19,6 +21,8 @@ class CompetitionListItem extends StatelessWidget {
     required this.isPending,
     required this.onToggleInterested,
     required this.onToggleSelfRegistered,
+    this.showParticipantsButton = false,
+    this.onShowParticipants,
   });
 
   @override
@@ -104,6 +108,15 @@ class CompetitionListItem extends StatelessWidget {
               ),
             ],
           ),
+          if (showParticipantsButton)
+            Padding(
+              padding: EdgeInsets.only(top: 1.h),
+              child: TextButton.icon(
+                onPressed: onShowParticipants,
+                icon: const Icon(Icons.people_outline, size: 18),
+                label: const Text('Partecipanti'),
+              ),
+            ),
         ],
       ),
     );
