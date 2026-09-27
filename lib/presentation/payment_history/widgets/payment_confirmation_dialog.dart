@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
+import '../../../services/payment_block_error.dart';
 import '../../../services/subscription_service.dart';
 
 class PaymentConfirmationDialog extends StatefulWidget {
@@ -163,6 +164,15 @@ class _PaymentConfirmationDialogState extends State<PaymentConfirmationDialog> {
       setState(() {
         _isSubmitting = false;
       });
+
+      final blockedBy = PaymentBlockError.fromError(e);
+      if (blockedBy != null) {
+        final goToProfile = await blockedBy.show(context);
+        if (goToProfile && mounted) {
+          Navigator.of(context).pushNamed(AppRoutes.userProfile);
+        }
+        return;
+      }
 
       Fluttertoast.showToast(
         msg: '${'common.error'.tr()}: ${e.toString()}',
