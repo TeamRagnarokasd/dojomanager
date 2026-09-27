@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../services/competitions_service.dart';
+
 class CompetitionListItem extends StatelessWidget {
   final Map<String, dynamic> competition;
   final bool isInterested;
@@ -12,6 +14,8 @@ class CompetitionListItem extends StatelessWidget {
   final ValueChanged<bool> onToggleSelfRegistered;
   final bool showParticipantsButton;
   final VoidCallback? onShowParticipants;
+  final bool showEditButton;
+  final VoidCallback? onEdit;
 
   const CompetitionListItem({
     super.key,
@@ -23,6 +27,8 @@ class CompetitionListItem extends StatelessWidget {
     required this.onToggleSelfRegistered,
     this.showParticipantsButton = false,
     this.onShowParticipants,
+    this.showEditButton = false,
+    this.onEdit,
   });
 
   @override
@@ -31,6 +37,10 @@ class CompetitionListItem extends StatelessWidget {
     final city = (competition['city'] ?? '').toString();
     final notes = (competition['notes'] ?? '').toString();
     final link = (competition['registration_link'] ?? '').toString();
+    final posterUrl = CompetitionsService.instance.posterUrl(
+      competition['poster_path'] as String?,
+    );
+    final hasPoster = posterUrl != null;
 
     DateTime? start;
     DateTime? end;
@@ -46,78 +56,178 @@ class CompetitionListItem extends StatelessWidget {
             : '${DateFormat('d MMM', 'it_IT').format(start)} - '
                 '${DateFormat('d MMM yyyy', 'it_IT').format(end)}';
 
+    final titleColor = hasPoster ? Colors.white : null;
+    final subtitleColor = hasPoster
+        ? Colors.white.withValues(alpha: 0.9)
+        : Theme.of(context).colorScheme.onSurfaceVariant;
+    final bodyColor = hasPoster ? Colors.white : null;
+
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: hasPoster
+              ? () => _openFullscreenPoster(context, posterUrl, name)
+              : null,
+          child: Padding(
+            padding: EdgeInsets.only(bottom: hasPoster ? 1.h : 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: titleColor,
+                            ),
+                      ),
+                      SizedBox(height: 0.5.h),
+                      Text(
+                        [
+                          if (dateLabel.isNotEmpty) dateLabel,
+                          if (city.isNotEmpty) city,
+                        ].join(' • '),
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: subtitleColor),
+                      ),
+                    ],
+                  ),
+                ),
+                if (hasPoster)
+                  Icon(
+                    Icons.fullscreen,
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (notes.isNotEmpty)
+          Padding(
+            padding: EdgeInsets.only(top: 1.h),
+            child: Text(
+              notes,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: bodyColor),
+            ),
+          ),
+        if (link.isNotEmpty)
+          Padding(
+            padding: EdgeInsets.only(top: 1.h),
+            child: TextButton.icon(
+              onPressed: () => _openLink(context, link),
+              style: hasPoster
+                  ? TextButton.styleFrom(foregroundColor: Colors.white)
+                  : null,
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: const Text('Iscriviti sul sito'),
+            ),
+          ),
+        SizedBox(height: 1.h),
+        Wrap(
+          spacing: 2.w,
+          runSpacing: 1.h,
+          children: [
+            _buildToggleChip(
+              context,
+              label: 'Voglio farla',
+              selected: isInterested,
+              onTap: () => onToggleInterested(!isInterested),
+            ),
+            _buildToggleChip(
+              context,
+              label: 'Mi sono iscritto',
+              selected: isSelfRegistered,
+              onTap: () => onToggleSelfRegistered(!isSelfRegistered),
+            ),
+          ],
+        ),
+        if (showParticipantsButton || showEditButton)
+          Padding(
+            padding: EdgeInsets.only(top: 1.h),
+            child: Wrap(
+              spacing: 1.w,
+              children: [
+                if (showParticipantsButton)
+                  TextButton.icon(
+                    onPressed: onShowParticipants,
+                    style: hasPoster
+                        ? TextButton.styleFrom(foregroundColor: Colors.white)
+                        : null,
+                    icon: const Icon(Icons.people_outline, size: 18),
+                    label: const Text('Partecipanti'),
+                  ),
+                if (showEditButton)
+                  TextButton.icon(
+                    onPressed: onEdit,
+                    style: hasPoster
+                        ? TextButton.styleFrom(foregroundColor: Colors.white)
+                        : null,
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Modifica'),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+
     return Container(
       margin: EdgeInsets.only(bottom: 2.h),
-      padding: EdgeInsets.all(4.w),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+        color: hasPoster ? Colors.black : Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            name,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          SizedBox(height: 0.5.h),
-          Text(
-            [
-              if (dateLabel.isNotEmpty) dateLabel,
-              if (city.isNotEmpty) city,
-            ].join(' • '),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+      child: hasPoster
+          ? Stack(
+              children: [
+                Positioned.fill(
+                  child: Image.network(posterUrl, fit: BoxFit.cover),
                 ),
-          ),
-          if (notes.isNotEmpty)
-            Padding(
-              padding: EdgeInsets.only(top: 1.h),
-              child: Text(notes, style: Theme.of(context).textTheme.bodyMedium),
-            ),
-          if (link.isNotEmpty)
-            Padding(
-              padding: EdgeInsets.only(top: 1.h),
-              child: TextButton.icon(
-                onPressed: () => _openLink(context, link),
-                icon: const Icon(Icons.open_in_new, size: 16),
-                label: const Text('Link iscrizione'),
-              ),
-            ),
-          SizedBox(height: 1.h),
-          Wrap(
-            spacing: 2.w,
-            runSpacing: 1.h,
-            children: [
-              _buildToggleChip(
-                context,
-                label: 'Voglio farla',
-                selected: isInterested,
-                onTap: () => onToggleInterested(!isInterested),
-              ),
-              _buildToggleChip(
-                context,
-                label: 'Mi sono iscritto',
-                selected: isSelfRegistered,
-                onTap: () => onToggleSelfRegistered(!isSelfRegistered),
-              ),
-            ],
-          ),
-          if (showParticipantsButton)
-            Padding(
-              padding: EdgeInsets.only(top: 1.h),
-              child: TextButton.icon(
-                onPressed: onShowParticipants,
-                icon: const Icon(Icons.people_outline, size: 18),
-                label: const Text('Partecipanti'),
-              ),
-            ),
-        ],
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.4),
+                          Colors.black.withValues(alpha: 0.85),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(padding: EdgeInsets.all(4.w), child: content),
+              ],
+            )
+          : Padding(padding: EdgeInsets.all(4.w), child: content),
+    );
+  }
+
+  void _openFullscreenPoster(
+    BuildContext context,
+    String posterUrl,
+    String name,
+  ) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _CompetitionPosterViewer(
+          posterUrl: posterUrl,
+          title: name,
+        ),
       ),
     );
   }
@@ -146,7 +256,10 @@ class CompetitionListItem extends StatelessWidget {
     final uri = Uri.tryParse(url);
     if (uri == null) return;
     try {
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
       if (!launched && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Impossibile aprire il link.')),
@@ -159,5 +272,33 @@ class CompetitionListItem extends StatelessWidget {
         );
       }
     }
+  }
+}
+
+/// Vista a schermo intero, ingrandibile, della locandina di una gara.
+class _CompetitionPosterViewer extends StatelessWidget {
+  final String posterUrl;
+  final String title;
+
+  const _CompetitionPosterViewer({
+    required this.posterUrl,
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text(title),
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          child: Image.network(posterUrl, fit: BoxFit.contain),
+        ),
+      ),
+    );
   }
 }

@@ -19,6 +19,7 @@ class CompetitionsService {
 
   static final SupabaseClient _client = Supabase.instance.client;
   static const String _sourcesBucket = 'competition-sources';
+  static const String _postersBucket = 'event-posters';
 
   static const List<String> categories = ['mma', 'bjj_grappling', 'sambo'];
 
@@ -258,5 +259,70 @@ class CompetitionsService {
   Future<void> publishCompetitions(List<Map<String, dynamic>> rows) async {
     if (rows.isEmpty) return;
     await _client.from('competitions').insert(rows);
+  }
+
+  /// URL pubblico della locandina, o null se [posterPath] è vuoto.
+  String? posterUrl(String? posterPath) {
+    if (posterPath == null || posterPath.isEmpty) return null;
+    return _client.storage.from(_postersBucket).getPublicUrl(posterPath);
+  }
+
+  /// Apre la galleria, carica la locandina scelta in
+  /// `event-posters/competitions/` e ritorna il percorso salvato. Ritorna
+  /// null se l'utente annulla la selezione o se qualcosa va storto.
+  Future<String?> pickAndUploadPoster() async {
+    final picker = ImagePicker();
+    XFile? picked;
+    try {
+      picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+    } catch (_) {
+      return null;
+    }
+    if (picked == null) return null;
+
+    try {
+      final Uint8List bytes = kIsWeb
+          ? await picked.readAsBytes()
+          : await File(picked.path).readAsBytes();
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final extension = picked.name.contains('.')
+          ? picked.name.split('.').last
+          : 'jpg';
+      final storagePath = 'competitions/poster_$timestamp.$extension';
+
+      await _client.storage
+          .from(_postersBucket)
+          .uploadBinary(storagePath, bytes);
+      return storagePath;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Aggiorna i campi di una gara esistente.
+  Future<void> updateCompetition(
+    String id,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      await _client.from('competitions').update(data).eq('id', id);
+    } on PostgrestException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+
+  /// Elimina definitivamente una gara.
+  Future<void> deleteCompetition(String id) async {
+    try {
+      await _client.from('competitions').delete().eq('id', id);
+    } on PostgrestException catch (e) {
+      throw Exception(e.message);
+    }
   }
 }

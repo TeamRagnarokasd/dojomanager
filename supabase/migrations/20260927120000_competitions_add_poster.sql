@@ -1,0 +1,11 @@
+-- ============================================================================
+-- Colonna poster_path su competitions — locandina della gara, mostrata come
+-- sfondo della scheda (Flutter) e caricata nel bucket esistente
+-- 'event-posters' (lettura pubblica, scrittura solo admin), sotto
+-- competitions/. Nessuna nuova policy di storage: la policy esistente è
+-- scoped al bucket, non al percorso.
+--
+-- Nota: questa colonna è già stata applicata al database di produzione;
+-- questo file serve solo a tenere lo schema del repository allineato.
+-- ============================================================================
+ALTER TABLE public.competitions ADD COLUMN IF NOT EXISTS poster_path text;
