@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_export.dart';
 import '../../services/auth_service.dart';
+import '../../services/competitions_service.dart';
 import '../../widgets/compliance_banner_widget.dart';
 import '../../widgets/main_navigation_wrapper.dart';
 import '../user_profile/widgets/team_certifications_widget.dart';
@@ -14,6 +15,7 @@ import './widgets/notification_banner_widget.dart';
 import './widgets/profile_switcher_widget.dart';
 import './widgets/role_based_content_widget.dart';
 import './widgets/sponsor_shop_section_widget.dart';
+import './widgets/upcoming_events_section_widget.dart';
 
 class DashboardHome extends StatefulWidget {
   const DashboardHome({Key? key}) : super(key: key);
@@ -44,6 +46,10 @@ class _DashboardHomeState extends State<DashboardHome>
   // Next upcoming booking data
   Map<String, dynamic>? _nextBooking;
 
+  // "Gare" quick access badge — on only if a competition starts within the
+  // next 30 days. Fails closed (stays off) on any error.
+  bool _hasUpcomingCompetition = false;
+
   final List<Map<String, dynamic>> _bottomNavItems = [
     {'label': 'nav.home'.tr(), 'icon': 'home'},
     {'label': 'nav.classes'.tr(), 'icon': 'school'},
@@ -56,10 +62,17 @@ class _DashboardHomeState extends State<DashboardHome>
     super.initState();
     _initializeDashboard();
     _checkAuthState();
+    _loadUpcomingCompetitionBadge();
     _refreshController = AnimationController(
       duration: const Duration(milliseconds: 1000),
       vsync: this,
     );
+  }
+
+  Future<void> _loadUpcomingCompetitionBadge() async {
+    final hasUpcoming = await CompetitionsService.instance
+        .hasUpcomingWithin30Days();
+    if (mounted) setState(() => _hasUpcomingCompetition = hasUpcoming);
   }
 
   @override
@@ -515,6 +528,14 @@ class _DashboardHomeState extends State<DashboardHome>
             'color': Color(0xFFFF0000),
           },
           {
+            'title': 'Gare',
+            'subtitle': 'MMA, BJJ/Grappling, Sambo',
+            'icon': Icons.emoji_events,
+            'route': AppRoutes.gare,
+            'color': Colors.amber,
+            'showBadgeDot': _hasUpcomingCompetition,
+          },
+          {
             'title': 'Pagamenti',
             'subtitle': 'Visualizza pagamenti',
             'icon': Icons.payment,
@@ -560,6 +581,14 @@ class _DashboardHomeState extends State<DashboardHome>
             'icon': Icons.receipt_long,
             'route': '/receipt-management',
             'color': Colors.green,
+          },
+          {
+            'title': 'Gare',
+            'subtitle': 'MMA, BJJ/Grappling, Sambo',
+            'icon': Icons.emoji_events,
+            'route': AppRoutes.gare,
+            'color': Colors.amber,
+            'showBadgeDot': _hasUpcomingCompetition,
           },
         ];
         break;
@@ -623,6 +652,14 @@ class _DashboardHomeState extends State<DashboardHome>
             'route': '/admin-management-system',
             'color': Theme.of(context).colorScheme.secondary,
           },
+          {
+            'title': 'Gare',
+            'subtitle': 'MMA, BJJ/Grappling, Sambo',
+            'icon': Icons.emoji_events,
+            'route': AppRoutes.gare,
+            'color': Colors.amber,
+            'showBadgeDot': _hasUpcomingCompetition,
+          },
         ];
         break;
       default:
@@ -640,6 +677,14 @@ class _DashboardHomeState extends State<DashboardHome>
             'icon': Icons.receipt_long,
             'route': '/receipt-archive',
             'color': Theme.of(context).colorScheme.primary,
+          },
+          {
+            'title': 'Gare',
+            'subtitle': 'MMA, BJJ/Grappling, Sambo',
+            'icon': Icons.emoji_events,
+            'route': AppRoutes.gare,
+            'color': Colors.amber,
+            'showBadgeDot': _hasUpcomingCompetition,
           },
         ];
     }
@@ -700,7 +745,7 @@ class _DashboardHomeState extends State<DashboardHome>
             itemCount: quickActions.length,
             itemBuilder: (context, index) {
               final action = quickActions[index];
-              return Material(
+              final tile = Material(
                 color: Colors.transparent,
                 child: InkWell(
                   onTap: () {
@@ -788,6 +833,26 @@ class _DashboardHomeState extends State<DashboardHome>
                     ),
                   ),
                 ),
+              );
+
+              if (action['showBadgeDot'] != true) return tile;
+
+              return Stack(
+                children: [
+                  tile,
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ],
               );
             },
           ),
@@ -1113,6 +1178,9 @@ class _DashboardHomeState extends State<DashboardHome>
                     RoleBasedContentWidget(),
 
                   SizedBox(height: 3.h),
+
+                  // Eventi in programma Section
+                  const UpcomingEventsSectionWidget(),
 
                   // Sponsor & Shop Section
                   const SponsorShopSectionWidget(),
