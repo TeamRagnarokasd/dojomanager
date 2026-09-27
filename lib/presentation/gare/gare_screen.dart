@@ -4,6 +4,7 @@ import 'package:sizer/sizer.dart';
 import '../../services/child_profile_service.dart';
 import '../../services/competitions_service.dart';
 import './widgets/competition_calendar_upload_screen.dart';
+import './widgets/competition_edit_sheet.dart';
 import './widgets/competition_list_item.dart';
 import './widgets/competition_participants_sheet.dart';
 
@@ -168,6 +169,19 @@ class _GareScreenState extends State<GareScreen>
     );
   }
 
+  void _openEditCompetition(Map<String, dynamic> competition) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => CompetitionEditSheet(
+        competition: competition,
+        onSaved: _reloadCurrentCategory,
+        onDeleted: _reloadCurrentCategory,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -241,6 +255,8 @@ class _GareScreenState extends State<GareScreen>
                 _toggleSelfRegistered(competitionId, value),
             showParticipantsButton: _isAdmin,
             onShowParticipants: () => _showParticipants(competition),
+            showEditButton: _isAdmin,
+            onEdit: () => _openEditCompetition(competition),
           );
         },
       ),
