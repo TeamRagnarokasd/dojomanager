@@ -182,6 +182,20 @@ class _GareScreenState extends State<GareScreen>
     );
   }
 
+  void _openCreateCompetition() {
+    final category = CompetitionsService.categories[_tabController.index];
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => CompetitionEditSheet(
+        competition: {'category': category},
+        onSaved: _reloadCurrentCategory,
+        onDeleted: _reloadCurrentCategory,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -193,6 +207,12 @@ class _GareScreenState extends State<GareScreen>
               onPressed: _openUploadCalendar,
               icon: const Icon(Icons.upload_file),
               tooltip: 'Carica calendario gare',
+            ),
+          if (_isAdmin)
+            IconButton(
+              onPressed: _openCreateCompetition,
+              icon: const Icon(Icons.add),
+              tooltip: 'Nuova gara',
             ),
         ],
         bottom: TabBar(

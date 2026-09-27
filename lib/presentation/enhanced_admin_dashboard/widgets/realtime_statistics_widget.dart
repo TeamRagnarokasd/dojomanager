@@ -53,17 +53,76 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
                 'role',
                 'principal_admin',
               ); // exclude only the main admin account
-      final adultUsersCount = (registeredResponse as List).length;
+      final adultUserIds = (registeredResponse as List)
+          .map((row) => row['id'] as String)
+          .toSet();
+      final adultUsersCount = adultUserIds.length;
 
       // Count active child profiles
       final childProfilesResponse = await client
           .from('child_profiles')
-          .select('id, tax_code, codice_fiscale')
+          .select('id, guardian_id, tax_code, codice_fiscale')
           .eq('is_active', true);
       final childProfiles = childProfilesResponse as List;
       final childProfilesCount = childProfiles.length;
 
-      final registeredMembersCount = adultUsersCount + childProfilesCount;
+      // Un genitore/tutore che ha creato l'account solo per gestire i figli
+      // (mai iscritto lui stesso) non deve contare tra i "Membri
+      // Registrati": è guardian_id di almeno un figlio attivo e non ha mai
+      // una riga propria (come beneficiario) in class_registrations né un
+      // pagamento adulto confermato in payment_confirmations. Calcolato con
+      // query dirette (non con una RPC per utente).
+      final guardianIds = childProfiles
+          .map((row) => row['guardian_id'] as String?)
+          .whereType<String>()
+          .toSet();
+
+      var guardianOnlyCount = 0;
+      if (guardianIds.isNotEmpty) {
+        final guardianIdsCsv = guardianIds.join(',');
+        final selfEnrolledGuardianIds = <String>{};
+
+        final ownRegistrations = await client
+            .from('class_registrations')
+            .select('user_id, beneficiary_profile_id')
+            .or(
+              'user_id.in.($guardianIdsCsv),'
+              'beneficiary_profile_id.in.($guardianIdsCsv)',
+            );
+        for (final row in (ownRegistrations as List)) {
+          final beneficiary = (row['beneficiary_profile_id'] as String?) ??
+              row['user_id'] as String?;
+          if (beneficiary != null && guardianIds.contains(beneficiary)) {
+            selfEnrolledGuardianIds.add(beneficiary);
+          }
+        }
+
+        final ownAdultPayments = await client
+            .from('payment_confirmations')
+            .select('user_id, beneficiary_profile_id, beneficiary_type, status')
+            .or(
+              'user_id.in.($guardianIdsCsv),'
+              'beneficiary_profile_id.in.($guardianIdsCsv)',
+            );
+        for (final row in (ownAdultPayments as List)) {
+          if (row['beneficiary_type'] != 'adult') continue;
+          if (row['status'] != 'confirmed') continue;
+          final beneficiary = (row['beneficiary_profile_id'] as String?) ??
+              row['user_id'] as String?;
+          if (beneficiary != null && guardianIds.contains(beneficiary)) {
+            selfEnrolledGuardianIds.add(beneficiary);
+          }
+        }
+
+        guardianOnlyCount = guardianIds
+            .where((id) =>
+                adultUserIds.contains(id) &&
+                !selfEnrolledGuardianIds.contains(id))
+            .length;
+      }
+
+      final registeredMembersCount =
+          adultUsersCount - guardianOnlyCount + childProfilesCount;
 
       // MEMBRI ISCRITTI / ABBONATI: da pagamenti confermati
       // (payment_confirmations), non dalle ricevute — quando un genitore

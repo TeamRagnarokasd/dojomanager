@@ -100,6 +100,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   Set<String> _subscribedUserIds = {};
   Set<String> _annualRegisteredIds = {};
   Set<String> _updatedUserIds = {};
+  Set<String> _guardianOnlyUserIds = {};
   Map<String, List<FederationMembership>> _membershipsByUserId = {};
 
   // Compute age in years from a birth_date string (ISO-8601 or similar)
@@ -116,6 +117,19 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       return age;
     } catch (_) {
       return null;
+    }
+  }
+
+  bool _certMissingOrExpired(dynamic certUrlValue, dynamic expiryValue) {
+    final certUrl = certUrlValue?.toString() ?? '';
+    if (certUrl.isEmpty) return true;
+    final expiryStr = expiryValue?.toString() ?? '';
+    if (expiryStr.isEmpty) return false;
+    try {
+      final expiry = DateTime.parse(expiryStr);
+      return expiry.isBefore(DateTime.now());
+    } catch (_) {
+      return false;
     }
   }
 
@@ -149,17 +163,20 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
           });
         }
       } else if (chip == _chipNoCert) {
-        final certUrl = user['medical_certificate_url']?.toString() ?? '';
-        final expiryStr = user['medical_certificate_expiry']?.toString() ?? '';
-        bool certMissing = certUrl.isEmpty;
-        bool certExpired = false;
-        if (!certMissing && expiryStr.isNotEmpty) {
-          try {
-            final expiry = DateTime.parse(expiryStr);
-            certExpired = expiry.isBefore(DateTime.now());
-          } catch (_) {}
+        final userId = user['id']?.toString() ?? '';
+        if (_guardianOnlyUserIds.contains(userId)) {
+          // Genitore mai iscritto lui stesso: guarda il certificato dei
+          // figli, non il proprio.
+          chipMatch = children.any((c) => _certMissingOrExpired(
+                c['medical_certificate_url'],
+                c['medical_certificate_expiry_date'],
+              ));
+        } else {
+          chipMatch = _certMissingOrExpired(
+            user['medical_certificate_url'],
+            user['medical_certificate_expiry'],
+          );
         }
-        chipMatch = certMissing || certExpired;
       } else if (chip == _chipPending) {
         chipMatch = (user['status']?.toString() ?? '') == 'pending';
       } else if (chip == _chipNoSub) {
@@ -336,7 +353,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
               final childrenResponse = await client
                   .from('child_profiles')
                   .select(
-                    'id, first_name, last_name, birth_date, image_consent, is_active, tax_code, codice_fiscale, profile_photo_url, medical_certificate_url, medical_certificate_pending, medical_certificate_uploaded_at',
+                    'id, first_name, last_name, birth_date, image_consent, is_active, tax_code, codice_fiscale, profile_photo_url, medical_certificate_url, medical_certificate_pending, medical_certificate_uploaded_at, medical_certificate_expiry_date',
                   )
                   .eq('guardian_id', user['id'])
                   .eq('is_active', true)
@@ -526,6 +543,69 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
       } catch (e) {
         print('Error loading federation memberships: $e');
         _membershipsByUserId = {};
+      }
+
+      // Genitori/tutori mai iscritti loro stessi (solo guardian di figli):
+      // per il chip "Senza certificato medico" bisogna guardare i loro
+      // figli, non il loro profilo. Precalcolato una volta con query dirette
+      // (non con una RPC per utente), stessa logica di
+      // RealtimeStatisticsWidget per "Membri Registrati".
+      try {
+        final Set<String> actualGuardianIds = {};
+        for (final u in systemUsers) {
+          final user = u as Map<String, dynamic>;
+          final children = user['child_profiles'] as List?;
+          if (children != null && children.isNotEmpty) {
+            final id = user['id']?.toString();
+            if (id != null) actualGuardianIds.add(id);
+          }
+        }
+
+        final Set<String> selfEnrolledGuardianIds = {};
+        if (actualGuardianIds.isNotEmpty) {
+          final guardianIdsCsv = actualGuardianIds.join(',');
+
+          final ownRegistrations = await client
+              .from('class_registrations')
+              .select('user_id, beneficiary_profile_id')
+              .or(
+                'user_id.in.($guardianIdsCsv),'
+                'beneficiary_profile_id.in.($guardianIdsCsv)',
+              );
+          for (final row in (ownRegistrations as List)) {
+            final beneficiary = (row['beneficiary_profile_id'] as String?) ??
+                row['user_id'] as String?;
+            if (beneficiary != null && actualGuardianIds.contains(beneficiary)) {
+              selfEnrolledGuardianIds.add(beneficiary);
+            }
+          }
+
+          final ownAdultPayments = await client
+              .from('payment_confirmations')
+              .select(
+                'user_id, beneficiary_profile_id, beneficiary_type, status',
+              )
+              .or(
+                'user_id.in.($guardianIdsCsv),'
+                'beneficiary_profile_id.in.($guardianIdsCsv)',
+              );
+          for (final row in (ownAdultPayments as List)) {
+            if (row['beneficiary_type'] != 'adult') continue;
+            if (row['status'] != 'confirmed') continue;
+            final beneficiary = (row['beneficiary_profile_id'] as String?) ??
+                row['user_id'] as String?;
+            if (beneficiary != null && actualGuardianIds.contains(beneficiary)) {
+              selfEnrolledGuardianIds.add(beneficiary);
+            }
+          }
+        }
+
+        _guardianOnlyUserIds = actualGuardianIds
+            .where((id) => !selfEnrolledGuardianIds.contains(id))
+            .toSet();
+      } catch (e) {
+        print('Error computing guardian-only users: $e');
+        _guardianOnlyUserIds = {};
       }
 
       // Load admin communications with error handling
