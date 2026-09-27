@@ -7,6 +7,7 @@ import 'package:sizer/sizer.dart';
 import '../../../services/admin_section_visibility_service.dart';
 import '../../../services/asd_deadlines_service.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/competitions_service.dart';
 import '../../../services/notification_service.dart';
 import '../../administration_asd/administration_asd_screen.dart';
 
@@ -28,12 +29,23 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
   /// from the Scadenzario, only for admins with access to 'deadlines'.
   int? _asdDeadlinesBadgeCount;
 
+  /// Dot badge on the "Gare" card — on only if a competition starts within
+  /// the next 30 days (same check used for the Home "Gare" tile).
+  bool _hasUpcomingCompetition = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkAdministrationAsdVisibility();
     _loadAsdDeadlinesBadgeAndNotify();
+    _loadUpcomingCompetitionBadge();
+  }
+
+  Future<void> _loadUpcomingCompetitionBadge() async {
+    final hasUpcoming = await CompetitionsService.instance
+        .hasUpcomingWithin30Days();
+    if (mounted) setState(() => _hasUpcomingCompetition = hasUpcoming);
   }
 
   @override
@@ -152,6 +164,18 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
         'status': 'Disponibile',
         'badgeColor': Colors.orange,
         'category': 'scheduling',
+      },
+      {
+        'title': 'Gare',
+        'subtitle': 'Calendari gare MMA, BJJ/Grappling e Sambo',
+        'icon': Icons.emoji_events,
+        'color': Colors.amber,
+        'route': AppRoutes.gare,
+        'description': 'Carica i calendari gare e vedi chi è interessato o iscritto',
+        'status': 'Disponibile',
+        'badgeColor': Colors.amber,
+        'category': 'scheduling',
+        'showDotBadge': _hasUpcomingCompetition,
       },
 
       // Row 4: Discipline & Admin Management (REMOVED Communication Center)
@@ -491,6 +515,19 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
                               ),
+                            ),
+                          ),
+                        ),
+                      if (option['showDotBadge'] == true)
+                        Positioned(
+                          right: -2,
+                          top: -2,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
                             ),
                           ),
                         ),
