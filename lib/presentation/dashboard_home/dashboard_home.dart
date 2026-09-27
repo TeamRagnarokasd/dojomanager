@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_export.dart';
 import '../../services/auth_service.dart';
+import '../../services/child_profile_service.dart';
 import '../../services/competitions_service.dart';
 import '../../widgets/compliance_banner_widget.dart';
 import '../../widgets/main_navigation_wrapper.dart';
@@ -226,8 +227,11 @@ class _DashboardHomeState extends State<DashboardHome>
       final todayStr = now.toIso8601String().split('T')[0];
       final nowTimeStr =
           '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:00';
+      final activeUserId = ChildProfileService.getActiveUserId() ?? userId;
 
-      // Query confirmed bookings with their schedule instance details
+      // user_id resta l'adulto autenticato; beneficiary_profile_id è chi si
+      // è davvero prenotato (adulto o figlio attivo), con fallback a user_id
+      // per le righe storiche senza beneficiary_profile_id.
       final response = await supabase
           .from('class_registrations')
           .select('''
@@ -242,6 +246,9 @@ class _DashboardHomeState extends State<DashboardHome>
             )
           ''')
           .eq('user_id', userId)
+          .or(
+            'beneficiary_profile_id.eq.$activeUserId,and(beneficiary_profile_id.is.null,user_id.eq.$activeUserId)',
+          )
           .eq('registration_status', 'registered')
           .gte('schedule_instances.class_date', todayStr)
           .order('schedule_instances(class_date)', ascending: true)

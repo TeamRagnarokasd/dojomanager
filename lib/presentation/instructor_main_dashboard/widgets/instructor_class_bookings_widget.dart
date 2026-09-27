@@ -20,6 +20,10 @@ class _InstructorClassBookingsWidgetState
   bool _isLoading = true;
   List<Map<String, dynamic>> _upcomingClasses = [];
   Map<String, List<Map<String, dynamic>>> _bookingsByClass = {};
+  // beneficiary_profile_id -> nome del figlio, per le prenotazioni fatte da
+  // un genitore per un profilo figlio (class_registrations.user_id resta
+  // sempre l'adulto: qui risolviamo il vero nome di chi si è prenotato).
+  Map<String, String> _childNames = {};
   String? _selectedClassId;
   String? _error;
 
@@ -133,19 +137,50 @@ class _InstructorClassBookingsWidgetState
 
       // Load bookings for each class
       final Map<String, List<Map<String, dynamic>>> bookings = {};
+      final Set<String> childBeneficiaryIds = {};
       for (final cls in classesList) {
         final classId = cls['id'] as String;
         try {
           final regs = await _client
               .from('class_registrations')
               .select(
-                'id, registration_status, registered_at, user_profiles!class_registrations_user_id_fkey(full_name, first_name, last_name, profile_image_url)',
+                'id, user_id, beneficiary_profile_id, registration_status, registered_at, user_profiles!class_registrations_user_id_fkey(full_name, first_name, last_name, profile_image_url)',
               )
               .eq('schedule_instance_id', classId)
               .eq('registration_status', 'registered');
-          bookings[classId] = List<Map<String, dynamic>>.from(regs);
+          final regList = List<Map<String, dynamic>>.from(regs);
+          for (final reg in regList) {
+            final userId = reg['user_id'] as String?;
+            final beneficiaryId = reg['beneficiary_profile_id'] as String?;
+            if (beneficiaryId != null && beneficiaryId != userId) {
+              childBeneficiaryIds.add(beneficiaryId);
+            }
+          }
+          bookings[classId] = regList;
         } catch (_) {
           bookings[classId] = [];
+        }
+      }
+
+      // Risolve il nome dei figli prenotati (beneficiary_profile_id diverso
+      // dall'adulto che ha effettuato la prenotazione).
+      final Map<String, String> childNames = {};
+      if (childBeneficiaryIds.isNotEmpty) {
+        try {
+          final children = await _client
+              .from('child_profiles')
+              .select('id, first_name, last_name')
+              .inFilter('id', childBeneficiaryIds.toList());
+          for (final child in children) {
+            final id = child['id'] as String?;
+            if (id == null) continue;
+            final first = (child['first_name'] ?? '').toString();
+            final last = (child['last_name'] ?? '').toString();
+            final combined = '$first $last'.trim();
+            if (combined.isNotEmpty) childNames[id] = combined;
+          }
+        } catch (_) {
+          // fallback: le prenotazioni dei figli mostreranno il nome del genitore.
         }
       }
 
@@ -153,6 +188,7 @@ class _InstructorClassBookingsWidgetState
         setState(() {
           _upcomingClasses = classesList;
           _bookingsByClass = bookings;
+          _childNames = childNames;
           if (classesList.isNotEmpty)
             _selectedClassId = classesList.first['id'] as String;
           _isLoading = false;
@@ -415,9 +451,16 @@ class _InstructorClassBookingsWidgetState
               ...bookings.asMap().entries.map((entry) {
                 final i = entry.key;
                 final booking = entry.value;
+                final userId = booking['user_id'] as String?;
+                final beneficiaryId =
+                    booking['beneficiary_profile_id'] as String?;
+                final childName = (beneficiaryId != null &&
+                        beneficiaryId != userId)
+                    ? _childNames[beneficiaryId]
+                    : null;
                 final profile =
                     booking['user_profiles'] as Map<String, dynamic>? ?? {};
-                final name = _getUserName(profile);
+                final name = childName ?? _getUserName(profile);
                 return Container(
                   margin: EdgeInsets.only(bottom: 1.h),
                   padding: EdgeInsets.symmetric(
