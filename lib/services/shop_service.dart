@@ -204,6 +204,46 @@ class ShopService {
     });
   }
 
+  /// La finestra di ordine condiviso aperta per questo sponsor (solo
+  /// sponsor_id e closes_at), o null se non ce n'è una — per il banner nel
+  /// Carrello Sponsor, prima ancora che l'utente abbia un proprio ordine.
+  /// Fallisce chiuso: se l'utente non ha ancora i permessi per leggere
+  /// `shop_group_windows` (finché la relativa migrazione non è applicata),
+  /// il banner resta semplicemente nascosto invece di far crashare la
+  /// schermata.
+  Future<Map<String, dynamic>?> getOpenWindowForSponsor(
+    String sponsorId,
+  ) async {
+    try {
+      final row = await _client
+          .from('shop_group_windows')
+          .select('sponsor_id, closes_at')
+          .eq('sponsor_id', sponsorId)
+          .eq('status', 'aperta')
+          .order('opened_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      return row;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Quante persone hanno finora un ordine nella finestra condivisa aperta
+  /// di questo sponsor. Passa dalla RPC (SECURITY DEFINER) perché un utente
+  /// normale può leggere solo i propri ordini in `shop_orders`.
+  Future<int> getOpenWindowParticipantCount(String sponsorId) async {
+    try {
+      final result = await _client.rpc(
+        'shop_open_window_participant_count',
+        params: {'p_sponsor_id': sponsorId},
+      );
+      return (result as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   /// closes_at, other_participants e shipping_share attuale per un ordine.
   /// Non espone mai i dati degli altri partecipanti, solo il loro numero.
   Future<Map<String, dynamic>?> getWindowInfo(String orderId) async {

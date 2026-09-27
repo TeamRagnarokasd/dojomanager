@@ -33,6 +33,8 @@ class _ShopCartScreenState extends State<ShopCartScreen> {
   Map<String, dynamic>? _draftOrder;
   List<Map<String, dynamic>> _orders = [];
   final Map<String, Map<String, dynamic>> _windowInfoByOrderId = {};
+  Map<String, dynamic>? _openWindow;
+  int _openWindowParticipants = 0;
 
   @override
   void initState() {
@@ -64,11 +66,18 @@ class _ShopCartScreenState extends State<ShopCartScreen> {
       }
     }
 
+    final openWindow = await _service.getOpenWindowForSponsor(widget.sponsorId);
+    final openWindowParticipants = openWindow == null
+        ? 0
+        : await _service.getOpenWindowParticipantCount(widget.sponsorId);
+
     if (!mounted) return;
     setState(() {
       _settings = settings;
       _draftOrder = draft;
       _orders = otherOrders;
+      _openWindow = openWindow;
+      _openWindowParticipants = openWindowParticipants;
       _isLoading = false;
     });
   }
@@ -229,6 +238,7 @@ class _ShopCartScreenState extends State<ShopCartScreen> {
               'prodotti e il totale, poi caricalo qui.',
             ),
             const SizedBox(height: 12),
+            _buildOpenWindowBanner(),
             ElevatedButton.icon(
               onPressed: _isUploading ? null : _pickAndReadCart,
               icon: _isUploading
@@ -305,6 +315,30 @@ class _ShopCartScreenState extends State<ShopCartScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildOpenWindowBanner() {
+    final window = _openWindow;
+    if (window == null) return const SizedBox.shrink();
+    final closesAtRaw = window['closes_at']?.toString();
+    final closesAtLabel =
+        closesAtRaw != null ? _formatDateTime(closesAtRaw) : '-';
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        "C'è un ordine condiviso aperto per questo sponsor: chiude il "
+        '$closesAtLabel. $_openWindowParticipants persone finora. Carica il '
+        "tuo screenshot e spunta 'ordine condiviso' per unirti e dividere "
+        'la spedizione.',
+        style: Theme.of(context).textTheme.bodySmall,
       ),
     );
   }

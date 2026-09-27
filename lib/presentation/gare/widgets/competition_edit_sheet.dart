@@ -27,6 +27,8 @@ class CompetitionEditSheet extends StatefulWidget {
 }
 
 class _CompetitionEditSheetState extends State<CompetitionEditSheet> {
+  bool get _isCreating => widget.competition['id'] == null;
+
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _cityController = TextEditingController();
@@ -106,7 +108,7 @@ class _CompetitionEditSheetState extends State<CompetitionEditSheet> {
               child: Row(
                 children: [
                   Text(
-                    'Modifica gara',
+                    _isCreating ? 'Nuova gara' : 'Modifica gara',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
@@ -235,34 +237,36 @@ class _CompetitionEditSheetState extends State<CompetitionEditSheet> {
                       ),
                       SizedBox(height: 3.h),
                       _buildPosterSection(),
-                      SizedBox(height: 3.h),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: (_isSaving || _isDeleting)
-                              ? null
-                              : _confirmDelete,
-                          icon: _isDeleting
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                      if (!_isCreating) ...[
+                        SizedBox(height: 3.h),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: (_isSaving || _isDeleting)
+                                ? null
+                                : _confirmDelete,
+                            icon: _isDeleting
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.red,
                                   ),
-                                )
-                              : const Icon(
-                                  Icons.delete_outline,
-                                  color: Colors.red,
-                                ),
-                          label: const Text(
-                            'Elimina gara',
-                            style: TextStyle(color: Colors.red),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Colors.red),
+                            label: const Text(
+                              'Elimina gara',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Colors.red),
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                       SizedBox(height: 2.h),
                     ],
                   ),
@@ -484,10 +488,14 @@ class _CompetitionEditSheetState extends State<CompetitionEditSheet> {
         'poster_focus_y': _posterFocusY,
       };
 
-      await CompetitionsService.instance.updateCompetition(
-        widget.competition['id'].toString(),
-        data,
-      );
+      if (_isCreating) {
+        await CompetitionsService.instance.createCompetition(data);
+      } else {
+        await CompetitionsService.instance.updateCompetition(
+          widget.competition['id'].toString(),
+          data,
+        );
+      }
 
       HapticFeedback.lightImpact();
       widget.onSaved();

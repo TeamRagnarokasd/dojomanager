@@ -324,6 +324,21 @@ class CompetitionsService {
     }
   }
 
+  /// Crea una nuova gara con un insert vero, con gli stessi default già
+  /// usati altrove nel progetto per la locandina quando non specificati.
+  Future<void> createCompetition(Map<String, dynamic> data) async {
+    try {
+      final payload = <String, dynamic>{
+        'poster_display_mode': 'riempi',
+        'poster_focus_y': 0.5,
+        ...data,
+      };
+      await _client.from('competitions').insert(payload);
+    } on PostgrestException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+
   /// Elimina definitivamente una gara.
   Future<void> deleteCompetition(String id) async {
     try {
