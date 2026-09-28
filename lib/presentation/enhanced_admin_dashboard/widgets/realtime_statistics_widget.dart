@@ -47,82 +47,13 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
         month: now.month,
       );
 
-      // MEMBRI REGISTRATI: ALL users in user_profiles (all roles: student, instructor, staff, etc.) + active child profiles
-      final registeredResponse =
-          await client.from('user_profiles').select('id').neq(
-                'role',
-                'principal_admin',
-              ); // exclude only the main admin account
-      final adultUserIds = (registeredResponse as List)
-          .map((row) => row['id'] as String)
-          .toSet();
-      final adultUsersCount = adultUserIds.length;
-
-      // Count active child profiles
-      final childProfilesResponse = await client
-          .from('child_profiles')
-          .select('id, guardian_id, tax_code, codice_fiscale')
-          .eq('is_active', true);
-      final childProfiles = childProfilesResponse as List;
-      final childProfilesCount = childProfiles.length;
-
-      // Un genitore/tutore che ha creato l'account solo per gestire i figli
-      // (mai iscritto lui stesso) non deve contare tra i "Membri
-      // Registrati": è guardian_id di almeno un figlio attivo e non ha mai
-      // una riga propria (come beneficiario) in class_registrations né un
-      // pagamento adulto confermato in payment_confirmations. Calcolato con
-      // query dirette (non con una RPC per utente).
-      final guardianIds = childProfiles
-          .map((row) => row['guardian_id'] as String?)
-          .whereType<String>()
-          .toSet();
-
-      var guardianOnlyCount = 0;
-      if (guardianIds.isNotEmpty) {
-        final guardianIdsCsv = guardianIds.join(',');
-        final selfEnrolledGuardianIds = <String>{};
-
-        final ownRegistrations = await client
-            .from('class_registrations')
-            .select('user_id, beneficiary_profile_id')
-            .or(
-              'user_id.in.($guardianIdsCsv),'
-              'beneficiary_profile_id.in.($guardianIdsCsv)',
-            );
-        for (final row in (ownRegistrations as List)) {
-          final beneficiary = (row['beneficiary_profile_id'] as String?) ??
-              row['user_id'] as String?;
-          if (beneficiary != null && guardianIds.contains(beneficiary)) {
-            selfEnrolledGuardianIds.add(beneficiary);
-          }
-        }
-
-        final ownAdultPayments = await client
-            .from('payment_confirmations')
-            .select('user_id, beneficiary_profile_id, beneficiary_type, status')
-            .or(
-              'user_id.in.($guardianIdsCsv),'
-              'beneficiary_profile_id.in.($guardianIdsCsv)',
-            );
-        for (final row in (ownAdultPayments as List)) {
-          if (row['beneficiary_type'] != 'adult') continue;
-          if (row['status'] != 'confirmed') continue;
-          final beneficiary = (row['beneficiary_profile_id'] as String?) ??
-              row['user_id'] as String?;
-          if (beneficiary != null && guardianIds.contains(beneficiary)) {
-            selfEnrolledGuardianIds.add(beneficiary);
-          }
-        }
-
-        guardianOnlyCount = guardianIds
-            .where((id) =>
-                adultUserIds.contains(id) &&
-                !selfEnrolledGuardianIds.contains(id))
-            .length;
-      }
-
-      final registeredMembersCount =
-          adultUsersCount - guardianOnlyCount + childProfilesCount;
+      // MEMBRI REGISTRATI: dalla RPC admin_registered_members_count()
+      // (regola unica lato database: adulti esclusi i principal_admin, meno
+      // i genitori-solo-tutore mai iscritti loro stessi, più i figli
+      // attivi).
+      final registeredMembersResult =
+          await client.rpc('admin_registered_members_count');
+      final registeredMembersCount = (registeredMembersResult as num).toInt();
 
       // MEMBRI ISCRITTI / ABBONATI: da pagamenti confermati
       // (payment_confirmations), non dalle ricevute — quando un genitore

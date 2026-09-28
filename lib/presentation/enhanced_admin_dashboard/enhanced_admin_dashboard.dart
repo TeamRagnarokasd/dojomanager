@@ -130,24 +130,20 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
 
       print('🔄 Starting dashboard statistics load...');
 
-      // --- Registered members: count ALL users in user_profiles (all roles: student, instructor, staff, etc.) ---
-      final registeredResponse = await client
-          .from('user_profiles')
-          .select('id')
-          .neq(
-            'role',
-            'principal_admin',
-          ); // exclude only the main admin account
-      final adultUsersCount = (registeredResponse as List).length;
-
-      // Also count active child profiles
-      final childProfilesResponse = await client
-          .from('child_profiles')
-          .select('id')
-          .eq('is_active', true);
-      final childProfilesCount = (childProfilesResponse as List).length;
-
-      final registeredMembersCount = adultUsersCount + childProfilesCount;
+      // --- Registered members: dalla RPC admin_registered_members_count()
+      // (regola unica lato database: adulti esclusi i principal_admin, meno
+      // i genitori-solo-tutore mai iscritti loro stessi, più i figli
+      // attivi). Se la chiamata fallisce, teniamo il valore precedente
+      // invece di ricalcolarlo con una formula diversa.
+      int registeredMembersCount =
+          (_dashboardStats['registeredMembers'] as int?) ?? 0;
+      try {
+        final registeredMembersResult =
+            await client.rpc('admin_registered_members_count');
+        registeredMembersCount = (registeredMembersResult as num).toInt();
+      } catch (e) {
+        print('⚠️ admin_registered_members_count RPC error: $e');
+      }
 
       // --- Subscribed members (Iscrizione Annuale): unique users with active annual subscription ---
       // from the most recent August 28th onwards
