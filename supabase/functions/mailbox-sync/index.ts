@@ -556,6 +556,14 @@ interface InvoiceExtraction {
   amount: number | null;
   due_date: string | null;
   description: string | null;
+  /**
+   * True se il documento è davvero una fattura/bolletta/avviso di pagamento
+   * con un importo dovuto (quindi va creata una riga in mailbox_invoices).
+   * Di default true quando Claude non è stato consultato o non ha risposto
+   * in modo utilizzabile: meglio una fattura vera creata per errore in più
+   * (l'admin la ignora) che perderne una a causa di un errore tecnico.
+   */
+  is_invoice: boolean;
 }
 
 function extractJsonObject(text: string): Record<string, unknown> {
@@ -571,9 +579,10 @@ function extractJsonObject(text: string): Record<string, unknown> {
   return JSON.parse(cleaned.slice(start, end + 1));
 }
 
-const INVOICE_PROMPT = `Questo è il PDF di una fattura o bolletta ricevuta via email dalla palestra. Leggi il documento ed estrai SOLO i dati richiesti.
+const INVOICE_PROMPT = `Questo è un PDF allegato a un'email ricevuta dalla palestra. Potrebbe essere una fattura/bolletta/avviso di pagamento, oppure materiale commerciale, informativo, una guida o una newsletter che non richiede alcun pagamento. Leggilo ed estrai SOLO i dati richiesti.
 
 Rispondi SOLO con un oggetto JSON valido (nessun testo prima o dopo, nessun blocco markdown), con questi campi esatti:
+- "is_invoice": true SOLO se il documento è davvero una fattura, una bolletta o un avviso di pagamento con un importo dovuto e (di solito) una scadenza; false se è materiale commerciale, informativo, una guida, una newsletter o qualunque altro PDF che non richiede un pagamento
 - "amount": l'importo totale da pagare, come numero (es. 123.45), o null se non riesci a leggerlo con sufficiente certezza
 - "due_date": la data di scadenza del pagamento in formato YYYY-MM-DD, o null se non è indicata o non è leggibile con certezza
 - "description": una breve descrizione di cosa riguarda (es. "Bolletta luce - Enel", "Fattura commercialista"), max 100 caratteri, o null se non riesci a determinarla
@@ -616,7 +625,7 @@ async function readInvoiceWithClaude(
 
   if (!response.ok) {
     console.error("mailbox-sync: Anthropic API error:", await response.text());
-    return { amount: null, due_date: null, description: null };
+    return { amount: null, due_date: null, description: null, is_invoice: true };
   }
 
   const data = await response.json();
@@ -624,7 +633,7 @@ async function readInvoiceWithClaude(
     (block: { type: string }) => block.type === "text",
   );
   if (!textBlock?.text) {
-    return { amount: null, due_date: null, description: null };
+    return { amount: null, due_date: null, description: null, is_invoice: true };
   }
 
   try {
@@ -636,10 +645,15 @@ async function readInvoiceWithClaude(
         : null;
     const description =
       typeof parsed.description === "string" ? parsed.description.slice(0, 100) : null;
-    return { amount, due_date: dueDate, description };
+    // Se Claude non ha risposto con un booleano chiaro, meglio assumere che
+    // sia una fattura vera (is_invoice: true) piuttosto che rischiare di
+    // scartarne una per una risposta malformata.
+    const isInvoice =
+      typeof parsed.is_invoice === "boolean" ? parsed.is_invoice : true;
+    return { amount, due_date: dueDate, description, is_invoice: isInvoice };
   } catch (error) {
     console.error("mailbox-sync: could not parse Claude invoice response:", error);
-    return { amount: null, due_date: null, description: null };
+    return { amount: null, due_date: null, description: null, is_invoice: true };
   }
 }
 
@@ -771,10 +785,15 @@ serve(async (req) => {
             if (uploadError) {
               console.error(`mailbox-sync: upload PDF fallito per UID ${uid}:`, uploadError);
             } else {
+              // is_invoice di default true: se Claude non viene consultato
+              // (nessuna API key) o fallisce, meglio creare comunque la riga
+              // (l'admin la ignora a mano se non era una fattura vera) che
+              // perderne una per un errore tecnico.
               let extraction: InvoiceExtraction = {
                 amount: null,
                 due_date: null,
                 description: null,
+                is_invoice: true,
               };
               if (ANTHROPIC_API_KEY) {
                 try {
@@ -793,23 +812,29 @@ serve(async (req) => {
                 console.error("mailbox-sync: ANTHROPIC_API_KEY assente, fattura salvata senza lettura automatica.");
               }
 
-              const { error: invoiceInsertError } = await adminClient
-                .from("mailbox_invoices")
-                .insert({
-                  mailbox_message_id: insertedMessage.id,
-                  sender: envelope.fromAddress,
-                  subject: envelope.subject,
-                  amount: extraction.amount,
-                  due_date: extraction.due_date,
-                  description: extraction.description,
-                  pdf_path: pdfPath,
-                  status: "da_confermare",
-                });
-              if (invoiceInsertError) {
-                console.error(
-                  `mailbox-sync: impossibile creare la fattura per UID ${uid}:`,
-                  invoiceInsertError,
+              if (!extraction.is_invoice) {
+                console.log(
+                  `mailbox-sync: allegato PDF dell'UID ${uid} non è una fattura (letto da Claude), nessuna riga creata.`,
                 );
+              } else {
+                const { error: invoiceInsertError } = await adminClient
+                  .from("mailbox_invoices")
+                  .insert({
+                    mailbox_message_id: insertedMessage.id,
+                    sender: envelope.fromAddress,
+                    subject: envelope.subject,
+                    amount: extraction.amount,
+                    due_date: extraction.due_date,
+                    description: extraction.description,
+                    pdf_path: pdfPath,
+                    status: "da_confermare",
+                  });
+                if (invoiceInsertError) {
+                  console.error(
+                    `mailbox-sync: impossibile creare la fattura per UID ${uid}:`,
+                    invoiceInsertError,
+                  );
+                }
               }
             }
           } catch (error) {

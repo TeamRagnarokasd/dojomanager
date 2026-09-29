@@ -173,6 +173,16 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
             children: [
               Row(
                 children: [
+                  if (!isRead)
+                    Container(
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
                   Expanded(
                     child: Text(
                       from,
@@ -357,6 +367,19 @@ class _InvoiceCardState extends State<_InvoiceCard> {
     }
   }
 
+  Future<void> _ignore() async {
+    if (_isSubmitting) return;
+    setState(() => _isSubmitting = true);
+    try {
+      await _service.ignoreInvoice(widget.invoice['id'] as String);
+      widget.onChanged();
+    } catch (e) {
+      widget.onError(e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
   Future<void> _markPaid() async {
     if (_isSubmitting) return;
     setState(() => _isSubmitting = true);
@@ -459,18 +482,29 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                 ),
               ),
               const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _confirm,
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Conferma'),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: _isSubmitting ? null : _ignore,
+                      child: const Text('Ignora'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton(
+                      onPressed: _isSubmitting ? null : _confirm,
+                      child: _isSubmitting
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Conferma'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ],
