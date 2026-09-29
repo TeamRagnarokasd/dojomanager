@@ -8,6 +8,7 @@ import '../../../services/admin_section_visibility_service.dart';
 import '../../../services/asd_deadlines_service.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/competitions_service.dart';
+import '../../../services/mailbox_service.dart';
 import '../../../services/notification_service.dart';
 import '../../administration_asd/administration_asd_screen.dart';
 
@@ -33,6 +34,11 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
   /// the next 30 days (same check used for the Home "Gare" tile).
   bool _hasUpcomingCompetition = false;
 
+  /// "Email Palestra" — visibile solo per admin/principal_admin (non
+  /// instructor_admin), con badge dal numero di email non lette.
+  bool _showEmailPalestraCard = false;
+  int _emailPalestraUnreadCount = 0;
+
   @override
   void initState() {
     super.initState();
@@ -40,6 +46,22 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
     _checkAdministrationAsdVisibility();
     _loadAsdDeadlinesBadgeAndNotify();
     _loadUpcomingCompetitionBadge();
+    _loadEmailPalestraCard();
+  }
+
+  Future<void> _loadEmailPalestraCard() async {
+    final visible = await MailboxService.instance.isVisibleForCurrentUser();
+    if (!visible) {
+      if (mounted) setState(() => _showEmailPalestraCard = false);
+      return;
+    }
+    final unreadCount = await MailboxService.instance.getUnreadCount();
+    if (mounted) {
+      setState(() {
+        _showEmailPalestraCard = true;
+        _emailPalestraUnreadCount = unreadCount;
+      });
+    }
   }
 
   Future<void> _loadUpcomingCompetitionBadge() async {
@@ -61,6 +83,7 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _loadAsdDeadlinesBadgeAndNotify();
+      _loadEmailPalestraCard();
     }
   }
 
@@ -245,6 +268,24 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
           'category': 'admin',
           'notificationCount':
               (_asdDeadlinesBadgeCount ?? 0) > 0 ? _asdDeadlinesBadgeCount : null,
+        },
+      // NEW: Email Palestra — riepilogo della casella email condivisa e
+      // lettura automatica delle fatture allegate. Visibile solo per
+      // admin/principal_admin (vedi _loadEmailPalestraCard).
+      if (_showEmailPalestraCard)
+        {
+          'title': 'Email Palestra',
+          'subtitle': 'Casella condivisa e fatture da pagare',
+          'icon': Icons.email_outlined,
+          'color': Colors.cyan,
+          'route': AppRoutes.emailPalestra,
+          'description':
+              'Riepilogo delle email della palestra e fatture lette automaticamente dagli allegati',
+          'status': 'Riservato',
+          'badgeColor': Colors.cyan,
+          'category': 'admin',
+          'notificationCount':
+              _emailPalestraUnreadCount > 0 ? _emailPalestraUnreadCount : null,
         },
     ];
 
