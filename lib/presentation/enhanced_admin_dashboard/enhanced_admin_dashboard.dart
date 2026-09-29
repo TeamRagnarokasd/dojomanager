@@ -258,6 +258,7 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
         final receiptsResponse = await SupabaseService.instance.client
             .from('non_fiscal_receipts')
             .select('amount')
+            .eq('deleted_by_user', false)
             .gte('issue_date', startOfMonthStr)
             .lt('issue_date', startOfNextMonthStr);
 

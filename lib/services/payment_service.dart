@@ -183,6 +183,7 @@ class PaymentService {
               .from('non_fiscal_receipts')
               .select('*')
               .or('created_by.eq.$currentUserId')
+              .eq('deleted_by_user', false)
               .order('issue_date', ascending: false);
           receipts = List<Map<String, dynamic>>.from(fallback as List);
           print(
