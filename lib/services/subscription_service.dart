@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/registration_data_manager.dart';
 import '../services/child_profile_service.dart';
+import '../services/payment_block_error.dart';
 
 class SubscriptionService {
   static final _supabase = Supabase.instance.client;
@@ -913,6 +914,19 @@ class SubscriptionService {
               },
             );
           } catch (rpcError) {
+            // Un vero blocco di validazione (dati del tutore mancanti,
+            // iscrizione annuale non fatta, o il nuovo anti-doppione SumUp
+            // self-service) NON va reinterpretato come "riprova con un
+            // insert diretto": l'insert diretto passerebbe dagli stessi
+            // trigger e fallirebbe identico, oppure — peggio — rischierebbe
+            // di creare comunque una riga duplicata se l'errore era in realtà
+            // un problema di rete dopo un insert lato server già riuscito.
+            // In questi casi il chiamante deve vedere l'errore reale così
+            // com'è, non un tentativo alla cieca.
+            if (PaymentBlockError.fromError(rpcError) != null ||
+                isDuplicateSumupConfirmationError(rpcError)) {
+              rethrow;
+            }
             print(
               '⚠️ RPC create_payment_confirmation failed, falling back to direct insert: $rpcError',
             );

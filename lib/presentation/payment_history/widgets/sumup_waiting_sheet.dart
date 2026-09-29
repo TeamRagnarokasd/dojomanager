@@ -215,7 +215,7 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
     _pollTimer?.cancel();
     _phaseTimer?.cancel();
     _absoluteTimer?.cancel();
-    await PaidIntentsService.instance.processPaidIntents();
+    final results = await PaidIntentsService.instance.processPaidIntents();
     if (!mounted) return;
 
     final blockedBy = PaidIntentsService.instance.lastBlockingError;
@@ -231,6 +231,20 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
       if (goToProfile && mounted) {
         Navigator.of(context).pushNamed(AppRoutes.userProfile);
       }
+      return;
+    }
+
+    if (results.isEmpty) {
+      // Nessun blocco riconosciuto, ma l'attivazione non ha davvero
+      // prodotto nulla (es. un errore di rete transitorio durante la
+      // conferma): NON mostrare il toast di successo — sarebbe falso, e in
+      // passato è proprio questo a nascondere un retry silenzioso che può
+      // creare una conferma duplicata (vedi PaidIntentsService). Si
+      // continua semplicemente a controllare: l'intento resta 'matched' sul
+      // database e verrà ripreso al prossimo giro, senza chiudere il foglio.
+      _isClosing = false;
+      _pollTimer = Timer.periodic(_backgroundPollInterval, (_) => _checkOnce());
+      _absoluteTimer = Timer(_absoluteTimeout, _onAbsoluteTimeout);
       return;
     }
 
