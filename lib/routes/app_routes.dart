@@ -42,6 +42,7 @@ import '../presentation/shop_cart/shop_cart_screen.dart';
 import '../presentation/admin_ask_claude/admin_ask_claude_screen.dart';
 import '../presentation/gare/gare_screen.dart';
 import '../presentation/admin_sponsor_management/shop_admin_orders_screen.dart';
+import '../presentation/email_palestra/email_palestra_screen.dart';
 
 class AppRoutes {
   // Global RouteObserver — add to MaterialApp.navigatorObservers
@@ -99,6 +100,7 @@ class AppRoutes {
   static const String shopAdminOrders = '/shop-admin-orders';
   static const String adminAskClaude = '/admin-ask-claude';
   static const String gare = '/gare';
+  static const String emailPalestra = '/email-palestra';
 
   static Map<String, WidgetBuilder> get routes {
     return {
@@ -167,6 +169,7 @@ class AppRoutes {
       shopAdminOrders: (context) => const ShopAdminOrdersScreen(),
       adminAskClaude: (context) => const AdminAskClaudeScreen(),
       gare: (context) => const GareScreen(),
+      emailPalestra: (context) => const EmailPalestraScreen(),
     };
   }
 }
