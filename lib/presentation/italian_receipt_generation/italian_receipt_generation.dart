@@ -69,6 +69,10 @@ class _ItalianReceiptGenerationScreenState
   }
 
   Future<void> _createReceipt(Map<String, dynamic> receiptData) async {
+    // Guardia anti-doppio-tocco: un secondo tocco mentre la richiesta è già
+    // in corso non deve avviare una seconda creazione di ricevuta/attivazione
+    // di abbonamento.
+    if (_isLoading) return;
     setState(() => _isLoading = true);
     try {
       final currentUser = _authService.currentUser;
