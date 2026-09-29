@@ -38,37 +38,16 @@ class MailboxService {
     }
   }
 
-  /// Le email più recenti prima.
+  /// Le email più recenti prima. Ogni riga include già `is_unread`, lo
+  /// stato letto/non letto reale della casella (flag IMAP \Seen,
+  /// sincronizzato dalla edge function) — nessuna chiamata separata serve
+  /// per saperlo.
   Future<List<Map<String, dynamic>>> getMessages() async {
     final rows = await _client
         .from('mailbox_messages')
         .select()
         .order('received_at', ascending: false);
     return (rows as List).cast<Map<String, dynamic>>();
-  }
-
-  /// Gli id dei messaggi già letti dall'admin corrente (per mostrare lo
-  /// stato "letta/non letta" nell'elenco).
-  Future<Set<String>> getReadMessageIds() async {
-    final userId = _client.auth.currentUser?.id;
-    if (userId == null) return {};
-    try {
-      final rows = await _client
-          .from('mailbox_message_reads')
-          .select('message_id')
-          .eq('user_id', userId);
-      return (rows as List).map((row) => row['message_id'] as String).toSet();
-    } catch (_) {
-      return {};
-    }
-  }
-
-  Future<void> markRead(String messageId) async {
-    try {
-      await _client.rpc('mailbox_mark_read', params: {'p_message_id': messageId});
-    } on PostgrestException catch (e) {
-      throw Exception(e.message);
-    }
   }
 
   /// Le fatture non ancora pagate (da confermare o già confermate, in
