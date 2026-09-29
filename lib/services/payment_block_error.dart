@@ -18,6 +18,15 @@ class PaymentBlockError {
   static const String annualFirstMessage =
       'Devi prima completare l\'iscrizione annuale prima di poter attivare altri piani.';
 
+  /// Testo esatto del blocco anti-doppione lato database per i pagamenti
+  /// SumUp self-service — vedi la migrazione
+  /// fix_doppio_pagamento_sumup_studente. Non è trattato come gli altri due:
+  /// non significa "pagamento bloccato", ma "pagamento già confermato pochi
+  /// minuti fa per lo stesso acquisto" — va mostrato come successo, non come
+  /// errore (vedi isDuplicateSumupConfirmationError).
+  static const String duplicateSumupConfirmationMessage =
+      'Pagamento già confermato pochi minuti fa per lo stesso acquisto: probabile doppio tentativo, nessuna nuova conferma creata.';
+
   /// Ritorna null se [error] non corrisponde a nessuno dei due controlli
   /// (errore generico, da mostrare come oggi).
   static PaymentBlockError? fromError(Object error) {
@@ -68,4 +77,16 @@ class PaymentBlockError {
     );
     return goToProfile ?? false;
   }
+}
+
+/// True se [error] è il blocco anti-doppione del database per un pagamento
+/// SumUp self-service già confermato pochi minuti fa (vedi
+/// [PaymentBlockError.duplicateSumupConfirmationMessage]) — un caso a parte
+/// perché, a differenza degli altri due controlli, non va mostrato come un
+/// pagamento respinto: il pagamento è già andato a buon fine, semplicemente
+/// il tentativo corrente era un duplicato inutile.
+bool isDuplicateSumupConfirmationError(Object error) {
+  return error.toString().contains(
+        PaymentBlockError.duplicateSumupConfirmationMessage,
+      );
 }

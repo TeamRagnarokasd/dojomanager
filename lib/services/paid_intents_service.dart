@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'feature_flags_service.dart';
-import 'payment_block_error.dart';
+import 'payment_block_error.dart' show PaymentBlockError, isDuplicateSumupConfirmationError;
 import 'subscription_service.dart';
 
 /// Result of one subscription activation performed by [PaidIntentsService].
@@ -218,6 +218,37 @@ class PaidIntentsService {
     final paidAt = paidAtRaw != null ? DateTime.tryParse(paidAtRaw) : null;
     final customPlanId = claim['custom_plan_id'] as String? ??
         intent['custom_plan_id'] as String?;
+    final effectivePaymentMethod = intent['provider'] as String? ?? provider;
+    final effectiveBeneficiaryId =
+        beneficiaryProfileId ?? _supabase.auth.currentUser?.id;
+
+    // 🔒 Controllo anti-doppione PRIMA di creare una nuova conferma: se un
+    // tentativo precedente per questo stesso intento è già andato a buon
+    // fine lato database ma questo dispositivo non l'ha mai saputo (es. la
+    // risposta di rete si è persa dopo un insert già riuscito, o un passo
+    // successivo — come la ricevuta — è fallito facendo rilasciare
+    // l'intento per un retry), non ricreare da zero un'altra riga
+    // payment_confirmations: basta agganciare quella già esistente.
+    final existingConfirmation = await _findRecentConfirmedDuplicate(
+      paymentMethod: effectivePaymentMethod,
+      amount: claimAmount,
+      beneficiaryId: effectiveBeneficiaryId,
+      customPlanId: customPlanId,
+    );
+    if (existingConfirmation != null) {
+      debugPrint(
+        '⚠️ PaidIntentsService: intent $intentId ha già una conferma recente '
+        '(${existingConfirmation['id']}) — aggancio quella invece di crearne '
+        'una nuova.',
+      );
+      return _attachExistingConfirmation(
+        intentId: intentId,
+        confirmationRow: existingConfirmation,
+        planName: planName,
+        customPlanId: customPlanId,
+        paidAt: paidAt,
+      );
+    }
 
     // No wait here: claim_paid_intent has already claimed this intent, so
     // createBatchPaymentAndReceipts must run immediately (see above).
@@ -227,7 +258,7 @@ class PaidIntentsService {
         items: [
           {'name': planName, 'price': claimAmount},
         ],
-        paymentMethod: intent['provider'] as String? ?? provider,
+        paymentMethod: effectivePaymentMethod,
         amount: claimAmount,
         description: planName,
         discipline: null,
@@ -239,6 +270,28 @@ class PaidIntentsService {
         _lastActivationAt = DateTime.now();
       }
     } catch (e) {
+      // La rete di sicurezza del database (vedi migrazione
+      // fix_doppio_pagamento_sumup_studente) ha bloccato questo tentativo
+      // perché una conferma per lo stesso acquisto esiste già: non è un
+      // fallimento da segnalare come errore, è un doppio tentativo che va
+      // semplicemente agganciato alla conferma vera già creata.
+      if (isDuplicateSumupConfirmationError(e)) {
+        final duplicate = await _findRecentConfirmedDuplicate(
+          paymentMethod: effectivePaymentMethod,
+          amount: claimAmount,
+          beneficiaryId: effectiveBeneficiaryId,
+          customPlanId: customPlanId,
+        );
+        if (duplicate != null) {
+          return _attachExistingConfirmation(
+            intentId: intentId,
+            confirmationRow: duplicate,
+            planName: planName,
+            customPlanId: customPlanId,
+            paidAt: paidAt,
+          );
+        }
+      }
       debugPrint(
         '⚠️ PaidIntentsService: createBatchPaymentAndReceipts failed for '
         '$intentId: $e',
@@ -278,6 +331,92 @@ class PaidIntentsService {
       );
       // The subscription is already active at this point; failing to attach
       // the confirmation id is a bookkeeping issue only, not a user-facing one.
+    }
+
+    final stillValid = await _isPlanStillValid(
+      planName: planName,
+      customPlanId: customPlanId,
+      paidAt: paidAt,
+    );
+
+    return PaidIntentActivationResult(planName: planName, stillValid: stillValid);
+  }
+
+  /// Cerca una riga payment_confirmations già 'confirmed' per lo stesso
+  /// beneficiario, importo e piano, creata negli ultimi 5 minuti — usata sia
+  /// come controllo preventivo prima di creare una nuova conferma, sia per
+  /// recuperare senza errori quando la rete di sicurezza del database (vedi
+  /// migrazione fix_doppio_pagamento_sumup_studente) blocca un tentativo
+  /// perché ne esiste già una. La finestra (5 minuti) è volutamente più
+  /// larga dei 3 minuti del trigger, per coprire anche il caso in cui questo
+  /// controllo lato app sia l'unico a intercettare il doppione (retry più
+  /// lento, es. al resume dell'app). Fallisce aperto: un errore qui non deve
+  /// bloccare un pagamento genuino, semplicemente si procede come prima.
+  Future<Map<String, dynamic>?> _findRecentConfirmedDuplicate({
+    required String paymentMethod,
+    required double amount,
+    required String? beneficiaryId,
+    required String? customPlanId,
+  }) async {
+    if (beneficiaryId == null) return null;
+    try {
+      final sinceIso = DateTime.now()
+          .toUtc()
+          .subtract(const Duration(minutes: 5))
+          .toIso8601String();
+      final beneficiaryFilter = 'beneficiary_profile_id.eq.$beneficiaryId,'
+          'and(beneficiary_profile_id.is.null,user_id.eq.$beneficiaryId)';
+      final baseQuery = _supabase
+          .from('payment_confirmations')
+          .select('id, batch_transaction_id')
+          .eq('payment_method', paymentMethod)
+          .eq('status', 'confirmed')
+          .eq('amount', amount)
+          .gte('created_at', sinceIso)
+          .or(beneficiaryFilter);
+      final rows = await (customPlanId != null
+              ? baseQuery.eq('custom_plan_id', customPlanId)
+              : baseQuery)
+          .order('created_at', ascending: false)
+          .limit(1);
+      final list = rows as List;
+      if (list.isEmpty) return null;
+      return Map<String, dynamic>.from(list.first as Map);
+    } catch (e) {
+      debugPrint('⚠️ PaidIntentsService: duplicate check failed: $e');
+      return null;
+    }
+  }
+
+  /// Aggancia l'intento a una conferma già esistente invece di crearne una
+  /// nuova (vedi _findRecentConfirmedDuplicate) e ritorna lo stesso tipo di
+  /// risultato di un'attivazione normale, così il chiamante mostra il
+  /// consueto messaggio di successo invece di un errore.
+  Future<PaidIntentActivationResult?> _attachExistingConfirmation({
+    required String intentId,
+    required Map<String, dynamic> confirmationRow,
+    required String planName,
+    required String? customPlanId,
+    required DateTime? paidAt,
+  }) async {
+    try {
+      await _supabase.rpc(
+        'attach_intent_confirmation',
+        params: {
+          'p_intent_id': intentId,
+          'p_confirmation_id': confirmationRow['id'] as String? ??
+              confirmationRow['batch_transaction_id'] as String? ??
+              '',
+        },
+      );
+    } catch (e) {
+      debugPrint(
+        '⚠️ PaidIntentsService: attach_intent_confirmation (doppione) '
+        'failed for $intentId: $e',
+      );
+      // La conferma esiste già ed è quella corretta: non agganciarla al
+      // record dell'intento è solo un problema di bookkeeping, non deve
+      // impedire di mostrare il successo all'allievo.
     }
 
     final stillValid = await _isPlanStillValid(
