@@ -17827,7 +17827,7 @@ k=A.B(c3)
 A.Y("RPC get_receipts_for_user failed: "+A.h(k))
 p=13
 s=16
-return A.d($.rL().J("non_fiscal_receipts").a7(0,"*").kz("created_by.eq."+n).cs(0,"issue_date",!1),$async$ajZ)
+return A.d($.rL().J("non_fiscal_receipts").a7(0,"*").kz("created_by.eq."+n).W("deleted_by_user",!1).cs(0,"issue_date",!1),$async$ajZ)
 case 16:j=c8
 m=A.ca(j,!0,t.P)
 A.Y("DEBUG getPaymentTransactions: found "+J.aF(m)+" receipts via fallback")
@@ -95930,7 +95930,7 @@ q=35
 if($.aV==null)$.aV=new A.cf()
 c2=$.aJ().b
 c2===$&&A.b()
-c2=c2.J("non_fiscal_receipts").a7(0,"amount")
+c2=c2.J("non_fiscal_receipts").a7(0,"amount").W("deleted_by_user",!1)
 c2=A.ds(c2.dE(c2.dF("issue_date","gte."+A.h(b0))),c2.$ti.c)
 s=38
 return A.d(A.ds(c2.dE(c2.dF("issue_date","lt."+A.h(b3))),c2.$ti.c),$async$lQ)
@@ -125931,7 +125931,7 @@ r9(){var s=0,r=A.n(t.E),q,p=2,o=[],n=this,m,l,k,j,i,h,g,f,e,d,c,b
 var $async$r9=A.j(function(a,a0){if(a===1){o.push(a0)
 s=p}for(;;)switch(s){case 0:p=4
 s=7
-return A.d(n.a.J("non_fiscal_receipts").a7(0,"*, user_profiles(id, full_name, email)").cs(0,"created_at",!1),$async$r9)
+return A.d(n.a.J("non_fiscal_receipts").a7(0,"*, user_profiles(id, full_name, email)").W("deleted_by_user",!1).cs(0,"created_at",!1),$async$r9)
 case 7:m=a0
 s=8
 return A.d(n.jE(),$async$r9)
@@ -126243,7 +126243,7 @@ var $async$RQ=A.j(function(b4,b5){if(b4===1){o.push(b5)
 s=p}for(;;)switch(s){case 0:p=4
 m=A.bm(b3,b2,1,0,0,0,0)
 l=A.bm(b3,b2+1,0,0,0,0,0)
-a1=n.a.J("non_fiscal_receipts").a7(0,"*")
+a1=n.a.J("non_fiscal_receipts").a7(0,"*").W("deleted_by_user",!1)
 a1=A.ds(a1.dE(a1.dF("created_at","gte."+m.bM())),a1.$ti.c)
 s=7
 return A.d(A.ds(a1.dE(a1.dF("created_at","lt."+l.bM())),a1.$ti.c).cs(0,"created_at",!1),$async$RQ)
@@ -127531,7 +127531,7 @@ aHw(a){var s=0,r=A.n(t.RK),q,p=2,o=[],n=this,m,l,k,j,i
 var $async$Sj=A.j(function(b,c){if(b===1){o.push(c)
 s=p}for(;;)switch(s){case 0:p=4
 s=7
-return A.d(n.a.J("non_fiscal_receipts").fe(0).W("created_by",a).cs(0,"created_at",!1),$async$Sj)
+return A.d(n.a.J("non_fiscal_receipts").fe(0).W("created_by",a).W("deleted_by_user",!1).cs(0,"created_at",!1),$async$Sj)
 case 7:m=c
 k=J.bX(m,new A.b77(),t._d)
 k=A.N(k,k.$ti.j("au.E"))
@@ -127601,7 +127601,7 @@ aG9(){var s=0,r=A.n(t.RK),q,p=2,o=[],n=this,m,l,k,j,i,h,g,f
 var $async$r9=A.j(function(a,b){if(a===1){o.push(b)
 s=p}for(;;)switch(s){case 0:g=null
 p=4
-m=n.a.J("non_fiscal_receipts").fe(0)
+m=n.a.J("non_fiscal_receipts").fe(0).W("deleted_by_user",!1)
 if(g!=null){i=B.e.I(g)
 i=i.gcS(i)}else i=!1
 if(i){l="%"+A.h(B.e.I(g))+"%"
