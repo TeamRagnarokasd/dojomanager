@@ -137,6 +137,7 @@ class ItalianReceiptService {
       final response = await client
           .from('non_fiscal_receipts')
           .select('*, user_profiles(id, full_name, email)')
+          .eq('deleted_by_user', false)
           .order('created_at', ascending: false);
 
       // Get organization info for each receipt
@@ -169,6 +170,7 @@ class ItalianReceiptService {
           .from('non_fiscal_receipts')
           .select('*, user_profiles(id, full_name, email)')
           .eq('created_by', userId)
+          .eq('deleted_by_user', false)
           .order('created_at', ascending: false);
 
       // Get organization info for each receipt
@@ -870,6 +872,7 @@ Data: ${issueDate}
       final response = await client
           .from('non_fiscal_receipts')
           .select('*')
+          .eq('deleted_by_user', false)
           .gte('created_at', startDate.toIso8601String())
           .lt('created_at', endDate.toIso8601String())
           .order('created_at', ascending: false);

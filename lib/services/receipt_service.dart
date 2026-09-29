@@ -11,6 +11,7 @@ class ReceiptService {
           .from('non_fiscal_receipts')
           .select()
           .eq('created_by', userId)
+          .eq('deleted_by_user', false)
           .order('created_at', ascending: false);
 
       return (response as List)
@@ -84,6 +85,7 @@ class ReceiptService {
           .from('non_fiscal_receipts')
           .select()
           .eq('created_by', userId)
+          .eq('deleted_by_user', false)
           .gte('created_at', startDate.toIso8601String())
           .lte('created_at', endDate.toIso8601String())
           .order('created_at', ascending: false);
@@ -130,7 +132,8 @@ class ReceiptService {
       final response = await _client
           .from('non_fiscal_receipts')
           .select('amount, created_at')
-          .eq('created_by', userId);
+          .eq('created_by', userId)
+          .eq('deleted_by_user', false);
 
       if (response.isEmpty) {
         return {
@@ -183,7 +186,10 @@ class ReceiptService {
   // Get all receipts for admin (production-ready)
   Future<List<ReceiptModel>> getAllReceipts({String? searchFilter}) async {
     try {
-      var query = _client.from('non_fiscal_receipts').select();
+      var query = _client
+          .from('non_fiscal_receipts')
+          .select()
+          .eq('deleted_by_user', false);
 
       // Add search filter if provided
       if (searchFilter != null && searchFilter.trim().isNotEmpty) {

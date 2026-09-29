@@ -2156,6 +2156,7 @@ class _UserReceiptsSheetState extends State<_UserReceiptsSheet> {
             .from('non_fiscal_receipts')
             .select()
             .eq('customer_name', customerName)
+            .eq('deleted_by_user', false)
             .order('created_at', ascending: false);
       }
 
@@ -2166,6 +2167,7 @@ class _UserReceiptsSheetState extends State<_UserReceiptsSheet> {
               .from('non_fiscal_receipts')
               .select()
               .eq('created_by', userId)
+              .eq('deleted_by_user', false)
               .order('created_at', ascending: false);
         }
       }
