@@ -21,7 +21,6 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
   bool _isLoadingMessages = true;
   bool _isLoadingInvoices = true;
   List<Map<String, dynamic>> _messages = [];
-  Set<String> _readMessageIds = {};
   List<Map<String, dynamic>> _invoices = [];
 
   @override
@@ -41,14 +40,10 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
   Future<void> _loadMessages() async {
     setState(() => _isLoadingMessages = true);
     try {
-      final results = await Future.wait([
-        _service.getMessages(),
-        _service.getReadMessageIds(),
-      ]);
+      final messages = await _service.getMessages();
       if (!mounted) return;
       setState(() {
-        _messages = results[0] as List<Map<String, dynamic>>;
-        _readMessageIds = results[1] as Set<String>;
+        _messages = messages;
         _isLoadingMessages = false;
       });
     } catch (_) {
@@ -81,18 +76,11 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
     );
   }
 
-  Future<void> _markMessageRead(String messageId) async {
-    if (_readMessageIds.contains(messageId)) return;
-    setState(() => _readMessageIds = {..._readMessageIds, messageId});
-    try {
-      await _service.markRead(messageId);
-    } catch (_) {
-      // Non critico: al prossimo caricamento tornerà a essere "non letta".
-    }
-  }
-
-  Future<void> _openWebmail(String messageId) async {
-    await _markMessageRead(messageId);
+  // Il tocco su un'email (riga o bottone "Apri la posta") apre la webmail
+  // vera: non esiste più uno stato "letta" locale da aggiornare qui — lo
+  // stato letto/non letto arriva solo dalla vera casella (flag IMAP
+  // \Seen), sincronizzato dalla edge function.
+  Future<void> _openWebmail() async {
     try {
       await launchUrl(
         Uri.parse('https://webmail.aruba.it'),
@@ -153,14 +141,21 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
   }
 
   Widget _buildMessageCard(Map<String, dynamic> message) {
-    final id = message['id'] as String;
-    final isRead = _readMessageIds.contains(id);
+    // Stato letto/non letto reale della casella (flag IMAP \Seen,
+    // sincronizzato dalla edge function) — non più una lettura "personale".
+    final isUnread = message['is_unread'] != false;
     final from = (message['from_address'] ?? 'Mittente sconosciuto').toString();
     final subject = (message['subject'] ?? '(nessun oggetto)').toString();
     final snippet = (message['snippet'] ?? '').toString();
     final receivedAt = _formatDate(message['received_at']?.toString());
     final hasAttachment = message['has_attachment'] == true;
-    final unreadColor = Theme.of(context).colorScheme.primary;
+    final colorScheme = Theme.of(context).colorScheme;
+    final unreadColor = colorScheme.primary;
+    // Testo esplicito ad alto contrasto sopra lo sfondo colorato: il colore
+    // di default (ereditato) è pensato per lo sfondo normale della card, non
+    // per primaryContainer, e in questo tema può risultare illeggibile
+    // (es. testo scuro su primaryContainer scuro in tema chiaro).
+    final unreadTextColor = colorScheme.onPrimaryContainer;
     const cardRadius = 8.0;
 
     // Le email non lette hanno un trattamento grafico ben visibile (sfondo
@@ -168,14 +163,14 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
     // lette restano una riga normale, senza alcun indicatore.
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
-      color: isRead ? null : Theme.of(context).colorScheme.primaryContainer,
+      color: isUnread ? colorScheme.primaryContainer : null,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(cardRadius),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(cardRadius),
         child: Container(
-          decoration: isRead
+          decoration: !isUnread
               ? null
               : BoxDecoration(
                   border: Border(
@@ -183,7 +178,7 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
                   ),
                 ),
           child: InkWell(
-            onTap: () => _markMessageRead(id),
+            onTap: _openWebmail,
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
@@ -196,18 +191,23 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
                           from,
                           style: TextStyle(
                             fontWeight:
-                                isRead ? FontWeight.normal : FontWeight.bold,
+                                isUnread ? FontWeight.bold : FontWeight.normal,
+                            color: isUnread ? unreadTextColor : null,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       if (hasAttachment)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 4),
-                          child: Icon(Icons.attach_file, size: 16),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Icon(
+                            Icons.attach_file,
+                            size: 16,
+                            color: isUnread ? unreadTextColor : null,
+                          ),
                         ),
-                      if (!isRead) ...[
+                      if (isUnread) ...[
                         const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -218,10 +218,10 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
                             color: unreadColor,
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Text(
+                          child: Text(
                             'Da leggere',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: colorScheme.onPrimary,
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
                             ),
@@ -231,7 +231,9 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
                       const SizedBox(width: 8),
                       Text(
                         receivedAt,
-                        style: Theme.of(context).textTheme.bodySmall,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: isUnread ? unreadTextColor : null,
+                            ),
                       ),
                     ],
                   ),
@@ -239,7 +241,8 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
                   Text(
                     subject,
                     style: TextStyle(
-                      fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
+                      fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
+                      color: isUnread ? unreadTextColor : null,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -249,8 +252,9 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
                     Text(
                       snippet,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: isUnread
+                                ? unreadTextColor
+                                : colorScheme.onSurfaceVariant,
                           ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -260,7 +264,7 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
                   Align(
                     alignment: Alignment.centerRight,
                     child: OutlinedButton.icon(
-                      onPressed: () => _openWebmail(id),
+                      onPressed: _openWebmail,
                       icon: const Icon(Icons.open_in_new, size: 16),
                       label: const Text('Apri la posta'),
                     ),

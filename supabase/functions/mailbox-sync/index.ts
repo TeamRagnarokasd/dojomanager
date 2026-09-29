@@ -227,12 +227,12 @@ class ImapClient {
     return uids;
   }
 
-  /** ENVELOPE + BODYSTRUCTURE grezzi (come ImapValue) per un UID. */
+  /** ENVELOPE + BODYSTRUCTURE + stato letto/non letto (\Seen) per un UID. */
   async fetchEnvelopeAndStructure(
     uid: number,
-  ): Promise<{ envelope: ImapValue; bodystructure: ImapValue } | null> {
+  ): Promise<{ envelope: ImapValue; bodystructure: ImapValue; isUnread: boolean } | null> {
     const tag = this.#nextTag();
-    await this.#writeLine(`${tag} UID FETCH ${uid} (ENVELOPE BODYSTRUCTURE)`);
+    await this.#writeLine(`${tag} UID FETCH ${uid} (FLAGS ENVELOPE BODYSTRUCTURE)`);
     const lines = await this.#readUntilTagged(tag, "UID FETCH");
     const fetchLine = lines.find(
       (l) => l.text.startsWith("* ") && /\bFETCH\b/.test(l.text),
@@ -245,7 +245,34 @@ class ImapClient {
     const attrs = parser.parseParenListRaw();
     const envelope = extractNamedValue(attrs, "ENVELOPE");
     const bodystructure = extractNamedValue(attrs, "BODYSTRUCTURE");
-    return { envelope, bodystructure };
+    const isUnread = !hasSeenFlag(extractNamedValue(attrs, "FLAGS"));
+    return { envelope, bodystructure, isUnread };
+  }
+
+  /**
+   * FLAGS di più UID in un solo giro di FETCH (non uno per uno): usato per
+   * ricontrollare lo stato letto/non letto reale di email già salvate,
+   * senza dover riaprire una connessione o un FETCH per ciascuna. Ritorna
+   * una mappa uid -> isUnread; un UID richiesto ma non più presente nella
+   * casella (es. cancellato) semplicemente non compare nella mappa.
+   */
+  async fetchFlags(uids: number[]): Promise<Map<number, boolean>> {
+    const result = new Map<number, boolean>();
+    if (uids.length === 0) return result;
+
+    const tag = this.#nextTag();
+    await this.#writeLine(`${tag} UID FETCH ${uids.join(",")} (FLAGS)`);
+    const lines = await this.#readUntilTagged(tag, "UID FETCH");
+    for (const { text } of lines) {
+      if (!text.startsWith("* ") || !/\bFETCH\b/.test(text)) continue;
+      // Con UID FETCH il server include sempre l'UID nella risposta (RFC
+      // 3501), anche se non richiesto esplicitamente tra gli attributi.
+      const uidMatch = text.match(/\bUID (\d+)\b/);
+      if (!uidMatch) continue;
+      const uid = parseInt(uidMatch[1], 10);
+      result.set(uid, !/\\Seen\b/i.test(text));
+    }
+    return result;
   }
 
   /** Contenuto grezzo (già risolto dai literal) di un singolo body part. */
@@ -370,6 +397,12 @@ function extractNamedValue(list: ImapValue[], name: string): ImapValue {
     }
   }
   return null;
+}
+
+/** True se la lista FLAGS (già estratta) contiene \Seen. */
+function hasSeenFlag(flags: ImapValue): boolean {
+  return Array.isArray(flags) &&
+    flags.some((f) => typeof f === "string" && f.toUpperCase() === "\\SEEN");
 }
 
 // ============================================================================
@@ -661,6 +694,68 @@ function base64FromBinaryString(binary: string): string {
   return btoa(binary);
 }
 
+/**
+ * Ricontrolla lo stato letto/non letto reale (via IMAP) delle email già
+ * salvate ma "potenzialmente ancora aperte di recente altrove" (webmail,
+ * altro client): quelle segnate is_unread=true, più tutte quelle arrivate
+ * negli ultimi 14 giorni (per non dover ricontrollare l'intero storico a
+ * ogni giro). Un solo giro di FETCH per tutti gli UID insieme, non uno per
+ * uno. Ritorna quante righe sono state effettivamente aggiornate.
+ */
+async function recheckReadStatus(
+  imap: ImapClient,
+  adminClient: ReturnType<typeof createClient>,
+): Promise<number> {
+  const fourteenDaysAgo = new Date();
+  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+  const { data: candidates, error } = await adminClient
+    .from("mailbox_messages")
+    .select("id, message_uid, is_unread")
+    .or(`is_unread.eq.true,received_at.gte.${fourteenDaysAgo.toISOString()}`);
+
+  if (error) {
+    console.error("mailbox-sync: ricontrollo letto/non letto, lettura righe fallita:", error);
+    return 0;
+  }
+  if (!candidates || candidates.length === 0) return 0;
+
+  const uidToRow = new Map<number, { id: string; isUnread: boolean }>();
+  for (const row of candidates as Array<
+    { id: string; message_uid: string | null; is_unread: boolean }
+  >) {
+    const uidNum = row.message_uid ? parseInt(row.message_uid, 10) : NaN;
+    if (!isNaN(uidNum)) {
+      uidToRow.set(uidNum, { id: row.id, isUnread: row.is_unread });
+    }
+  }
+  if (uidToRow.size === 0) return 0;
+
+  const flagsByUid = await imap.fetchFlags([...uidToRow.keys()]);
+
+  let updated = 0;
+  for (const [uid, row] of uidToRow) {
+    const realIsUnread = flagsByUid.get(uid);
+    // Un UID richiesto ma non tornato nella risposta (es. il messaggio è
+    // stato cancellato dalla casella) non va toccato.
+    if (realIsUnread === undefined || realIsUnread === row.isUnread) continue;
+
+    const { error: updateError } = await adminClient
+      .from("mailbox_messages")
+      .update({ is_unread: realIsUnread })
+      .eq("id", row.id);
+    if (updateError) {
+      console.error(
+        `mailbox-sync: impossibile aggiornare is_unread per il messaggio ${row.id}:`,
+        updateError,
+      );
+    } else {
+      updated++;
+    }
+  }
+  return updated;
+}
+
 // ============================================================================
 // Gestore principale
 // ============================================================================
@@ -756,6 +851,7 @@ serve(async (req) => {
               : null,
             snippet,
             has_attachment: hasAttachment,
+            is_unread: fetched.isUnread,
           })
           .select("id")
           .single();
@@ -851,6 +947,11 @@ serve(async (req) => {
       }
     }
 
+    const recheckedCount = await recheckReadStatus(imap, adminClient);
+    console.log(
+      `mailbox-sync: ricontrollo letto/non letto completato, ${recheckedCount} messaggi aggiornati.`,
+    );
+
     await imap.logout();
     imap.close();
 
@@ -864,7 +965,7 @@ serve(async (req) => {
       })
       .eq("id", 1);
 
-    return jsonResponse({ ok: true, processed });
+    return jsonResponse({ ok: true, processed, rechecked: recheckedCount });
   } catch (error) {
     // Errori di connessione/autenticazione IMAP: loggati chiaramente e
     // salvati per poterli controllare dall'ultimo stato, senza far fallire
