@@ -543,6 +543,11 @@ class _ManualReceiptCreationDialogState
   }
 
   Future<void> _createManualReceipt() async {
+    // Guardia anti-doppio-tocco: un secondo tocco mentre la richiesta è già
+    // in corso non deve avviare una seconda chiamata al servizio.
+    if (_isLoading) {
+      return;
+    }
     if (!_formKey.currentState!.validate()) {
       return;
     }
