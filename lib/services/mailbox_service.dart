@@ -100,6 +100,16 @@ class MailboxService {
     }
   }
 
+  /// Ignora una fattura 'da_confermare' (es. letta per errore da un
+  /// allegato che non era davvero una fattura): sparisce dalla lista.
+  Future<void> ignoreInvoice(String invoiceId) async {
+    try {
+      await _client.rpc('mailbox_ignore_invoice', params: {'p_invoice_id': invoiceId});
+    } on PostgrestException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+
   Future<void> markInvoicePaid({
     required String invoiceId,
     required String attachmentPath,
