@@ -160,81 +160,114 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
     final snippet = (message['snippet'] ?? '').toString();
     final receivedAt = _formatDate(message['received_at']?.toString());
     final hasAttachment = message['has_attachment'] == true;
+    final unreadColor = Theme.of(context).colorScheme.primary;
+    const cardRadius = 8.0;
 
+    // Le email non lette hanno un trattamento grafico ben visibile (sfondo
+    // tenue, bordo sinistro, etichetta "Da leggere", grassetto); quelle già
+    // lette restano una riga normale, senza alcun indicatore.
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        onTap: () => _markMessageRead(id),
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      color: isRead ? null : Theme.of(context).colorScheme.primaryContainer,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(cardRadius),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(cardRadius),
+        child: Container(
+          decoration: isRead
+              ? null
+              : BoxDecoration(
+                  border: Border(
+                    left: BorderSide(color: unreadColor, width: 4),
+                  ),
+                ),
+          child: InkWell(
+            onTap: () => _markMessageRead(id),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (!isRead)
-                    Container(
-                      width: 8,
-                      height: 8,
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary,
-                        shape: BoxShape.circle,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          from,
+                          style: TextStyle(
+                            fontWeight:
+                                isRead ? FontWeight.normal : FontWeight.bold,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
+                      if (hasAttachment)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Icon(Icons.attach_file, size: 16),
+                        ),
+                      if (!isRead) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: unreadColor,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'Da leggere',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(width: 8),
+                      Text(
+                        receivedAt,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subject,
+                    style: TextStyle(
+                      fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
                     ),
-                  Expanded(
-                    child: Text(
-                      from,
-                      style: TextStyle(
-                        fontWeight: isRead ? FontWeight.w500 : FontWeight.w800,
-                      ),
-                      maxLines: 1,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (snippet.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      snippet,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  if (hasAttachment)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 6),
-                      child: Icon(Icons.attach_file, size: 16),
+                  ],
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openWebmail(id),
+                      icon: const Icon(Icons.open_in_new, size: 16),
+                      label: const Text('Apri la posta'),
                     ),
-                  const SizedBox(width: 8),
-                  Text(
-                    receivedAt,
-                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                subject,
-                style: TextStyle(
-                  fontWeight: isRead ? FontWeight.normal : FontWeight.w700,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (snippet.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  snippet,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerRight,
-                child: OutlinedButton.icon(
-                  onPressed: () => _openWebmail(id),
-                  icon: const Icon(Icons.open_in_new, size: 16),
-                  label: const Text('Apri la posta'),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
