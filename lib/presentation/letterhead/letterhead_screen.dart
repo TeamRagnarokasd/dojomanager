@@ -17,9 +17,33 @@ import 'package:universal_html/html.dart' as html;
 
 import '../../models/receipt_model.dart' show OrganizationInfo;
 import '../../services/asd_governance_service.dart';
+import '../../services/asd_letterhead_service.dart';
 import '../../services/italian_receipt_service.dart';
 
 const String _kLogoAsset = 'assets/images/146804-1764638363594.jpg';
+
+/// Sentinel per la sede legale predefinita (indirizzo di
+/// ItalianReceiptService.getOrganizationInfo) — sempre la prima scelta e
+/// preselezionata.
+const String _kDefaultAddressId = '__default__';
+
+/// Sentinel per un indirizzo inserito al volo e non salvato ("Salva per le
+/// prossime volte" deselezionata) — vale solo per il documento corrente.
+const String _kTransientAddressId = '__transient__';
+
+/// Una voce del selettore "Sede": la sede legale predefinita, una sede
+/// salvata in asd_letterhead_addresses, oppure quella inserita al volo.
+class _AddressChoice {
+  const _AddressChoice({
+    required this.id,
+    required this.label,
+    required this.address,
+  });
+
+  final String id;
+  final String label;
+  final String address;
+}
 
 /// "Carta intestata": genera un documento Word (.docx, predefinito) o PDF con
 /// la stessa intestazione/piè di pagina usati per le ricevute — logo, nome,
@@ -46,6 +70,10 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
 
   String _selectedType = 'simple'; // 'simple' | 'legal_rep'
   String _selectedFormat = 'docx'; // 'docx' | 'pdf'
+
+  List<AsdLetterheadAddress> _savedAddresses = [];
+  _AddressChoice? _transientChoice;
+  String _selectedAddressId = _kDefaultAddressId;
 
   @override
   void initState() {
@@ -85,10 +113,19 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
         // compilare a mano, ma la schermata resta comunque utilizzabile.
       }
 
+      List<AsdLetterheadAddress> savedAddresses = [];
+      try {
+        savedAddresses = await AsdLetterheadService.instance.getAddresses();
+      } catch (_) {
+        // Best-effort: senza le sedi salvate resta comunque selezionabile
+        // la sede legale predefinita e "Aggiungi nuova sede".
+      }
+
       if (!mounted) return;
       setState(() {
         _orgInfo = orgInfo;
         _legalRepProfile = legalRepProfile;
+        _savedAddresses = savedAddresses;
         _isLoading = false;
       });
     } catch (e) {
@@ -98,6 +135,49 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
         _loadError = 'Impossibile caricare i dati ASD: $e';
       });
     }
+  }
+
+  /// Tutte le voci del selettore "Sede", nell'ordine in cui vanno mostrate:
+  /// sede legale predefinita, sedi salvate (per sort_order), e infine
+  /// l'eventuale sede inserita al volo per questo solo documento.
+  List<_AddressChoice> get _addressChoices => [
+        _AddressChoice(
+          id: _kDefaultAddressId,
+          label: 'Sede legale (predefinita)',
+          address: _orgInfo?.address ?? '',
+        ),
+        for (final saved in _savedAddresses)
+          _AddressChoice(id: saved.id, label: saved.label, address: saved.address),
+        if (_transientChoice != null) _transientChoice!,
+      ];
+
+  /// L'indirizzo effettivo da usare nel documento, in base alla sede
+  /// scelta in [_selectedAddressId] — la sede legale predefinita se non è
+  /// (più) tra le scelte disponibili (es. sede salvata eliminata altrove).
+  String _resolveSelectedAddress() {
+    for (final choice in _addressChoices) {
+      if (choice.id == _selectedAddressId) return choice.address;
+    }
+    return _orgInfo?.address ?? '';
+  }
+
+  /// L'organizzazione con l'indirizzo sostituito dalla sede scelta nel
+  /// selettore — C.F., telefono ed email restano sempre quelli reali
+  /// dell'ASD, solo l'indirizzo cambia in intestazione, piè di pagina e
+  /// nella frase del legale rappresentante.
+  OrganizationInfo _effectiveOrgInfo() {
+    final org = _orgInfo!;
+    final address = _resolveSelectedAddress();
+    if (address == org.address) return org;
+    return OrganizationInfo(
+      id: org.id,
+      name: org.name,
+      address: address,
+      taxCode: org.taxCode,
+      phone: org.phone,
+      email: org.email,
+      pec: org.pec,
+    );
   }
 
   /// Riga vuota da compilare a mano quando un dato manca — stessa convenzione
@@ -117,7 +197,11 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
   /// Genere non adattabile: user_profiles non ha un campo sesso/genere per
   /// gli adulti (solo i profili bambino ce l'hanno), quindi resta sempre la
   /// forma maschile "Il sottoscritto" — nessun dato in più da cui dedurlo.
-  String _buildLegalRepParagraph() {
+  ///
+  /// [orgInfo] è già quello con l'indirizzo della sede scelta nel
+  /// selettore (vedi _effectiveOrgInfo) — "con sede in ..." segue sempre la
+  /// sede selezionata, non necessariamente quella legale.
+  String _buildLegalRepParagraph(OrganizationInfo orgInfo) {
     final profile = _legalRepProfile;
     final firstName = _orBlank(profile?['first_name'] as String?);
     final lastName = _orBlank(profile?['last_name'] as String?);
@@ -137,9 +221,9 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
     final province = _orBlank(profile?['province'] as String?);
     final addressLine = _orBlank(profile?['address_line'] as String?);
 
-    final orgName = _orBlank(_orgInfo?.name);
-    final orgTaxCode = _orBlank(_orgInfo?.taxCode);
-    final orgAddress = _orBlank(_orgInfo?.address);
+    final orgName = _orBlank(orgInfo.name);
+    final orgTaxCode = _orBlank(orgInfo.taxCode);
+    final orgAddress = _orBlank(orgInfo.address);
 
     return 'Il sottoscritto $firstName $lastName, nato a $birthPlace il $birthDate, '
         'codice fiscale $codiceFiscale, residente a $city ($province), $addressLine, '
@@ -149,8 +233,10 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
 
   // ───────────────────────────── PDF ─────────────────────────────
 
-  Future<Uint8List> _buildPdfBytes({required bool includeLegalRepParagraph}) async {
-    final orgInfo = _orgInfo!;
+  Future<Uint8List> _buildPdfBytes({
+    required bool includeLegalRepParagraph,
+    required OrganizationInfo orgInfo,
+  }) async {
     final pdf = pw.Document(
       theme: pw.ThemeData.withFont(
         base: pw.Font.helvetica(),
@@ -162,7 +248,7 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
     final logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
 
     final bodyText = includeLegalRepParagraph
-        ? _buildLegalRepParagraph().replaceAll('€', 'euro')
+        ? _buildLegalRepParagraph(orgInfo).replaceAll('€', 'euro')
         : '';
 
     final footerParts = <String>[
@@ -345,10 +431,10 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
         '</w:ftr>';
   }
 
-  String _docxDocumentXml(bool includeLegalRepParagraph) {
+  String _docxDocumentXml(bool includeLegalRepParagraph, OrganizationInfo orgInfo) {
     final body = StringBuffer();
     if (includeLegalRepParagraph) {
-      final text = _buildLegalRepParagraph().replaceAll('€', 'euro');
+      final text = _buildLegalRepParagraph(orgInfo).replaceAll('€', 'euro');
       body.write(
         '<w:p><w:pPr><w:jc w:val="both"/></w:pPr><w:r><w:rPr><w:sz w:val="22"/></w:rPr>'
         '<w:t xml:space="preserve">${_xmlEscape(text)}</w:t></w:r></w:p>',
@@ -370,8 +456,10 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
         '</w:document>';
   }
 
-  Future<Uint8List> _buildDocxBytes({required bool includeLegalRepParagraph}) async {
-    final orgInfo = _orgInfo!;
+  Future<Uint8List> _buildDocxBytes({
+    required bool includeLegalRepParagraph,
+    required OrganizationInfo orgInfo,
+  }) async {
     final logoData = (await rootBundle.load(_kLogoAsset)).buffer.asUint8List();
 
     final archive = Archive();
@@ -382,7 +470,10 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
 
     addText('[Content_Types].xml', _docxContentTypesXml());
     addText('_rels/.rels', _docxRootRelsXml());
-    addText('word/document.xml', _docxDocumentXml(includeLegalRepParagraph));
+    addText(
+      'word/document.xml',
+      _docxDocumentXml(includeLegalRepParagraph, orgInfo),
+    );
     addText('word/_rels/document.xml.rels', _docxDocumentRelsXml());
     addText('word/header1.xml', _docxHeaderXml(orgInfo));
     addText('word/_rels/header1.xml.rels', _docxHeaderRelsXml());
@@ -442,16 +533,23 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
           ? 'carta_intestata_legale_rappresentante'
           : 'carta_intestata_semplice';
       final isPdf = _selectedFormat == 'pdf';
+      final effectiveOrgInfo = _effectiveOrgInfo();
 
       final Uint8List bytes;
       final String filename;
       final String mimeType;
       if (isPdf) {
-        bytes = await _buildPdfBytes(includeLegalRepParagraph: isLegalRep);
+        bytes = await _buildPdfBytes(
+          includeLegalRepParagraph: isLegalRep,
+          orgInfo: effectiveOrgInfo,
+        );
         filename = '$baseName.pdf';
         mimeType = 'application/pdf';
       } else {
-        bytes = await _buildDocxBytes(includeLegalRepParagraph: isLegalRep);
+        bytes = await _buildDocxBytes(
+          includeLegalRepParagraph: isLegalRep,
+          orgInfo: effectiveOrgInfo,
+        );
         filename = '$baseName.docx';
         mimeType =
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -537,6 +635,43 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 24),
+                Text(
+                  'Sede',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Tieni premuta una sede salvata per eliminarla.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final choice in _addressChoices)
+                      GestureDetector(
+                        onLongPress: choice.id == _kDefaultAddressId
+                            ? null
+                            : () => _onAddressLongPress(choice),
+                        child: ChoiceChip(
+                          label: Text(choice.label),
+                          selected: _selectedAddressId == choice.id,
+                          onSelected: (_) =>
+                              setState(() => _selectedAddressId = choice.id),
+                        ),
+                      ),
+                    ActionChip(
+                      avatar: const Icon(Icons.add, size: 18),
+                      label: const Text('Aggiungi nuova sede'),
+                      onPressed: _showAddAddressDialog,
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 32),
                 SizedBox(
                   width: double.infinity,
@@ -555,6 +690,185 @@ class _LetterheadScreenState extends State<LetterheadScreen> {
               ],
             ),
     );
+  }
+
+  Future<void> _onAddressLongPress(_AddressChoice choice) async {
+    // La sede inserita al volo (non salvata) non è in asd_letterhead_addresses:
+    // "eliminarla" significa solo smettere di usarla, senza chiamate al server.
+    if (choice.id == _kTransientAddressId) {
+      final confirmed = await _confirmDeleteDialog(choice);
+      if (confirmed != true) return;
+      setState(() {
+        _transientChoice = null;
+        if (_selectedAddressId == choice.id) {
+          _selectedAddressId = _kDefaultAddressId;
+        }
+      });
+      return;
+    }
+
+    AsdLetterheadAddress? saved;
+    for (final s in _savedAddresses) {
+      if (s.id == choice.id) {
+        saved = s;
+        break;
+      }
+    }
+    if (saved == null) return;
+
+    final confirmed = await _confirmDeleteDialog(choice);
+    if (confirmed != true) return;
+
+    try {
+      await AsdLetterheadService.instance.deleteAddress(saved.id);
+      if (!mounted) return;
+      setState(() {
+        _savedAddresses = _savedAddresses.where((a) => a.id != saved!.id).toList();
+        if (_selectedAddressId == choice.id) {
+          _selectedAddressId = _kDefaultAddressId;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossibile eliminare la sede: $e')),
+      );
+    }
+  }
+
+  Future<bool?> _confirmDeleteDialog(_AddressChoice choice) {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Eliminare questa sede?'),
+        content: Text('«${choice.label}»\n${choice.address}'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Annulla'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Elimina'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showAddAddressDialog() async {
+    final addressController = TextEditingController();
+    final labelController = TextEditingController();
+    bool saveForNextTime = true;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Aggiungi nuova sede'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: addressController,
+                  decoration: const InputDecoration(
+                    labelText: 'Indirizzo completo',
+                    hintText: 'Via ..., CAP Città (Prov)',
+                  ),
+                  maxLines: 2,
+                  autofocus: true,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: labelController,
+                  decoration: const InputDecoration(labelText: 'Etichetta breve'),
+                ),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: saveForNextTime,
+                  title: const Text('Salva per le prossime volte'),
+                  onChanged: (value) => setDialogState(
+                    () => saveForNextTime = value ?? saveForNextTime,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Annulla'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final address = addressController.text.trim();
+                if (address.isEmpty) return;
+                Navigator.pop(dialogContext, {
+                  'address': address,
+                  'label': labelController.text.trim(),
+                  'save': saveForNextTime,
+                });
+              },
+              child: const Text('Aggiungi'),
+            ),
+          ],
+        ),
+      ),
+    );
+    addressController.dispose();
+    labelController.dispose();
+    if (result == null) return;
+
+    final address = result['address'] as String;
+    final rawLabel = result['label'] as String;
+    final label = rawLabel.isNotEmpty
+        ? rawLabel
+        : (address.length > 30 ? '${address.substring(0, 30)}…' : address);
+    final save = result['save'] as bool;
+
+    if (!save) {
+      setState(() {
+        _transientChoice =
+            _AddressChoice(id: _kTransientAddressId, label: label, address: address);
+        _selectedAddressId = _kTransientAddressId;
+      });
+      return;
+    }
+
+    try {
+      final nextSortOrder = _savedAddresses.isEmpty
+          ? 1
+          : _savedAddresses
+                  .map((a) => a.sortOrder)
+                  .reduce((a, b) => a > b ? a : b) +
+              1;
+      final newAddress = await AsdLetterheadService.instance.addAddress(
+        label: label,
+        address: address,
+        sortOrder: nextSortOrder,
+      );
+      if (!mounted) return;
+      setState(() {
+        _savedAddresses = [..._savedAddresses, newAddress];
+        _selectedAddressId = newAddress.id;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _transientChoice =
+            _AddressChoice(id: _kTransientAddressId, label: label, address: address);
+        _selectedAddressId = _kTransientAddressId;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Non salvata, usata solo per questo documento: $e'),
+        ),
+      );
+    }
   }
 
   Widget _buildTypeCard({
