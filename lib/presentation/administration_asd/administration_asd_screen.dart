@@ -94,6 +94,13 @@ const List<AdminAsdSection> kAdminAsdSections = [
     route: AppRoutes.socialEvents,
   ),
   AdminAsdSection(
+    key: 'letterhead',
+    title: 'Carta intestata',
+    subtitle: 'Word o PDF con intestazione ASD',
+    icon: Icons.article_outlined,
+    route: AppRoutes.letterhead,
+  ),
+  AdminAsdSection(
     key: 'documents_archive',
     title: 'Archivio documenti',
     subtitle: 'Tutti i documenti per categoria',
