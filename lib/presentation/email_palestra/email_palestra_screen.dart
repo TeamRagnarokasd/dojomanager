@@ -140,6 +140,15 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
     );
   }
 
+  Future<void> _openMessageDetail(Map<String, dynamic> message) async {
+    final deleted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => _EmailDetailScreen(message: message),
+      ),
+    );
+    if (deleted == true) _loadMessages();
+  }
+
   Widget _buildMessageCard(Map<String, dynamic> message) {
     // Stato letto/non letto reale della casella (flag IMAP \Seen,
     // sincronizzato dalla edge function) — non più una lettura "personale".
@@ -178,7 +187,7 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
                   ),
                 ),
           child: InkWell(
-            onTap: _openWebmail,
+            onTap: () => _openMessageDetail(message),
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
@@ -266,7 +275,20 @@ class _EmailPalestraScreenState extends State<EmailPalestraScreen>
                     child: OutlinedButton.icon(
                       onPressed: _openWebmail,
                       icon: const Icon(Icons.open_in_new, size: 16),
-                      label: const Text('Apri la posta'),
+                      label: const Text('Apri in email'),
+                      // Tono su tono altrimenti: il colore ereditato dal
+                      // tema (pensato per uno sfondo normale) può risultare
+                      // quasi invisibile sopra lo sfondo colorato della
+                      // card non letta — foreground e bordo espliciti ad
+                      // alto contrasto in entrambi i casi, verificato sia
+                      // in tema chiaro che scuro.
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor:
+                            isUnread ? unreadTextColor : colorScheme.primary,
+                        side: BorderSide(
+                          color: isUnread ? unreadTextColor : colorScheme.primary,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -552,4 +574,169 @@ class _InvoiceCardState extends State<_InvoiceCard> {
 
   String _formatDateOnly(DateTime date) =>
       '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+}
+
+/// Dettaglio di un'email: mittente, oggetto, data e corpo completo (letto al
+/// volo via IMAP dalla edge function — non salvato localmente, solo lo
+/// snippet lo è). "Elimina" sposta l'email nel Cestino sulla casella Aruba
+/// e la nasconde dall'app, senza mai cancellare la riga dal database (ci
+/// sono fatture collegate).
+class _EmailDetailScreen extends StatefulWidget {
+  const _EmailDetailScreen({required this.message});
+
+  final Map<String, dynamic> message;
+
+  @override
+  State<_EmailDetailScreen> createState() => _EmailDetailScreenState();
+}
+
+class _EmailDetailScreenState extends State<_EmailDetailScreen> {
+  final _service = MailboxService.instance;
+  bool _isLoadingBody = true;
+  bool _isDeleting = false;
+  String? _body;
+  String? _bodyError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBody();
+  }
+
+  Future<void> _loadBody() async {
+    try {
+      final body = await _service.getMessageBody(
+        widget.message['id'] as String,
+      );
+      if (!mounted) return;
+      setState(() {
+        _body = body;
+        _isLoadingBody = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _bodyError = e.toString().replaceFirst('Exception: ', '');
+        _isLoadingBody = false;
+      });
+    }
+  }
+
+  Future<void> _confirmAndDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminare questa email?'),
+        content: const Text(
+          'Verrà spostata nel Cestino della casella email. Eventuali fatture '
+          'già lette da questa email restano comunque nell\'app.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annulla'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Elimina'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _isDeleting = true);
+    try {
+      await _service.deleteMessage(widget.message['id'] as String);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isDeleting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
+  }
+
+  String _formatFullDate(String? isoString) {
+    if (isoString == null) return '-';
+    final date = DateTime.tryParse(isoString);
+    if (date == null) return '-';
+    final local = date.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(local.day)}/${two(local.month)}/${local.year} '
+        '${two(local.hour)}:${two(local.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final message = widget.message;
+    final from = (message['from_address'] ?? 'Mittente sconosciuto').toString();
+    final subject = (message['subject'] ?? '(nessun oggetto)').toString();
+    final receivedAt = _formatFullDate(message['received_at']?.toString());
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Email'),
+        actions: [
+          IconButton(
+            icon: _isDeleting
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.delete_outline),
+            tooltip: 'Elimina',
+            onPressed: _isDeleting ? null : _confirmAndDelete,
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              subject,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              from,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 2),
+            Text(receivedAt, style: Theme.of(context).textTheme.bodySmall),
+            const Divider(height: 32),
+            if (_isLoadingBody)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_bodyError != null)
+              Text(
+                'Impossibile caricare il corpo dell\'email: $_bodyError',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              )
+            else
+              SelectableText(
+                (_body != null && _body!.isNotEmpty)
+                    ? _body!
+                    : '(Messaggio vuoto)',
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }

@@ -914,6 +914,22 @@ Data: ${issueDate}
     }
   }
 
+  /// Totali mensili degli incassi per la pagina "Entrate mensili" (solo
+  /// admin — la RPC stessa verifica i permessi). Più recente per primo.
+  Future<List<Map<String, dynamic>>> getMonthlyRevenueTotals({
+    int monthsBack = 12,
+  }) async {
+    try {
+      final response = await client.rpc(
+        'get_monthly_revenue_totals',
+        params: {'months_back': monthsBack},
+      );
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (error) {
+      throw Exception('Failed to get monthly revenue totals: $error');
+    }
+  }
+
   /// Get all registered users for receipt generation dropdown
   Future<List<Map<String, dynamic>>> getAllRegisteredUsers() async {
     try {

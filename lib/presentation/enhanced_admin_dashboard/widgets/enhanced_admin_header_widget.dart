@@ -9,6 +9,7 @@ class EnhancedAdminHeaderWidget extends StatelessWidget {
   final VoidCallback? onPendingTap;
   final VoidCallback? onSwitchToInstructor;
   final VoidCallback? onPasswordResetTap;
+  final VoidCallback? onRevenueTap;
 
   const EnhancedAdminHeaderWidget({
     Key? key,
@@ -19,6 +20,7 @@ class EnhancedAdminHeaderWidget extends StatelessWidget {
     this.onPendingTap,
     this.onSwitchToInstructor,
     this.onPasswordResetTap,
+    this.onRevenueTap,
   }) : super(key: key);
 
   @override
@@ -154,6 +156,7 @@ class EnhancedAdminHeaderWidget extends StatelessWidget {
                   'Entrate Mese',
                   '€${(stats['monthlyRevenue'] as double? ?? 0.0).toStringAsFixed(0)}',
                   Icons.euro_symbol,
+                  onTap: onRevenueTap,
                 ),
               ),
               SizedBox(width: 3.w),
@@ -241,13 +244,15 @@ class EnhancedAdminHeaderWidget extends StatelessWidget {
     BuildContext context,
     String label,
     String value,
-    IconData icon,
-  ) {
+    IconData icon, {
+    VoidCallback? onTap,
+  }) {
     final bool isPending = label == 'In Attesa';
     final int pendingCount =
         isPending ? (stats['pendingApprovals'] as int? ?? 0) : 0;
     final bool isTappable =
-        isPending && pendingCount > 0 && onPendingTap != null;
+        (isPending && pendingCount > 0 && onPendingTap != null) ||
+            onTap != null;
 
     final card = Container(
       padding: EdgeInsets.all(3.w),
@@ -289,7 +294,7 @@ class EnhancedAdminHeaderWidget extends StatelessWidget {
     );
 
     if (isTappable) {
-      return GestureDetector(onTap: onPendingTap, child: card);
+      return GestureDetector(onTap: onTap ?? onPendingTap, child: card);
     }
     return card;
   }
