@@ -7,7 +7,10 @@ import '../../../theme/app_theme.dart';
 import '../../../widgets/custom_icon_widget.dart';
 
 class RealtimeStatisticsWidget extends StatefulWidget {
-  const RealtimeStatisticsWidget({Key? key}) : super(key: key);
+  final VoidCallback? onRevenueTap;
+
+  const RealtimeStatisticsWidget({Key? key, this.onRevenueTap})
+      : super(key: key);
 
   @override
   State<RealtimeStatisticsWidget> createState() =>
@@ -211,6 +214,7 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
             label: 'Entrate Mese',
             value: '€${_statistics['monthly_revenue'].toStringAsFixed(2)}',
             color: Colors.green,
+            onTap: widget.onRevenueTap,
           ),
           SizedBox(height: 2.h),
 
@@ -263,8 +267,9 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
     required String label,
     required String value,
     required Color color,
+    VoidCallback? onTap,
   }) {
-    return Container(
+    final card = Container(
       padding: EdgeInsets.all(3.w),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
@@ -310,5 +315,10 @@ class _RealtimeStatisticsWidgetState extends State<RealtimeStatisticsWidget> {
         ],
       ),
     );
+
+    if (onTap != null) {
+      return GestureDetector(onTap: onTap, child: card);
+    }
+    return card;
   }
 }

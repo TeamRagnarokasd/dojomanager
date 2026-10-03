@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Service for managing child/minor profiles linked to an adult guardian.
@@ -15,9 +16,17 @@ class ChildProfileService {
 
   static bool get isChildProfileActive => _activeChildProfileId != null;
 
+  /// Bumped every time the active profile changes — screens that show data
+  /// scoped to "whichever profile is active" (e.g. payment history) listen
+  /// to this to refresh themselves instead of relying on route lifecycle
+  /// events, which don't fire when switching profiles from a tab kept alive
+  /// in an IndexedStack.
+  static final ValueNotifier<int> activeProfileVersion = ValueNotifier<int>(0);
+
   /// Sets the active profile to a child profile (or back to adult if null).
   static Future<void> setActiveProfile(String? childProfileId) async {
     _activeChildProfileId = childProfileId;
+    activeProfileVersion.value++;
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return;
     try {

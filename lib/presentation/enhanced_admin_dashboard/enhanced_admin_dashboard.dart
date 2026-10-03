@@ -576,6 +576,8 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
                         )
                       : null,
                   onPasswordResetTap: _showPasswordResetRequestsSheet,
+                  onRevenueTap: () =>
+                      Navigator.pushNamed(context, AppRoutes.monthlyRevenue),
                 ),
               ),
 
@@ -593,6 +595,8 @@ class _EnhancedAdminDashboardState extends State<EnhancedAdminDashboard>
               SliverToBoxAdapter(
                 child: RealtimeStatisticsWidget(
                   key: ValueKey(_statsRefreshKey),
+                  onRevenueTap: () =>
+                      Navigator.pushNamed(context, AppRoutes.monthlyRevenue),
                 ),
               ),
 

@@ -38,16 +38,69 @@ class MailboxService {
     }
   }
 
-  /// Le email più recenti prima. Ogni riga include già `is_unread`, lo
-  /// stato letto/non letto reale della casella (flag IMAP \Seen,
-  /// sincronizzato dalla edge function) — nessuna chiamata separata serve
-  /// per saperlo.
+  /// Le email più recenti prima (esclude quelle eliminate con `hidden =
+  /// true`). Ogni riga include già `is_unread`, lo stato letto/non letto
+  /// reale della casella (flag IMAP \Seen, sincronizzato dalla edge
+  /// function) — nessuna chiamata separata serve per saperlo.
   Future<List<Map<String, dynamic>>> getMessages() async {
     final rows = await _client
         .from('mailbox_messages')
         .select()
+        .eq('hidden', false)
         .order('received_at', ascending: false);
     return (rows as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Corpo completo del messaggio (mittente/oggetto/data sono già nella
+  /// riga passata a getMessages — qui arriva solo il testo, letto al volo
+  /// via IMAP dalla edge function, senza segnarlo come letto sul server).
+  Future<String> getMessageBody(String messageId) async {
+    try {
+      final response = await _client.functions.invoke(
+        'mailbox-sync',
+        body: {'action': 'get_body', 'message_id': messageId},
+      );
+      final data = response.data;
+      if (data is Map && data['body'] is String) {
+        return data['body'] as String;
+      }
+      throw Exception('Risposta inattesa dal server.');
+    } catch (e) {
+      throw Exception(_functionErrorMessage(e));
+    }
+  }
+
+  /// Sposta l'email nel Cestino sulla casella Aruba e la nasconde
+  /// dall'app (`hidden = true`) — la riga resta nel database, perché
+  /// potrebbero esserci fatture collegate.
+  Future<void> deleteMessage(String messageId) async {
+    try {
+      await _client.functions.invoke(
+        'mailbox-sync',
+        body: {'action': 'delete', 'message_id': messageId},
+      );
+    } catch (e) {
+      throw Exception(_functionErrorMessage(e));
+    }
+  }
+
+  /// Estrae il messaggio d'errore leggibile da un'eccezione di invoke su
+  /// una edge function (FunctionException) senza dipendere direttamente
+  /// dal tipo, che non è sempre esportato in modo esplicito dal barrel
+  /// package di supabase_flutter.
+  String _functionErrorMessage(Object e) {
+    try {
+      final dynamic err = e;
+      final details = err.details;
+      if (details is Map && details['error'] is String) {
+        return details['error'] as String;
+      }
+      final reasonPhrase = err.reasonPhrase;
+      if (reasonPhrase is String && reasonPhrase.isNotEmpty) {
+        return reasonPhrase;
+      }
+    } catch (_) {}
+    return 'Errore di comunicazione con il server.';
   }
 
   /// Le fatture non ancora pagate (da confermare o già confermate, in

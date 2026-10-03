@@ -10,6 +10,7 @@ import '../../services/supabase_service.dart';
 import '../../services/child_profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../../constants/app_constants.dart';
+import '../user_profile/widgets/subscription_details_widget.dart';
 
 /// Full profile screen for admin to view and edit a child/minor profile.
 /// Navigated to from admin_management_system when tapping a child card.
@@ -789,6 +790,23 @@ class _AdminChildProfileScreenState extends State<AdminChildProfileScreen> {
               children: [_buildDocumentsSection()],
             ),
             SizedBox(height: 4.h),
+
+            // ── Subscription / annual registration ───────────────────
+            if (_child?['id'] != null) ...[
+              _buildSectionCard(
+                title: 'Abbonamento e iscrizione',
+                icon: Icons.card_membership,
+                children: [
+                  SubscriptionDetailsWidget(
+                    userId: _child!['id'].toString(),
+                    isAdminView: true,
+                    autoRenewal: false,
+                    onAutoRenewalChanged: (_) {},
+                  ),
+                ],
+              ),
+              SizedBox(height: 4.h),
+            ],
 
             // ── Save button ──────────────────────────────────────────
             SizedBox(

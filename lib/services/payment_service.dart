@@ -153,30 +153,36 @@ class PaymentService {
     }
   }
 
-  /// Get payment transactions for the current user.
-  /// Uses the get_receipts_for_user SECURITY DEFINER function which fetches
-  /// non_fiscal_receipts by customer_name match — same data admin sees in archive.
+  /// Get payment transactions for the active profile.
+  /// Uses the get_receipts_for_active_profile SECURITY DEFINER function:
+  /// when the active profile is a child, returns only receipts for payments
+  /// made for that child (even if paid by the parent); when it's the adult,
+  /// returns only receipts paid for themselves (excludes the children's).
+  /// With no explicit [userId] (student view), the active profile is
+  /// ChildProfileService.getActiveUserId() — the selected child, or the
+  /// adult if none is selected. An explicit [userId] (admin view of a
+  /// specific profile) is passed straight through to the same RPC.
   static Future<List<Map<String, dynamic>>> getPaymentTransactions([
     String? userId,
   ]) async {
     try {
-      final currentUserId = userId ?? _client.auth.currentUser?.id;
+      final currentUserId = userId ?? ChildProfileService.getActiveUserId();
       if (currentUserId == null) throw Exception('User not authenticated');
 
-      // Use SECURITY DEFINER function that fetches receipts by customer_name
-      // This is the same data the admin sees in the receipt archive
+      // Use SECURITY DEFINER function scoped to the active profile's own
+      // receipts (child vs adult) — same data admin sees in archive.
       List<Map<String, dynamic>> receipts = [];
       try {
         final rpcResult = await _client.rpc(
-          'get_receipts_for_user',
-          params: {'user_uuid': currentUserId},
+          'get_receipts_for_active_profile',
+          params: {'profile_uuid': currentUserId},
         );
         receipts = List<Map<String, dynamic>>.from(rpcResult as List);
         print(
-          'DEBUG getPaymentTransactions: found ${receipts.length} receipts via get_receipts_for_user',
+          'DEBUG getPaymentTransactions: found ${receipts.length} receipts via get_receipts_for_active_profile',
         );
       } catch (rpcError) {
-        print('RPC get_receipts_for_user failed: $rpcError');
+        print('RPC get_receipts_for_active_profile failed: $rpcError');
         // Fallback: try direct query (may be limited by RLS)
         try {
           final fallback = await _client

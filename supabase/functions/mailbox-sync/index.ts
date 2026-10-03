@@ -294,6 +294,44 @@ class ImapClient {
     // Il contenuto del part è l'unico literal presente nella risposta.
     return fetchLine.literals[0] ?? "";
   }
+
+  /** RFC 6851 UID MOVE — sposta il messaggio in un'altra cartella in un solo
+   * passo (server-side). Lancia se il server non supporta MOVE o la
+   * cartella non esiste: il chiamante prova un'altra cartella o ripiega su
+   * COPY + \Deleted + EXPUNGE. */
+  async uidMove(uid: number, mailbox: string): Promise<void> {
+    const tag = this.#nextTag();
+    await this.#writeLine(`${tag} UID MOVE ${uid} "${mailbox}"`);
+    await this.#readUntilTagged(tag, "UID MOVE");
+  }
+
+  async uidCopy(uid: number, mailbox: string): Promise<void> {
+    const tag = this.#nextTag();
+    await this.#writeLine(`${tag} UID COPY ${uid} "${mailbox}"`);
+    await this.#readUntilTagged(tag, "UID COPY");
+  }
+
+  async uidStoreDeleted(uid: number): Promise<void> {
+    const tag = this.#nextTag();
+    await this.#writeLine(`${tag} UID STORE ${uid} +FLAGS (\\Deleted)`);
+    await this.#readUntilTagged(tag, "UID STORE");
+  }
+
+  /** RFC 4315 UID EXPUNGE — espunge solo l'UID indicato, invece di tutti i
+   * messaggi con \Deleted nella cartella (più sicuro di un EXPUNGE semplice
+   * se qualcos'altro ha lasciato altri messaggi marcati \Deleted). */
+  async uidExpunge(uid: number): Promise<void> {
+    const tag = this.#nextTag();
+    await this.#writeLine(`${tag} UID EXPUNGE ${uid}`);
+    await this.#readUntilTagged(tag, "UID EXPUNGE");
+  }
+
+  /** Fallback se il server non supporta UID EXPUNGE (estensione UIDPLUS). */
+  async expungeAll(): Promise<void> {
+    const tag = this.#nextTag();
+    await this.#writeLine(`${tag} EXPUNGE`);
+    await this.#readUntilTagged(tag, "EXPUNGE");
+  }
 }
 
 // ============================================================================
@@ -757,12 +795,199 @@ async function recheckReadStatus(
 }
 
 // ============================================================================
+// Azioni invocate dall'app (riservate ad admin/principal_admin): leggere il
+// corpo completo di un'email, ed eliminarla (spostandola nel Cestino sul
+// server, mai cancellando la riga mailbox_messages — ci sono fatture
+// collegate).
+// ============================================================================
+
+/** Corpo testuale completo di un messaggio (HTML convertito in testo). */
+async function fetchFullBodyText(imap: ImapClient, uid: number): Promise<string> {
+  const fetched = await imap.fetchEnvelopeAndStructure(uid);
+  if (!fetched) {
+    throw new Error(
+      "Email non trovata sul server (potrebbe essere stata spostata o eliminata altrove).",
+    );
+  }
+  const parts: BodyPart[] = [];
+  walkBodyStructure(fetched.bodystructure, "", parts);
+  const textPart = parts.find((p) => p.type === "TEXT" && p.subtype === "PLAIN") ??
+    parts.find((p) => p.type === "TEXT");
+  if (!textPart) return "";
+  const raw = await imap.fetchBodyPart(uid, textPart.partNumber);
+  let decoded = decodeBodyPart(raw, textPart.encoding);
+  if (textPart.subtype === "HTML") decoded = htmlToPlainText(decoded);
+  return decoded.trim();
+}
+
+/**
+ * Sposta il messaggio nel Cestino sul server: prova prima UID MOVE (un solo
+ * passo) sia su "Trash" che su "INBOX.Trash" (le due convenzioni di nomi più
+ * comuni, Aruba inclusa); se il server non supporta MOVE, ripiega su
+ * COPY + \Deleted + EXPUNGE sulle stesse due cartelle. Se nessuna delle due
+ * cartelle esiste, non tocca nulla sul server e lancia un errore chiaro —
+ * mai un semplice \Deleted senza aver prima confermato che il messaggio sia
+ * stato copiato altrove.
+ */
+async function deleteMessageOnServer(imap: ImapClient, uid: number): Promise<void> {
+  const trashNames = ["Trash", "INBOX.Trash"];
+
+  for (const name of trashNames) {
+    try {
+      await imap.uidMove(uid, name);
+      return;
+    } catch (_e) {
+      // Prova il prossimo nome di cartella, o il fallback COPY sotto.
+    }
+  }
+
+  let copied = false;
+  for (const name of trashNames) {
+    try {
+      await imap.uidCopy(uid, name);
+      copied = true;
+      break;
+    } catch (_e) {
+      // Prova il prossimo nome di cartella.
+    }
+  }
+
+  if (!copied) {
+    throw new Error(
+      'Cestino non trovato sul server (cartelle "Trash" e "INBOX.Trash" assenti): email NON eliminata.',
+    );
+  }
+
+  await imap.uidStoreDeleted(uid);
+  try {
+    await imap.uidExpunge(uid);
+  } catch (_e) {
+    await imap.expungeAll();
+  }
+}
+
+async function handleAdminAction(
+  req: Request,
+  action: "get_body" | "delete",
+  messageId: string | undefined,
+): Promise<Response> {
+  if (!messageId) {
+    return jsonResponse({ error: "message_id mancante." }, 400);
+  }
+
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) {
+    return jsonResponse({ error: "Utente non autenticato." }, 401);
+  }
+
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+  const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+  const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const ARUBA_EMAIL = Deno.env.get("ARUBA_EMAIL");
+  const ARUBA_EMAIL_PASSWORD = Deno.env.get("ARUBA_EMAIL_PASSWORD");
+
+  if (
+    !SUPABASE_URL || !SUPABASE_ANON_KEY || !SERVICE_ROLE_KEY ||
+    !ARUBA_EMAIL || !ARUBA_EMAIL_PASSWORD
+  ) {
+    console.error("mailbox-sync: variabili d'ambiente mancanti.");
+    return jsonResponse({ error: "Configurazione mancante." }, 500);
+  }
+
+  // Verifica ruolo con il JWT dell'utente (non la service role): solo
+  // admin/principal_admin, come il resto di "Email Palestra" lato app.
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: userData, error: userError } = await userClient.auth.getUser();
+  if (userError || !userData?.user) {
+    return jsonResponse({ error: "Utente non autenticato." }, 401);
+  }
+  const { data: isAdmin, error: adminCheckError } = await userClient.rpc(
+    "is_admin_or_secretary_from_auth",
+  );
+  if (adminCheckError || isAdmin !== true) {
+    return jsonResponse(
+      { error: "Funzione riservata agli amministratori." },
+      403,
+    );
+  }
+
+  const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const { data: messageRow, error: messageError } = await adminClient
+    .from("mailbox_messages")
+    .select("id, message_uid")
+    .eq("id", messageId)
+    .maybeSingle();
+  if (messageError || !messageRow?.message_uid) {
+    return jsonResponse({ error: "Email non trovata." }, 404);
+  }
+  const uid = parseInt(messageRow.message_uid as string, 10);
+  if (isNaN(uid)) {
+    return jsonResponse({ error: "Email non trovata." }, 404);
+  }
+
+  const imap = new ImapClient();
+  try {
+    await imap.connect("imaps.aruba.it", 993);
+    await imap.login(ARUBA_EMAIL, ARUBA_EMAIL_PASSWORD);
+    await imap.selectInbox();
+
+    if (action === "get_body") {
+      const bodyText = await fetchFullBodyText(imap, uid);
+      await imap.logout();
+      imap.close();
+      return jsonResponse({ body: bodyText });
+    }
+
+    // action === "delete"
+    await deleteMessageOnServer(imap, uid);
+    imap.close();
+
+    const { error: hideError } = await adminClient
+      .from("mailbox_messages")
+      .update({ hidden: true })
+      .eq("id", messageId);
+    if (hideError) {
+      console.error("mailbox-sync: impossibile impostare hidden=true:", hideError);
+      return jsonResponse(
+        { error: "Email eliminata sul server ma non aggiornata nell'app: ricarica l'elenco." },
+        500,
+      );
+    }
+
+    return jsonResponse({ ok: true });
+  } catch (error) {
+    imap.close();
+    console.error(`mailbox-sync: azione "${action}" fallita per UID ${uid}:`, error);
+    const message = error instanceof Error ? error.message : String(error);
+    return jsonResponse({ error: message }, 502);
+  }
+}
+
+// ============================================================================
 // Gestore principale
 // ============================================================================
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
+  }
+
+  // Azioni invocate dall'app (get_body / delete): nessun body (o senza
+  // "action" riconosciuto) vuol dire la chiamata periodica del cron, che
+  // prosegue invariata più sotto.
+  let requestBody: { action?: string; message_id?: string } = {};
+  try {
+    requestBody = await req.json();
+  } catch (_e) {
+    requestBody = {};
+  }
+  if (requestBody.action === "get_body" || requestBody.action === "delete") {
+    return await handleAdminAction(req, requestBody.action, requestBody.message_id);
   }
 
   const ARUBA_EMAIL = Deno.env.get("ARUBA_EMAIL");

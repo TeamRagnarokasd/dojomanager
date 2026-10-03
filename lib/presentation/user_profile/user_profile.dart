@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../constants/app_constants.dart';
@@ -433,11 +434,34 @@ class _UserProfileState extends State<UserProfile> {
               if (_isViewingOtherUser) SizedBox(height: 3.h),
               if (!_isViewingOtherUser && !_isChildProfile)
                 _buildLogoutButton(),
+              SizedBox(height: 3.h),
+              _buildVersionFooter(),
               SizedBox(height: 10.h),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  /// "Versione X.Y.Z (build N)" in fondo al Profilo, visibile a tutti gli
+  /// utenti (studenti, genitori, admin) su Android e sul web.
+  Widget _buildVersionFooter() {
+    return FutureBuilder<PackageInfo>(
+      future: PackageInfo.fromPlatform(),
+      builder: (context, snapshot) {
+        final info = snapshot.data;
+        if (info == null) return const SizedBox.shrink();
+        return Center(
+          child: Text(
+            'Versione ${info.version} (build ${info.buildNumber})',
+            style: GoogleFonts.inter(
+              color: Colors.grey[600],
+              fontSize: 11,
+            ),
+          ),
+        );
+      },
     );
   }
 

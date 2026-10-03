@@ -103,12 +103,21 @@ class _PaymentHistoryState extends State<PaymentHistory>
       }
     });
     WidgetsBinding.instance.addObserver(this);
+    // Riallinea l'elenco (figlio vs genitore) quando il profilo attivo
+    // cambia altrove (es. dal selettore nella Home) — questa schermata può
+    // restare viva in un IndexedStack, quindi non basta initState.
+    ChildProfileService.activeProfileVersion.addListener(_onActiveProfileChanged);
     _loadPaymentData();
+  }
+
+  void _onActiveProfileChanged() {
+    if (mounted) _loadPaymentData();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ChildProfileService.activeProfileVersion.removeListener(_onActiveProfileChanged);
     _tabController.dispose();
     super.dispose();
   }
