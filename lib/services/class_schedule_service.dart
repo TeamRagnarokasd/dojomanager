@@ -696,7 +696,15 @@ class ClassScheduleService {
         };
       }
 
-      // ── Step 3: For each confirmed payment, check discipline association ──
+      // ── Step 3: Collect every confirmed plan that covers this discipline ──
+      // (independent of the order payments come back in — a time-based plan
+      // must always win over an entry pack covering the same discipline, and
+      // one entry pack lacking a user_subscriptions row must not block a
+      // different plan from being checked).
+      bool anyTimeBasedPlanMatches = false;
+      final entryPackCustomPlanIds = <String>[];
+      final entryPackPlanNames = <String, String>{};
+
       for (final payment in confirmations) {
         final customPlanId = payment['custom_plan_id'] as String?;
         if (customPlanId == null) continue;
@@ -764,62 +772,15 @@ class ClassScheduleService {
           continue;
         }
 
-        // ── Step 4: Check entry count for entry-based plans ───────────────
-        final isUnlimited = planData?['is_unlimited'] as bool? ?? false;
+        // entry_count == null → time-based plan (a monthly/annual
+        // subscription); anything else is an entry pack, regardless of
+        // is_unlimited (that flag only means "no time expiry", not
+        // "unlimited entries").
         final entryCount = planData?['entry_count'] as int?;
 
-        // is_unlimited=true AND entry_count!=null → ENTRY PACK
-        // (is_unlimited means "no time expiry", NOT "unlimited entries")
-        if (isUnlimited && entryCount != null) {
-          print(
-            '🎫 [eligibility] Plan "$planName" is an entry pack (is_unlimited=true, entry_count=$entryCount) — looking up user_subscriptions row',
-          );
-          // Look up the active user_subscriptions row for this custom plan
-          try {
-            final subRows = await _client
-                .from('user_subscriptions')
-                .select('id, entries_remaining')
-                .eq('user_id', userId)
-                .eq('custom_plan_id', customPlanId)
-                .eq('is_active', true)
-                .gt('entries_remaining', 0)
-                .order('created_at', ascending: false)
-                .limit(1);
-            if (subRows.isNotEmpty) {
-              final subId = subRows[0]['id'] as String;
-              final remaining = subRows[0]['entries_remaining'] as int;
-              print(
-                '✅ [eligibility] Entry pack has $remaining entries remaining (subscription_id=$subId)',
-              );
-              return {
-                'allowed': true,
-                'booking_type': 'entry_based',
-                'subscription_id': subId,
-                'entries_remaining': remaining,
-              };
-            } else {
-              print(
-                '🚫 [eligibility] No active user_subscriptions row with entries_remaining>0 for entry pack "$planName"',
-              );
-              return {
-                'allowed': false,
-                'reason': 'class_schedule.no_valid_subscription'.tr(),
-              };
-            }
-          } catch (e) {
-            print(
-              '⚠️ [eligibility] Could not look up user_subscriptions for entry pack: $e',
-            );
-            return {
-              'allowed': false,
-              'reason': 'errors.subscription_check_failed'.tr(),
-            };
-          }
-        }
-
         if (entryCount == null) {
-          // Time-based plan (is_unlimited=false, entry_count=null) — check expiry before allowing
           final confirmedAtRaw = payment['confirmed_at'] as String?;
+          var stillActive = true;
           if (confirmedAtRaw != null) {
             final confirmedAt = DateTime.tryParse(confirmedAtRaw);
             if (confirmedAt != null) {
@@ -832,37 +793,58 @@ class ClassScheduleService {
                 confirmedAt.minute,
                 confirmedAt.second,
               );
-              if (!expiresAt.isAfter(DateTime.now().toUtc())) {
-                print(
-                  '⏰ [eligibility] Plan "$planName" expired on $expiresAt — skipping',
-                );
-                continue;
-              }
+              stillActive = expiresAt.isAfter(DateTime.now().toUtc());
             }
           }
+          if (!stillActive) {
+            print(
+              '⏰ [eligibility] Plan "$planName" expired — skipping',
+            );
+            continue;
+          }
           print(
-            '✅ [eligibility] Plan "$planName" is time-based and still active — booking allowed',
+            '✅ [eligibility] Plan "$planName" is time-based and still active',
           );
-          return {'allowed': true, 'booking_type': 'subscription'};
+          anyTimeBasedPlanMatches = true;
+          continue;
         }
 
-        // Fallback entry-based path (is_unlimited=false, entry_count!=null)
-        // Look up the active user_subscriptions row for this custom plan
+        print(
+          '🎫 [eligibility] Plan "$planName" is an entry pack (entry_count=$entryCount) — candidate',
+        );
+        entryPackCustomPlanIds.add(customPlanId);
+        entryPackPlanNames[customPlanId] = planName;
+      }
+
+      // (a) A still-valid time-based plan covers the discipline — allowed,
+      // no entry deducted, even if an entry pack also matches.
+      if (anyTimeBasedPlanMatches) {
+        print(
+          '✅ [eligibility] A time-based plan covers discipline=$classDiscipline — booking allowed, no entry deducted',
+        );
+        return {'allowed': true, 'booking_type': 'subscription'};
+      }
+
+      // (b) Otherwise, fall back to entry packs — the globally oldest active
+      // user_subscriptions row (across every matching entry-pack plan) with
+      // entries_remaining > 0 is used first.
+      if (entryPackCustomPlanIds.isNotEmpty) {
         try {
           final subRows = await _client
               .from('user_subscriptions')
-              .select('id, entries_remaining')
+              .select('id, entries_remaining, custom_plan_id')
               .eq('user_id', userId)
-              .eq('custom_plan_id', customPlanId)
+              .inFilter('custom_plan_id', entryPackCustomPlanIds)
               .eq('is_active', true)
               .gt('entries_remaining', 0)
-              .order('created_at', ascending: false)
+              .order('created_at', ascending: true)
               .limit(1);
           if (subRows.isNotEmpty) {
             final subId = subRows[0]['id'] as String;
             final remaining = subRows[0]['entries_remaining'] as int;
+            final usedPlanId = subRows[0]['custom_plan_id'] as String?;
             print(
-              '✅ [eligibility] Entry plan has $remaining entries remaining (subscription_id=$subId)',
+              '✅ [eligibility] Entry pack "${entryPackPlanNames[usedPlanId] ?? usedPlanId}" has $remaining entries remaining (subscription_id=$subId)',
             );
             return {
               'allowed': true,
@@ -870,15 +852,14 @@ class ClassScheduleService {
               'subscription_id': subId,
               'entries_remaining': remaining,
             };
-          } else {
-            print('🚫 [eligibility] Entry limit reached for plan "$planName"');
-            return {
-              'allowed': false,
-              'reason': 'class_schedule.no_valid_subscription'.tr(),
-            };
           }
+          print(
+            '🚫 [eligibility] No active user_subscriptions row with entries_remaining>0 for any matching entry pack (${entryPackPlanNames.values.join(", ")})',
+          );
         } catch (e) {
-          print('⚠️ [eligibility] Could not look up user_subscriptions: $e');
+          print(
+            '⚠️ [eligibility] Could not look up user_subscriptions for entry packs: $e',
+          );
           return {
             'allowed': false,
             'reason': 'errors.subscription_check_failed'.tr(),
@@ -886,6 +867,7 @@ class ClassScheduleService {
         }
       }
 
+      // (c) Nothing covers this discipline.
       print('❌ [eligibility] No plan covers discipline=$classDiscipline');
       return {
         'allowed': false,
