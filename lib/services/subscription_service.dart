@@ -948,9 +948,16 @@ class SubscriptionService {
         await _supabase.from('non_fiscal_receipts').insert(receiptsBatch);
       }
 
-      // ✅ STEP 8b: Insert into user_subscriptions for the BENEFICIARY
-      try {
-        for (final item in items) {
+      // ✅ STEP 8b: Insert into user_subscriptions for the BENEFICIARY.
+      // Each item is isolated in its own try/catch — one failure must not
+      // silently skip the rest of the cart — and the insert itself is made
+      // reliable (one retry on a transient error) and idempotent (skipped if
+      // a matching row was already created moments ago), since this is the
+      // only place an entry pack's row gets created and nothing else ever
+      // retries it afterwards: a single failed attempt here used to mean a
+      // paid entry pack with no usable entries and no automatic recovery.
+      for (final item in items) {
+        try {
           final itemName = item['name'] as String? ?? description;
 
           // ── Direct lookup by the custom_plan_id already resolved in planIdCache ──
@@ -978,62 +985,106 @@ class SubscriptionService {
             );
           }
 
-          if (plan != null) {
-            final isUnlimited = plan['is_unlimited'] as bool? ?? false;
-            final planEntryCount = (plan['entry_count'] as num?)?.toInt();
-            int entriesRemaining = 0;
-            int entriesTotal = 0;
-            DateTime? expiresAt;
-
-            // Determine branch: entry pack vs time-based
-            if (isUnlimited && planEntryCount != null && planEntryCount > 0) {
-              // Entry pack: is_unlimited=true means no time expiry, expires when entries run out
-              entriesRemaining = planEntryCount;
-              entriesTotal = planEntryCount;
-              // expiresAt stays null
-            } else {
-              // Time-based plan
-              final planName = (plan['name'] as String? ?? '').toLowerCase();
-              final isAnnual =
-                  planName.contains('iscrizione') ||
-                  planName.contains('annuale');
-              if (isAnnual) {
-                expiresAt = _computeAnnualExpiry();
-              } else {
-                final durationMonths =
-                    (plan['duration_months'] as num?)?.toInt() ?? 1;
-                final baseDate = await _getStackingBaseDate(
-                  userId: beneficiaryUserId,
-                  subscriptionPlanId: plan['id'] as String,
-                );
-                expiresAt = baseDate.add(Duration(days: 30 * durationMonths));
-              }
-            }
-
-            // 🔥 FIX: Use custom_plan_id (NOT subscription_plan_id which points to old table)
-            // user_subscriptions.subscription_plan_id FK → subscription_plans (old table)
-            // We store the custom plan reference in custom_plan_id column instead
-            await _supabase.from('user_subscriptions').insert({
-              'user_id': beneficiaryUserId,
-              'custom_plan_id': plan['id'],
-              // subscription_plan_id is left NULL — it references old subscription_plans table
-              // which does not contain custom plans. Setting it would cause FK violation.
-              'entries_remaining': entriesRemaining,
-              'entries_total': entriesTotal,
-              'is_active': true,
-              'expires_at': expiresAt?.toIso8601String(),
-            });
-            print(
-              '✅ DEBUG: user_subscriptions entry created for beneficiary: $beneficiaryUserId, plan: ${plan['name']}, custom_plan_id: ${plan['id']}',
-            );
-          } else {
+          if (plan == null) {
             print(
               '⚠️ DEBUG: Could not find custom plan id=$resolvedPlanId for item: $itemName — skipping user_subscriptions insert',
             );
+            continue;
           }
+
+          // 🔒 Idempotency: if this exact beneficiary+plan already got a
+          // user_subscriptions row moments ago (e.g. this same confirmation
+          // being processed twice — a double tap, two overlapping app
+          // instances both reconciling the same payment), skip creating a
+          // second one instead of handing out double the entries.
+          try {
+            final recentDuplicate = await _supabase
+                .from('user_subscriptions')
+                .select('id')
+                .eq('user_id', beneficiaryUserId)
+                .eq('custom_plan_id', plan['id'])
+                .gte(
+                  'created_at',
+                  DateTime.now()
+                      .toUtc()
+                      .subtract(const Duration(minutes: 5))
+                      .toIso8601String(),
+                )
+                .limit(1);
+            if ((recentDuplicate as List).isNotEmpty) {
+              print(
+                '⚠️ STEP 8b: user_subscriptions row for beneficiary=$beneficiaryUserId '
+                'plan=${plan['id']} already created in the last 5 minutes — skipping duplicate insert',
+              );
+              continue;
+            }
+          } catch (e) {
+            print('⚠️ STEP 8b: duplicate check failed, proceeding anyway: $e');
+          }
+
+          final isUnlimited = plan['is_unlimited'] as bool? ?? false;
+          final planEntryCount = (plan['entry_count'] as num?)?.toInt();
+          int entriesRemaining = 0;
+          int entriesTotal = 0;
+          DateTime? expiresAt;
+
+          // Determine branch: entry pack vs time-based
+          if (isUnlimited && planEntryCount != null && planEntryCount > 0) {
+            // Entry pack: is_unlimited=true means no time expiry, expires when entries run out
+            entriesRemaining = planEntryCount;
+            entriesTotal = planEntryCount;
+            // expiresAt stays null
+          } else {
+            // Time-based plan
+            final planName = (plan['name'] as String? ?? '').toLowerCase();
+            final isAnnual =
+                planName.contains('iscrizione') ||
+                planName.contains('annuale');
+            if (isAnnual) {
+              expiresAt = _computeAnnualExpiry();
+            } else {
+              final durationMonths =
+                  (plan['duration_months'] as num?)?.toInt() ?? 1;
+              final baseDate = await _getStackingBaseDate(
+                userId: beneficiaryUserId,
+                subscriptionPlanId: plan['id'] as String,
+              );
+              expiresAt = baseDate.add(Duration(days: 30 * durationMonths));
+            }
+          }
+
+          // 🔥 FIX: Use custom_plan_id (NOT subscription_plan_id which points to old table)
+          // user_subscriptions.subscription_plan_id FK → subscription_plans (old table)
+          // We store the custom plan reference in custom_plan_id column instead
+          final Map<String, dynamic> rowData = {
+            'user_id': beneficiaryUserId,
+            'custom_plan_id': plan['id'],
+            // subscription_plan_id is left NULL — it references old subscription_plans table
+            // which does not contain custom plans. Setting it would cause FK violation.
+            'entries_remaining': entriesRemaining,
+            'entries_total': entriesTotal,
+            'is_active': true,
+            'expires_at': expiresAt?.toIso8601String(),
+          };
+
+          // One retry on a transient failure (dropped connection, timeout):
+          // this insert is never attempted again afterwards by anything
+          // else, so a single blip used to mean a permanently missing row.
+          try {
+            await _supabase.from('user_subscriptions').insert(rowData);
+          } catch (e) {
+            print(
+              '⚠️ STEP 8b: user_subscriptions insert failed, retrying once: $e',
+            );
+            await Future.delayed(const Duration(milliseconds: 500));
+            await _supabase.from('user_subscriptions').insert(rowData);
+          }
+          print(
+            '✅ DEBUG: user_subscriptions entry created for beneficiary: $beneficiaryUserId, plan: ${plan['name']}, custom_plan_id: ${plan['id']}',
+          );
+        } catch (e) {
+          print('❌ STEP 8b: user_subscriptions insert failed for item: $e');
         }
-      } catch (e) {
-        print('❌ STEP 8b: user_subscriptions insert failed: $e');
       }
 
       print('✅ DEBUG: Batch operation completed successfully');
