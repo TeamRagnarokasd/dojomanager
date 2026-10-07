@@ -564,22 +564,44 @@ class _AsdDeadlinesScreenState extends State<AsdDeadlinesScreen> {
   }
 
   Widget _buildStatusBanner(AsdDeadlineSummary summary) {
+    // Stesso totale del numero rosso sulla card (summary.pendingCount, che
+    // include già i certificati medici in scadenza) — con il dettaglio di
+    // quanto è dovuto a scadenze vere e proprie e quanto a certificati.
+    // Prima il banner mostrava solo overdueCount O dueSoonCount (mai la
+    // somma), disallineandosi dal numero della card quando c'erano sia
+    // scadenze scadute che altre solo in arrivo.
+    final totalDeadlines = summary.dueOccurrences
+        .where((o) => o.urgency != AsdDeadlineUrgency.normal)
+        .length;
+    final totalMedical = summary.medicalReport?.alerts.length ?? 0;
+    final total = summary.pendingCount;
+
     late Color color;
     late IconData icon;
     late String text;
 
-    if (summary.overdueCount > 0) {
-      color = Colors.red;
-      icon = Icons.error_outline;
-      text = '${summary.overdueCount} scadute';
-    } else if (summary.dueSoonCount > 0) {
-      color = Colors.orange;
-      icon = Icons.warning_amber_outlined;
-      text = '${summary.dueSoonCount} scadenze da fare';
-    } else {
+    if (total == 0) {
       color = Colors.green;
       icon = Icons.check_circle_outline;
       text = 'Tutto in regola: nessuna scadenza in arrivo';
+    } else {
+      color = summary.overdueCount > 0 ? Colors.red : Colors.orange;
+      icon = summary.overdueCount > 0
+          ? Icons.error_outline
+          : Icons.warning_amber_outlined;
+
+      final deadlinesLabel =
+          '$totalDeadlines ${totalDeadlines == 1 ? 'scadenza' : 'scadenze'}';
+      final medicalLabel = '$totalMedical '
+          '${totalMedical == 1 ? 'certificato medico' : 'certificati medici'}';
+
+      if (totalDeadlines > 0 && totalMedical > 0) {
+        text = '$total da controllare: $deadlinesLabel e $medicalLabel';
+      } else if (totalMedical > 0) {
+        text = '$medicalLabel in scadenza';
+      } else {
+        text = '$deadlinesLabel da controllare';
+      }
     }
 
     return Container(

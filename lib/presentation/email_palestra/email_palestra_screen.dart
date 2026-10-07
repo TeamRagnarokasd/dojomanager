@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -591,16 +592,43 @@ class _EmailDetailScreen extends StatefulWidget {
 }
 
 class _EmailDetailScreenState extends State<_EmailDetailScreen> {
+  // Riga che e' SOLO un URL tra parentesi (es. tracking link nei footer
+  // delle email) — va rimossa del tutto, non solo accorciata.
+  static final RegExp _soleParenUrlLine =
+      RegExp(r'^\(\s*https?://\S+?\s*\)$', caseSensitive: false);
+
+  // Cattura "etichetta (https://...)" (gruppi 1+2) oppure un URL nudo
+  // (gruppo 3). L'etichetta e' tutto il testo della riga fino alla
+  // parentesi aperta più vicina che racchiude un URL.
+  static final RegExp _linkPattern = RegExp(
+    r'([^\n(]*?)\((https?://[^\s)]+)\)|(https?://[^\s)]+)',
+    caseSensitive: false,
+  );
+
+  static const _linkStyle = TextStyle(
+    color: Color(0xFF1A73E8),
+    decoration: TextDecoration.underline,
+  );
+
   final _service = MailboxService.instance;
   bool _isLoadingBody = true;
   bool _isDeleting = false;
-  String? _body;
+  List<InlineSpan> _bodySpans = const [];
   String? _bodyError;
+  final List<TapGestureRecognizer> _recognizers = [];
 
   @override
   void initState() {
     super.initState();
     _loadBody();
+  }
+
+  @override
+  void dispose() {
+    for (final recognizer in _recognizers) {
+      recognizer.dispose();
+    }
+    super.dispose();
   }
 
   Future<void> _loadBody() async {
@@ -610,7 +638,7 @@ class _EmailDetailScreenState extends State<_EmailDetailScreen> {
       );
       if (!mounted) return;
       setState(() {
-        _body = body;
+        _bodySpans = _buildBodySpans(body);
         _isLoadingBody = false;
       });
     } catch (e) {
@@ -619,6 +647,94 @@ class _EmailDetailScreenState extends State<_EmailDetailScreen> {
         _bodyError = e.toString().replaceFirst('Exception: ', '');
         _isLoadingBody = false;
       });
+    }
+  }
+
+  /// Trasforma il corpo testuale in una serie di span: testo normale e
+  /// link cliccabili al posto degli URL grezzi. Le righe che sono solo un
+  /// URL tra parentesi vengono scartate.
+  List<InlineSpan> _buildBodySpans(String text) {
+    final spans = <InlineSpan>[];
+    final lines = text.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      if (_soleParenUrlLine.hasMatch(line.trim())) {
+        continue;
+      }
+
+      var last = 0;
+      for (final match in _linkPattern.allMatches(line)) {
+        if (match.start > last) {
+          spans.add(TextSpan(text: line.substring(last, match.start)));
+        }
+        final parenUrl = match.group(2);
+        final bareUrl = match.group(3);
+        if (parenUrl != null) {
+          final label = (match.group(1) ?? '').trim();
+          final displayText =
+              label.isNotEmpty ? label : _domainEllipsis(parenUrl);
+          spans.add(_linkSpan(displayText, parenUrl));
+        } else if (bareUrl != null) {
+          final split = _splitTrailingPunctuation(bareUrl);
+          spans.add(_linkSpan(_domainEllipsis(split.url), split.url));
+          if (split.trailing.isNotEmpty) {
+            spans.add(TextSpan(text: split.trailing));
+          }
+        }
+        last = match.end;
+      }
+      if (last < line.length) {
+        spans.add(TextSpan(text: line.substring(last)));
+      }
+      if (i != lines.length - 1) spans.add(const TextSpan(text: '\n'));
+    }
+    return spans;
+  }
+
+  /// Punteggiatura finale di frase (es. "https://...sito.com.") non fa
+  /// parte dell'URL — va mostrata come testo normale dopo il link.
+  ({String url, String trailing}) _splitTrailingPunctuation(String url) {
+    const punctuation = '.,;:!?)]}>"\'';
+    var end = url.length;
+    while (end > 0 && punctuation.contains(url[end - 1])) {
+      end--;
+    }
+    return (url: url.substring(0, end), trailing: url.substring(end));
+  }
+
+  /// Solo il dominio, es. "hubspotlinks.com..." — l'URL completo resta il
+  /// target del tocco, solo la scritta e' accorciata.
+  String _domainEllipsis(String url) {
+    var host = Uri.tryParse(url)?.host ?? '';
+    if (host.startsWith('www.')) host = host.substring(4);
+    if (host.isEmpty) {
+      return url.length > 30 ? '${url.substring(0, 30)}...' : url;
+    }
+    return '$host...';
+  }
+
+  InlineSpan _linkSpan(String text, String url) {
+    final recognizer = TapGestureRecognizer()..onTap = () => _launchUrl(url);
+    _recognizers.add(recognizer);
+    return TextSpan(text: text, style: _linkStyle, recognizer: recognizer);
+  }
+
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    try {
+      final opened =
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Impossibile aprire il link.')),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Impossibile aprire il link.')),
+      );
     }
   }
 
@@ -680,6 +796,14 @@ class _EmailDetailScreenState extends State<_EmailDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        // Esplicito: su web (Safari iPhone) il leading automatico non
+        // compare sempre, lasciando la schermata senza modo di tornare
+        // indietro.
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Indietro',
+          onPressed: () => Navigator.maybePop(context),
+        ),
         title: const Text('Email'),
         actions: [
           IconButton(
@@ -729,10 +853,13 @@ class _EmailDetailScreenState extends State<_EmailDetailScreen> {
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               )
             else
-              SelectableText(
-                (_body != null && _body!.isNotEmpty)
-                    ? _body!
-                    : '(Messaggio vuoto)',
+              Text.rich(
+                TextSpan(
+                  style: Theme.of(context).textTheme.bodyMedium,
+                  children: _bodySpans.isNotEmpty
+                      ? _bodySpans
+                      : const [TextSpan(text: '(Messaggio vuoto)')],
+                ),
               ),
           ],
         ),
