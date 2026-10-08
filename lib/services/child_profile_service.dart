@@ -354,6 +354,38 @@ class ChildProfileService {
     return hasDiscount ? discountedPrice : standardPrice;
   }
 
+  // ─── Booking Restriction ─────────────────────────────────────────────────
+
+  /// True when the guardian must book classes only through a child's
+  /// profile, never their own: they are NOT also a student themselves
+  /// (`user_profiles.is_also_student == false`) AND they have at least one
+  /// active child profile. Fails open (returns false) on any error, so a
+  /// transient DB issue never blocks booking outright.
+  ///
+  /// Pass [knownChildren] when the caller already has a fresh
+  /// `getChildProfiles()` result at hand (e.g. the profile switcher), so
+  /// this doesn't re-fetch the same list.
+  static Future<bool> mustBookForChildrenOnly({
+    List<Map<String, dynamic>>? knownChildren,
+  }) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return false;
+    try {
+      final profileRow = await _supabase
+          .from('user_profiles')
+          .select('is_also_student')
+          .eq('id', userId)
+          .maybeSingle();
+      final isAlsoStudent = profileRow?['is_also_student'] as bool? ?? false;
+      if (isAlsoStudent) return false;
+      final children = knownChildren ?? await getChildProfiles();
+      return children.isNotEmpty;
+    } catch (e) {
+      print('⚠️ ChildProfileService: mustBookForChildrenOnly check failed: $e');
+      return false;
+    }
+  }
+
   // ─── Receipt Helpers ─────────────────────────────────────────────────────
 
   /// Returns the guardian (adult) profile for receipt generation.

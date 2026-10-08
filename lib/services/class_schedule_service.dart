@@ -631,6 +631,10 @@ class ClassScheduleService {
       print('🔍 [eligibility] userId=$userId, instanceId=$scheduleInstanceId');
 
       // ── Step 0: Check booking passpartout ─────────────────────────────
+      // Runs BEFORE the parent-must-book-for-children-only restriction
+      // below: an admin-granted passpartout is a stronger, more specific
+      // override and must not be silently defeated by the generic
+      // children-only default.
       try {
         final profileRows = await _client
             .from('user_profiles')
@@ -644,6 +648,21 @@ class ClassScheduleService {
         }
       } catch (e) {
         print('⚠️ [eligibility] Could not check passpartout: $e');
+      }
+
+      // ── Step 0.5: Parent-must-book-for-children-only restriction ──────
+      // Only applies when the currently active profile is the adult's own
+      // (no child profile selected) — booking under an active child
+      // profile is always allowed regardless of this restriction.
+      if (ChildProfileService.activeChildProfileId == null &&
+          await ChildProfileService.mustBookForChildrenOnly()) {
+        print(
+          '🚫 [eligibility] Guardian must book through a child profile — rejecting client-side',
+        );
+        return {
+          'allowed': false,
+          'reason': 'Per prenotare scegli il profilo del minore.',
+        };
       }
 
       // ── Step 1: Resolve discipline of the requested class ──────────────

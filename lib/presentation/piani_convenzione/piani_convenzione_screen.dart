@@ -1,10 +1,9 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -14,6 +13,7 @@ import '../../services/auth_service.dart';
 import '../../services/child_profile_service.dart';
 import '../../services/feature_flags_service.dart';
 import '../../services/payment_service.dart';
+import '../../services/pending_purchases_service.dart';
 import '../subscription_plan_selection/widgets/subscription_option_card_widget.dart';
 
 class PianiConvenzioneScreen extends StatefulWidget {
@@ -191,17 +191,15 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
     double? planAmount,
   }) async {
     setState(() => _isLoading = true);
+    PendingPurchase? purchase;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isPaymentPending', true);
-      await prefs.setString('pendingPlanTitle', planTitle);
-      if (planId != null && planId.isNotEmpty) {
-        await prefs.setString('pendingPlanId', planId);
-      }
-      if (planAmount != null && planAmount > 0) {
-        await prefs.setDouble('pendingPlanAmount', planAmount);
-      }
-      await prefs.setString('pendingPaymentMethod', 'sumup');
+      purchase = await PendingPurchasesService.add(
+        planId: (planId != null && planId.isNotEmpty) ? planId : null,
+        planTitle: planTitle,
+        amount: planAmount ?? 0.0,
+        method: 'sumup',
+        beneficiaryId: ChildProfileService.getActiveUserId(),
+      );
 
       // 🆕 Best-effort bookkeeping row for the "click" — no auto-activation
       // for SumUp, this is only used for tracking. Never blocks the flow.
@@ -224,7 +222,7 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
               .single();
           final intentId = insertedRow['id'] as String?;
           if (intentId != null) {
-            await prefs.setString('pendingIntentId', intentId);
+            await PendingPurchasesService.setIntentId(purchase.id, intentId);
           }
         }
       } catch (_) {
@@ -237,7 +235,7 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-        await prefs.setBool('isPaymentPending', false);
+        await PendingPurchasesService.remove(purchase.id);
         if (mounted) {
           Fluttertoast.showToast(
             msg: 'common.link_open_error'.tr(),
@@ -249,9 +247,10 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
         }
       }
     } catch (error) {
-      print('Error launching SumUp URL: $error');
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isPaymentPending', false);
+      debugPrint('Error launching SumUp URL: $error');
+      if (purchase != null) {
+        await PendingPurchasesService.remove(purchase.id);
+      }
       if (mounted) {
         Fluttertoast.showToast(
           msg: 'common.link_open_failed'.tr(),
@@ -301,9 +300,9 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
   /// 🆕 SumUp, 'sumup_auto_confirm' on: creates the payment intent via the
   /// 'sumup/create-payment' Edge Function (the server creates the
   /// payment_intents click, with provider_payment_id set) and opens the
-  /// redirect page. isPaymentPending/pendingIntentId ARE set, same as
+  /// redirect page. A pending purchase WITH an intent id is added, same as
   /// today's fixed-link flow, so SumUpWaitingSheet (opened by whichever
-  /// screen reads isPaymentPending on resume) can watch this specific
+  /// screen processes pending purchases on resume) can watch this specific
   /// click by id instead of showing the old "did you pay?" dialog. On
   /// failure, shows a message and offers (only if the user agrees) today's
   /// fixed-link SumUp flow, unchanged.
@@ -319,6 +318,7 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
     }
 
     setState(() => _isLoading = true);
+    PendingPurchase? purchase;
     try {
       final response = await Supabase.instance.client.functions.invoke(
         'sumup/create-payment',
@@ -344,22 +344,27 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
         );
       }
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isPaymentPending', true);
-      await prefs.setString('pendingPaymentMethod', 'sumup');
-      await prefs.setString('pendingPlanTitle', planTitle);
-      await prefs.setString('pendingPlanId', planId);
-      if (planAmount > 0) {
-        await prefs.setDouble('pendingPlanAmount', planAmount);
-      }
-      await prefs.setString('pendingIntentId', intentId);
+      purchase = await PendingPurchasesService.add(
+        planId: planId,
+        planTitle: planTitle,
+        amount: planAmount,
+        method: 'sumup',
+        intentId: intentId,
+        beneficiaryId: ChildProfileService.getActiveUserId(),
+      );
 
       final opened = await _launchPaymentRedirectUrl(Uri.parse(redirectUrl));
       if (!opened) {
         throw Exception('launchUrl returned false');
       }
     } catch (e) {
-      print('Error creating SumUp payment: $e');
+      debugPrint('Error creating SumUp payment: $e');
+      // Drop this attempt's own entry before offering the fallback, which
+      // adds its own if the user proceeds — otherwise both end up shown
+      // in sequence later.
+      if (purchase != null) {
+        await PendingPurchasesService.remove(purchase.id);
+      }
       await _offerFixedSumUpLinkFallback(plan);
     } finally {
       if (mounted) {
@@ -410,6 +415,11 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
         false;
 
     if (!useOldFlow) return;
+    Fluttertoast.showToast(
+      msg: kManualPaymentModeMessage,
+      toastLength: Toast.LENGTH_LONG,
+      gravity: ToastGravity.BOTTOM,
+    );
     _launchFixedSumUpUrl(plan);
   }
 

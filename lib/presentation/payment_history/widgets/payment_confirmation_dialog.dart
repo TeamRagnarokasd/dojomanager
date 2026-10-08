@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
@@ -29,7 +28,8 @@ class _PaymentConfirmationDialogState extends State<PaymentConfirmationDialog> {
   bool _showDetailsForm = false;
   bool _isPlanLocked = false;
 
-  // For SumUp with known plan: store price directly from SharedPreferences
+  // For SumUp with known plan: store price directly from the pending
+  // purchase the caller resolved this dialog for.
   double? _lockedPlanPrice;
 
   // Dynamic plans loaded from Supabase for Satispay dropdown
@@ -118,7 +118,7 @@ class _PaymentConfirmationDialogState extends State<PaymentConfirmationDialog> {
       double price;
 
       if (_isPlanLocked && _lockedPlanPrice != null && _lockedPlanPrice! > 0) {
-        // SumUp: use the price stored in SharedPreferences (from plan selection)
+        // SumUp: use the price from the pending purchase (set at plan selection)
         price = _lockedPlanPrice!;
       } else {
         // Satispay: look up price from dynamically loaded plans
@@ -136,6 +136,13 @@ class _PaymentConfirmationDialogState extends State<PaymentConfirmationDialog> {
         {'name': cleanPlanName, 'price': price},
       ];
 
+      // The profile this purchase was actually started for (e.g. a child),
+      // which may no longer be the active profile by the time the student
+      // returns to confirm — falls back to today's active-profile default
+      // when absent (the Satispay/unknown-plan path, which never carried
+      // one even before pending purchases were tracked as a list).
+      final beneficiaryId = widget.planData['beneficiary_id'] as String?;
+
       await SubscriptionService.createBatchPaymentAndReceipts(
         items: items,
         paymentMethod: paymentMethod,
@@ -143,6 +150,7 @@ class _PaymentConfirmationDialogState extends State<PaymentConfirmationDialog> {
         description: cleanPlanName,
         discipline: null,
         discipline2: null,
+        beneficiaryProfileIdOverride: beneficiaryId,
       );
 
       if (!mounted) return;
@@ -598,19 +606,11 @@ class _PaymentConfirmationDialogState extends State<PaymentConfirmationDialog> {
                 child: OutlinedButton(
                   onPressed: _isProcessing
                       ? null
-                      : () async {
-                          // Clear pending payment flag from SharedPreferences
-                          try {
-                            final prefs = await SharedPreferences.getInstance();
-                            await prefs.setBool('isPaymentPending', false);
-                            await prefs.remove('pendingPlanId');
-                            await prefs.remove('pendingPlanTitle');
-                            await prefs.remove('pendingPlanAmount');
-                            await prefs.remove('pendingPaymentMethod');
-                          } catch (_) {}
-                          if (context.mounted) {
-                            Navigator.of(context).pop();
-                          }
+                      : () {
+                          // The pending purchase was already claimed (removed
+                          // from the list) by the caller before this dialog
+                          // was shown — nothing left to clear here.
+                          Navigator.of(context).pop();
                         },
                   style: OutlinedButton.styleFrom(
                     padding: EdgeInsets.symmetric(vertical: 2.h),
