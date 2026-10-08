@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../routes/app_routes.dart';
 import '../../services/admin_ask_claude_service.dart';
 import '../../services/admin_section_visibility_service.dart';
+import '../../services/app_client_versions_service.dart';
 import '../../services/asd_deadlines_service.dart';
 import '../../services/asd_governance_service.dart';
 import '../../services/auth_service.dart';
@@ -122,6 +123,13 @@ const List<AdminAsdSection> kAdminAsdSections = [
     route: AppRoutes.adminManagementSystem,
     arguments: {'initialTab': 'settings'},
   ),
+  AdminAsdSection(
+    key: 'app_versions',
+    title: 'Versioni app',
+    subtitle: 'Chi non ha ancora aggiornato l\'app',
+    icon: Icons.system_update_outlined,
+    route: AppRoutes.appVersions,
+  ),
 ];
 
 /// Umbrella section key: switching this off hides every section below to
@@ -190,6 +198,11 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
   /// The shared Drive folder link, only fetched when "Documenti Drive" is
   /// visible to the current admin. Editable only by the principal admin.
   String? _driveFolderUrl;
+
+  /// Count shown on the "Versioni app" row: clients whose reported build is
+  /// older than the current app_version.version_code, only fetched when
+  /// that section is visible to the current admin.
+  int? _outdatedClientsBadgeCount;
 
   /// "Chiedi all'assistente": which assistant the short tap opens, saved
   /// per user in shared_preferences. Defaults to Claude.
@@ -427,6 +440,7 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
       _loadDeadlinesBadge(kAdminAsdSections);
       _loadComplianceBadge(kAdminAsdSections);
       _loadDriveUrl(kAdminAsdSections);
+      _loadOutdatedClientsBadge(kAdminAsdSections);
       return;
     }
 
@@ -451,6 +465,7 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
     _loadDeadlinesBadge(visible);
     _loadComplianceBadge(visible);
     _loadDriveUrl(visible);
+    _loadOutdatedClientsBadge(visible);
   }
 
   /// Fire-and-forget: only fetched when "Scadenzario ASD" is one of the
@@ -473,8 +488,24 @@ class _AdministrationAsdScreenState extends State<AdministrationAsdScreen> {
         return _deadlinesBadgeCount;
       case 'compliance_docs':
         return _complianceOverdueCount;
+      case 'app_versions':
+        return _outdatedClientsBadgeCount;
       default:
         return null;
+    }
+  }
+
+  /// Fire-and-forget: only fetched when "Versioni app" is one of the
+  /// sections this admin can see. Failure just leaves the badge unshown.
+  Future<void> _loadOutdatedClientsBadge(List<AdminAsdSection> sections) async {
+    if (!sections.any((s) => s.key == 'app_versions')) return;
+    try {
+      final list = await AppClientVersionsService.instance.adminOutdatedClientsList();
+      final count = list.where((row) => row['outdated'] == true).length;
+      if (!mounted) return;
+      setState(() => _outdatedClientsBadgeCount = count);
+    } catch (_) {
+      // Not critical — the row just shows no badge.
     }
   }
 

@@ -19,6 +19,7 @@ import './presentation/admin_ask_claude/admin_ask_claude_screen.dart';
 import './routes/app_routes.dart';
 import './services/admin_ask_claude_service.dart';
 import './services/app_update_service.dart';
+import './services/app_version_report_service.dart';
 import './services/android_install_intent.dart';
 import './services/android_uninstall_intent.dart';
 import './services/auth_service.dart';
@@ -186,6 +187,11 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
       // 🆕 Reconcile Satispay payment_intents on every foreground return —
       // this is how activation happens even hours after the payment.
       _runPaidIntentsCheck();
+      // 🆕 Report this client's app version on every foreground return too
+      // (not just login) — safe on every platform, including web.
+      if (_authService.isAuthenticated) {
+        AppVersionReportService.instance.reportCurrentVersion();
+      }
     } else if (state == AppLifecycleState.paused) {
       print('📱 App moved to background');
     }
@@ -514,6 +520,9 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
         _runPaidIntentsCheck();
         // 🆕 Log this launch's access (already-signed-in session).
         _logSessionActivity(userId);
+        // 🆕 Report this client's app version for the admin "Versioni app"
+        // screen.
+        AppVersionReportService.instance.reportCurrentVersion();
       }
       // Recheck the "Chiedi a Claude" bubble once at app startup too, in
       // case a session is already restored without a fresh signedIn event.
@@ -532,6 +541,9 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
                 // 🆕 Log this login (email/password or fingerprint alike —
                 // both fire this same event).
                 _logSessionActivity(uid);
+                // 🆕 Report this client's app version for the admin
+                // "Versioni app" screen.
+                AppVersionReportService.instance.reportCurrentVersion();
               }
               _checkAskClaudeBubbleVisibility();
             } else if (data.event == AuthChangeEvent.signedOut) {
