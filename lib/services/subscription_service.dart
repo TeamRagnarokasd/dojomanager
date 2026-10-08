@@ -950,12 +950,28 @@ class SubscriptionService {
 
       // ✅ STEP 8b: Insert into user_subscriptions for the BENEFICIARY.
       // Each item is isolated in its own try/catch — one failure must not
-      // silently skip the rest of the cart — and the insert itself is made
-      // reliable (one retry on a transient error) and idempotent (skipped if
-      // a matching row was already created moments ago), since this is the
-      // only place an entry pack's row gets created and nothing else ever
-      // retries it afterwards: a single failed attempt here used to mean a
-      // paid entry pack with no usable entries and no automatic recovery.
+      // silently skip the rest of the cart — and the insert itself gets one
+      // retry on a transient error (dropped connection, timeout), since this
+      // is the only place an entry pack's row gets created and nothing else
+      // ever retries it afterwards: a single failed attempt here used to
+      // mean a paid entry pack with no usable entries and no automatic
+      // recovery.
+      //
+      // NOTE on double-submission (e.g. the same confirmation processed
+      // twice by two overlapping calls): this method already guards against
+      // that at the top via the static `_isProcessing` flag, which is the
+      // real idempotency boundary for a single app instance. A client-side
+      // timestamp/count heuristic here cannot be made airtight against two
+      // truly concurrent calls (from two devices/instances) without a
+      // database-level unique constraint tying a row to its originating
+      // payment, which would need a schema change — out of scope here by
+      // explicit instruction. The retry below is deliberately unconditional
+      // rather than guarded by a "did it actually already succeed?" check:
+      // that guard was tried and reverted because it could not reliably
+      // distinguish this item's own row from a sibling's or from a separate
+      // legitimate purchase, which risked silently dropping a paid entry
+      // pack — worse than the rare extra row an unconditional retry can
+      // cause on a true lost-acknowledgement.
       for (final item in items) {
         try {
           final itemName = item['name'] as String? ?? description;
@@ -990,36 +1006,6 @@ class SubscriptionService {
               '⚠️ DEBUG: Could not find custom plan id=$resolvedPlanId for item: $itemName — skipping user_subscriptions insert',
             );
             continue;
-          }
-
-          // 🔒 Idempotency: if this exact beneficiary+plan already got a
-          // user_subscriptions row moments ago (e.g. this same confirmation
-          // being processed twice — a double tap, two overlapping app
-          // instances both reconciling the same payment), skip creating a
-          // second one instead of handing out double the entries.
-          try {
-            final recentDuplicate = await _supabase
-                .from('user_subscriptions')
-                .select('id')
-                .eq('user_id', beneficiaryUserId)
-                .eq('custom_plan_id', plan['id'])
-                .gte(
-                  'created_at',
-                  DateTime.now()
-                      .toUtc()
-                      .subtract(const Duration(minutes: 5))
-                      .toIso8601String(),
-                )
-                .limit(1);
-            if ((recentDuplicate as List).isNotEmpty) {
-              print(
-                '⚠️ STEP 8b: user_subscriptions row for beneficiary=$beneficiaryUserId '
-                'plan=${plan['id']} already created in the last 5 minutes — skipping duplicate insert',
-              );
-              continue;
-            }
-          } catch (e) {
-            print('⚠️ STEP 8b: duplicate check failed, proceeding anyway: $e');
           }
 
           final isUnlimited = plan['is_unlimited'] as bool? ?? false;
@@ -1070,6 +1056,8 @@ class SubscriptionService {
           // One retry on a transient failure (dropped connection, timeout):
           // this insert is never attempted again afterwards by anything
           // else, so a single blip used to mean a permanently missing row.
+          // See the note above the loop for why this is unconditional
+          // rather than trying to first detect a lost-acknowledgement.
           try {
             await _supabase.from('user_subscriptions').insert(rowData);
           } catch (e) {
