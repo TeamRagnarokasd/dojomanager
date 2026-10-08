@@ -13,6 +13,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import './presentation/admin_ask_claude/admin_ask_claude_screen.dart';
 import './routes/app_routes.dart';
@@ -1103,24 +1104,15 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
         }
       }
 
-      // Download APK to temp directory.
       final tempDir = await getTemporaryDirectory();
       final apkPath = '${tempDir.path}/update.apk';
+      final partPath = '$apkPath.part';
 
-      final dio = Dio();
-      await dio.download(
-        widget.info.apkUrl,
-        apkPath,
-        onReceiveProgress: (received, total) {
-          if (total > 0) {
-            setState(() {
-              _downloadProgress = received / total;
-            });
-          }
-        },
-      );
+      await _ensureApkDownloaded(apkPath: apkPath, partPath: partPath);
 
-      // Launch install intent via android_intent_plus.
+      // Launch install intent via android_intent_plus — one tap on
+      // "Aggiorna ora" is enough: no dialog reappears in between, straight
+      // from download (or the already-downloaded fast path above) to install.
       if (!kIsWeb && Platform.isAndroid) {
         // Save the confirmed version code BEFORE launching the install intent,
         // so the app remembers it has already moved to this version.
@@ -1136,11 +1128,203 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       debugPrint('❌ APK download/install error: $e');
-      setState(() {
-        _isDownloading = false;
-        _errorMessage = 'Download fallito. Controlla la connessione e riprova.';
-      });
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _errorMessage =
+              'Download fallito. Controlla la connessione e riprova.';
+        });
+      }
     }
+  }
+
+  /// Makes sure a complete, size-verified APK for [widget.info.versionCode]
+  /// sits at [apkPath], downloading it (with resume support) only if it
+  /// isn't already there from a previous attempt. The actual download is
+  /// wrapped in the device wakelock so the screen can't sleep mid-transfer.
+  Future<void> _ensureApkDownloaded({
+    required String apkPath,
+    required String partPath,
+  }) async {
+    if (await _hasVerifiedApk(apkPath)) {
+      debugPrint(
+        '✅ Update already downloaded for version ${widget.info.versionCode} — skipping re-download',
+      );
+      if (mounted) setState(() => _downloadProgress = 1.0);
+      return;
+    }
+
+    var wakelockEnabled = false;
+    try {
+      if (!kIsWeb && Platform.isAndroid) {
+        try {
+          await WakelockPlus.enable();
+          wakelockEnabled = true;
+        } catch (e) {
+          debugPrint('⚠️ Wakelock enable failed: $e');
+        }
+      }
+      await _downloadApkWithResume(apkPath: apkPath, partPath: partPath);
+    } finally {
+      if (wakelockEnabled) {
+        try {
+          await WakelockPlus.disable();
+        } catch (e) {
+          debugPrint('⚠️ Wakelock disable failed: $e');
+        }
+      }
+    }
+  }
+
+  /// True when a complete, previously-verified APK for
+  /// [widget.info.versionCode] already sits at [apkPath]. If a stale
+  /// complete file for a DIFFERENT version is found instead, it is removed
+  /// so it can never be mistaken for the current update.
+  Future<bool> _hasVerifiedApk(String apkPath) async {
+    try {
+      final downloadedVersion =
+          await AppUpdateService.instance.getDownloadedApkVersionCode();
+      final file = File(apkPath);
+      final exists = await file.exists();
+      if (exists && downloadedVersion == widget.info.versionCode) {
+        return true;
+      }
+      if (exists && downloadedVersion != widget.info.versionCode) {
+        await file.delete();
+      }
+    } catch (e) {
+      debugPrint('⚠️ Could not check existing APK: $e');
+    }
+    return false;
+  }
+
+  /// Downloads the APK into [partPath] with resume support, retrying up to
+  /// 5 times total. Each retry resumes from the byte count already on disk
+  /// via an HTTP Range request instead of starting over. The file is
+  /// renamed to [apkPath] only once its size matches the server's
+  /// Content-Length exactly.
+  Future<void> _downloadApkWithResume({
+    required String apkPath,
+    required String partPath,
+  }) async {
+    final service = AppUpdateService.instance;
+    final partFile = File(partPath);
+
+    // A partial file left on disk only belongs to THIS download if it was
+    // started for the same remote version — otherwise it's bytes from a
+    // different, abandoned attempt and must not be appended to.
+    final pendingVersion = await service.getPendingApkVersionCode();
+    if (pendingVersion != widget.info.versionCode) {
+      if (await partFile.exists()) await partFile.delete();
+      await service.savePendingApkVersionCode(widget.info.versionCode);
+    }
+
+    const maxAttempts = 5;
+    Object? lastError;
+
+    final dio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 30),
+      ),
+    );
+
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final startByte =
+            await partFile.exists() ? await partFile.length() : 0;
+
+        final response = await dio.get<ResponseBody>(
+          widget.info.apkUrl,
+          options: Options(
+            responseType: ResponseType.stream,
+            headers: startByte > 0 ? {'Range': 'bytes=$startByte-'} : null,
+          ),
+        );
+
+        // Only trust the Range request as honored if the server actually
+        // replied 206 Partial Content — some servers ignore Range and send
+        // the whole file again with 200, in which case we must overwrite
+        // instead of appending onto what's already on disk.
+        final resumed = startByte > 0 && response.statusCode == 206;
+        final total = _resolveApkTotalBytes(response, resumed ? startByte : 0);
+
+        final sink = partFile.openWrite(
+          mode: resumed ? FileMode.append : FileMode.write,
+        );
+        var received = resumed ? startByte : 0;
+        try {
+          await response.data!.stream.listen((chunk) {
+            sink.add(chunk);
+            received += chunk.length;
+            if (total != null && total > 0 && mounted) {
+              setState(() {
+                _downloadProgress = received / total;
+              });
+            }
+          }).asFuture<void>();
+        } finally {
+          await sink.flush();
+          await sink.close();
+        }
+
+        final finalSize = await partFile.length();
+        if (total == null || finalSize != total) {
+          throw Exception(
+            'Download incompleto: $finalSize di ${total ?? "?"} byte',
+          );
+        }
+
+        // Saved BEFORE the rename: if the app is killed between the two
+        // (an extremely narrow window), the next launch finds this version
+        // code recorded but `apkPath` still missing (only `.part` renamed
+        // moments later never happened) — `_hasVerifiedApk` checks the
+        // file's actual existence too, so it still correctly re-downloads
+        // rather than trusting a file that was never produced. The reverse
+        // ordering (rename first) risked the opposite and worse case: a
+        // perfectly valid, already-renamed APK being discarded and
+        // re-downloaded from scratch because the version was never saved.
+        await service.saveDownloadedApkVersionCode(widget.info.versionCode);
+        await partFile.rename(apkPath);
+        return;
+      } catch (e) {
+        lastError = e;
+        debugPrint('⚠️ Download attempt $attempt/$maxAttempts failed: $e');
+        if (e is DioException && e.response?.statusCode == 416) {
+          // The resume offset is no longer valid for this file on the
+          // server (e.g. a stale .part left over from content that has
+          // since changed size under the same version). Drop it so the
+          // next attempt starts a full, fresh download instead of
+          // repeating the same unsatisfiable Range request every time.
+          try {
+            if (await partFile.exists()) await partFile.delete();
+          } catch (_) {}
+        }
+        if (attempt < maxAttempts) {
+          await Future.delayed(Duration(seconds: attempt));
+        }
+      }
+    }
+
+    throw lastError ?? Exception('Download fallito dopo $maxAttempts tentativi');
+  }
+
+  /// Total expected size of the APK being downloaded, from either
+  /// `Content-Range` (e.g. "bytes 1000-1999/2000", when the server honored
+  /// a resume request) or plain `Content-Length` (full download, or a
+  /// server that ignored the Range header — [resumedFromByte] is 0 in that
+  /// case so the two paths agree). Returns null if neither header parses.
+  int? _resolveApkTotalBytes(Response<ResponseBody> response, int resumedFromByte) {
+    final contentRange = response.headers.value('content-range');
+    if (contentRange != null) {
+      final match = RegExp(r'/(\d+)\s*$').firstMatch(contentRange);
+      final total = match != null ? int.tryParse(match.group(1)!) : null;
+      if (total != null) return total;
+    }
+    final contentLength = response.headers.value('content-length');
+    final length = contentLength != null ? int.tryParse(contentLength) : null;
+    if (length == null) return null;
+    return resumedFromByte + length;
   }
 
   @override

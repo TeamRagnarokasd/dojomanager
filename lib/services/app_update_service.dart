@@ -27,6 +27,8 @@ class AppUpdateService {
   static final AppUpdateService instance = AppUpdateService._();
 
   static const String _confirmedVersionKey = 'confirmed_version_code';
+  static const String _downloadedApkVersionKey = 'downloaded_apk_version_code';
+  static const String _pendingApkVersionKey = 'pending_apk_version_code';
 
   /// Saves the given [versionCode] as the locally confirmed version.
   /// Call this right after a successful APK download, before launching the
@@ -34,6 +36,35 @@ class AppUpdateService {
   Future<void> saveConfirmedVersionCode(int versionCode) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_confirmedVersionKey, versionCode);
+  }
+
+  /// Records that a COMPLETE, size-verified APK for [versionCode] already
+  /// sits at the well-known `update.apk` path, so a later launch of the
+  /// update dialog can install directly instead of downloading it again.
+  Future<void> saveDownloadedApkVersionCode(int versionCode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_downloadedApkVersionKey, versionCode);
+  }
+
+  /// The version code of the complete, verified APK last saved via
+  /// [saveDownloadedApkVersionCode], or null if none is on record.
+  Future<int?> getDownloadedApkVersionCode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_downloadedApkVersionKey);
+  }
+
+  /// Records which remote [versionCode] the (possibly partial)
+  /// `update.apk.part` file on disk belongs to, so a resumed download never
+  /// appends onto bytes left over from a different, abandoned attempt.
+  Future<void> savePendingApkVersionCode(int versionCode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_pendingApkVersionKey, versionCode);
+  }
+
+  /// The version code of whatever partial download is on disk, or null.
+  Future<int?> getPendingApkVersionCode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_pendingApkVersionKey);
   }
 
   /// Checks whether a newer APK is available on the server.
