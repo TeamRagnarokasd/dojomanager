@@ -1055,6 +1055,31 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
   bool _isDownloading = false;
   double _downloadProgress = 0.0;
   String? _errorMessage;
+  // Once true, stays true for the rest of this dialog's life: the button
+  // must never go back to "Aggiorna ora" after a successful download, only
+  // ever offer to relaunch the install from the file already on disk.
+  bool _downloadCompleted = false;
+
+  // A single Dio instance for the whole dialog lifetime, reused across
+  // every download attempt and every "Installa aggiornamento" relaunch,
+  // instead of constructing a new HttpClient on every call.
+  //
+  // Deliberately never closed: the dialog can be dismissed (non-mandatory
+  // updates allow this even mid-download) while a download is still
+  // retrying in the background, and closing the client would abort it
+  // immediately instead of letting it keep resuming — exactly the behavior
+  // a fresh per-call Dio (the previous approach) didn't have. So this
+  // class intentionally has no dispose() override to close it in.
+  final Dio _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 15),
+      // Per-chunk inactivity timeout, NOT a cap on the total download
+      // time (Dio's own docs: "the duration during data transfer of each
+      // byte event, rather than the total duration of the receiving") —
+      // a slow but steady transfer is never cut short by this.
+      receiveTimeout: const Duration(seconds: 30),
+    ),
+  );
 
   Future<void> _downloadAndInstall() async {
     setState(() {
@@ -1062,6 +1087,12 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
       _downloadProgress = 0.0;
       _errorMessage = null;
     });
+
+    // Scoped to this single call: true once _ensureApkDownloaded has
+    // returned successfully THIS attempt, so the catch block below can
+    // tell a download failure from an install-intent failure regardless
+    // of whether a previous, separate attempt ever completed.
+    var downloadSucceededThisAttempt = false;
 
     try {
       if (!kIsWeb &&
@@ -1109,6 +1140,16 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
       final partPath = '$apkPath.part';
 
       await _ensureApkDownloaded(apkPath: apkPath, partPath: partPath);
+      downloadSucceededThisAttempt = true;
+      // Flip this the moment the APK itself is complete and verified on
+      // disk — not after the install intent below — so that even if
+      // launching the installer fails, the button never reverts to
+      // "Aggiorna ora" for a file that's already fully downloaded.
+      if (mounted) {
+        setState(() {
+          _downloadCompleted = true;
+        });
+      }
 
       // Launch install intent via android_intent_plus — one tap on
       // "Aggiorna ora" is enough: no dialog reappears in between, straight
@@ -1125,14 +1166,38 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
         await _launchInstallIntent(apkPath);
       }
 
-      if (mounted) Navigator.of(context).pop();
+      if (widget.info.mandatory) {
+        // For a mandatory update, _checkForMandatoryUpdate is awaiting this
+        // dialog's close to let the splash screen's navigation proceed, and
+        // a mandatory dialog has no "later" escape and can't be dismissed.
+        // So it must still close here exactly as before — staying open
+        // would otherwise strand the app on the splash screen forever if
+        // the user backs out of the Android installer instead of
+        // completing it.
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      } else {
+        // The dialog is NOT closed here: the Android installer screen that
+        // just opened is a separate window on top of the app, and the user
+        // may miss it, back out of it, or switch away before tapping
+        // "Aggiorna" there. Staying open with a way to relaunch the same
+        // install intent (without re-downloading) is the safety net for
+        // that — see the "Installa aggiornamento" button below.
+        if (mounted) {
+          setState(() {
+            _isDownloading = false;
+          });
+        }
+      }
     } catch (e) {
       debugPrint('❌ APK download/install error: $e');
       if (mounted) {
         setState(() {
           _isDownloading = false;
-          _errorMessage =
-              'Download fallito. Controlla la connessione e riprova.';
+          _errorMessage = downloadSucceededThisAttempt
+              ? 'Impossibile avviare l\'installazione. Riprova.'
+              : 'Download fallito. Controlla la connessione e riprova.';
         });
       }
     }
@@ -1221,20 +1286,14 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
 
     const maxAttempts = 5;
     Object? lastError;
-
-    final dio = Dio(
-      BaseOptions(
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 30),
-      ),
-    );
+    var lastReportedPercent = -1;
 
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         final startByte =
             await partFile.exists() ? await partFile.length() : 0;
 
-        final response = await dio.get<ResponseBody>(
+        final response = await _dio.get<ResponseBody>(
           widget.info.apkUrl,
           options: Options(
             responseType: ResponseType.stream,
@@ -1257,10 +1316,19 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
           await response.data!.stream.listen((chunk) {
             sink.add(chunk);
             received += chunk.length;
-            if (total != null && total > 0 && mounted) {
-              setState(() {
-                _downloadProgress = received / total;
-              });
+            if (total != null && total > 0) {
+              // Only rebuild the dialog when the rounded percentage
+              // actually moves — a multi-tens-of-MB APK can stream in
+              // thousands of chunks, and a setState() per chunk means
+              // thousands of widget rebuilds competing with the transfer
+              // on the same isolate for no visible benefit.
+              final percent = ((received / total) * 100).floor();
+              if (percent != lastReportedPercent && mounted) {
+                lastReportedPercent = percent;
+                setState(() {
+                  _downloadProgress = received / total;
+                });
+              }
             }
           }).asFuture<void>();
         } finally {
@@ -1368,6 +1436,17 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
+              if (!_isDownloading &&
+                  _downloadCompleted &&
+                  _errorMessage == null &&
+                  !widget.info.requiresSignatureChange) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Download completato. Nella finestra di Android tocca '
+                  'Aggiorna per installare.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
               if (_errorMessage != null) ...[
                 const SizedBox(height: 12),
                 Text(
@@ -1389,7 +1468,13 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
             ),
           ElevatedButton(
             onPressed: _isDownloading ? null : _downloadAndInstall,
-            child: const Text('Aggiorna ora'),
+            child: Text(
+              _isDownloading
+                  ? 'Download in corso…'
+                  : (_downloadCompleted
+                      ? 'Installa aggiornamento'
+                      : 'Aggiorna ora'),
+            ),
           ),
         ],
       ),
