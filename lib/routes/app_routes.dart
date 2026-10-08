@@ -45,6 +45,7 @@ import '../presentation/admin_sponsor_management/shop_admin_orders_screen.dart';
 import '../presentation/email_palestra/email_palestra_screen.dart';
 import '../presentation/letterhead/letterhead_screen.dart';
 import '../presentation/monthly_revenue/monthly_revenue_screen.dart';
+import '../presentation/app_versions/app_versions_screen.dart';
 
 class AppRoutes {
   // Global RouteObserver — add to MaterialApp.navigatorObservers
@@ -105,6 +106,7 @@ class AppRoutes {
   static const String emailPalestra = '/email-palestra';
   static const String letterhead = '/carta-intestata';
   static const String monthlyRevenue = '/entrate-mensili';
+  static const String appVersions = '/versioni-app';
 
   static Map<String, WidgetBuilder> get routes {
     return {
@@ -176,6 +178,7 @@ class AppRoutes {
       emailPalestra: (context) => const EmailPalestraScreen(),
       letterhead: (context) => const LetterheadScreen(),
       monthlyRevenue: (context) => const MonthlyRevenueScreen(),
+      appVersions: (context) => const AppVersionsScreen(),
     };
   }
 }
