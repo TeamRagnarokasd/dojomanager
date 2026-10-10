@@ -8,18 +8,24 @@ class FilterChipsWidget extends StatelessWidget {
   final String selectedRoleFilter;
   final String selectedStatusFilter;
   final String selectedActivityFilter;
+  final bool isNonTesseratiSelected;
+  final int nonTesseratiCount;
   final Function(String) onRoleFilterChanged;
   final Function(String) onStatusFilterChanged;
   final Function(String) onActivityFilterChanged;
+  final Function(bool) onNonTesseratiToggled;
 
   const FilterChipsWidget({
     super.key,
     required this.selectedRoleFilter,
     required this.selectedStatusFilter,
     required this.selectedActivityFilter,
+    required this.isNonTesseratiSelected,
+    required this.nonTesseratiCount,
     required this.onRoleFilterChanged,
     required this.onStatusFilterChanged,
     required this.onActivityFilterChanged,
+    required this.onNonTesseratiToggled,
   });
 
   @override
@@ -181,6 +187,62 @@ class FilterChipsWidget extends StatelessWidget {
                   onActivityFilterChanged,
                 ),
               ],
+            ),
+          ),
+
+          SizedBox(height: 12.h),
+
+          // Tesseramento (federazione sportiva) filter
+          Text(
+            'Tesseramento:',
+            style: GoogleFonts.inter(
+              fontWeight: FontWeight.w500,
+              fontSize: 11.sp,
+              color: AppTheme.textSecondaryLight,
+            ),
+          ),
+          SizedBox(height: 6.h),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => onNonTesseratiToggled(!isNonTesseratiSelected),
+              borderRadius: BorderRadius.circular(16.0),
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                decoration: BoxDecoration(
+                  color: isNonTesseratiSelected
+                      ? Colors.purple.withAlpha(26)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(16.0),
+                  border: Border.all(
+                    color: isNonTesseratiSelected
+                        ? Colors.purple
+                        : AppTheme.textSecondaryLight.withAlpha(77),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isNonTesseratiSelected) ...[
+                      Icon(Icons.check_circle, color: Colors.purple, size: 14.sp),
+                      SizedBox(width: 4.w),
+                    ],
+                    Text(
+                      'Non tesserati ($nonTesseratiCount)',
+                      style: GoogleFonts.inter(
+                        color: isNonTesseratiSelected
+                            ? Colors.purple
+                            : AppTheme.textSecondaryLight,
+                        fontWeight: isNonTesseratiSelected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        fontSize: 11.sp,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],

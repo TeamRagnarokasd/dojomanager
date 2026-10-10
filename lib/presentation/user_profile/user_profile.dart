@@ -392,6 +392,7 @@ class _UserProfileState extends State<UserProfile> {
               if (!_isChildProfile)
                 FederationMembershipsWidget(
                   userId: _isViewingOtherUser ? effectiveUserId : null,
+                  canManage: _isViewingOtherUser,
                 ),
               if (!_isChildProfile) SizedBox(height: 2.h),
               UserDocumentsWidget(userId: effectiveUserId),

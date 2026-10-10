@@ -26,10 +26,12 @@ String federationShortLabel(String key) => kFederationShortLabels[key] ?? key;
 const String kFederationCertificateLabel = 'Certificato di affiliazione';
 const String kFederationRosterLabel = 'Elenco tesserati (Excel)';
 
-/// One row of `user_federation_memberships`.
+/// One row of `user_federation_memberships`. Exactly one of [userId] /
+/// [childProfileId] is set — an adult's own membership, or a minor's.
 class FederationMembership {
   const FederationMembership({
-    required this.userId,
+    this.userId,
+    this.childProfileId,
     required this.federation,
     this.cardNumber,
     required this.updatedAt,
@@ -37,7 +39,8 @@ class FederationMembership {
     this.importedFromDocumentId,
   });
 
-  final String userId;
+  final String? userId;
+  final String? childProfileId;
   final String federation;
   final String? cardNumber;
   final DateTime updatedAt;
@@ -46,7 +49,8 @@ class FederationMembership {
 
   factory FederationMembership.fromMap(Map<String, dynamic> map) =>
       FederationMembership(
-        userId: map['user_id'] as String,
+        userId: map['user_id'] as String?,
+        childProfileId: map['child_profile_id'] as String?,
         federation: map['federation'] as String,
         cardNumber: map['card_number'] as String?,
         updatedAt: DateTime.parse(map['updated_at'] as String),
@@ -98,6 +102,7 @@ class FederationMembershipService {
   static const String _table = 'user_federation_memberships';
   static const List<String> _selectColumns = [
     'user_id',
+    'child_profile_id',
     'federation',
     'card_number',
     'updated_at',
@@ -119,6 +124,22 @@ class FederationMembershipService {
         .toList();
   }
 
+  /// Every membership row for [childProfileIds], in one query. Admins read
+  /// any child's rows via RLS; a guardian may read (not modify) their own
+  /// children's rows.
+  Future<List<FederationMembership>> getMembershipsForChildren(
+    List<String> childProfileIds,
+  ) async {
+    if (childProfileIds.isEmpty) return const [];
+    final rows = await _client
+        .from(_table)
+        .select(_selectColumns.join(', '))
+        .inFilter('child_profile_id', childProfileIds);
+    return (rows as List)
+        .map((row) => FederationMembership.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
+
   /// The current user's own memberships — RLS already limits this to their
   /// own rows.
   Future<List<FederationMembership>> getMyMemberships() async {
@@ -131,6 +152,45 @@ class FederationMembershipService {
     return (rows as List)
         .map((row) => FederationMembership.fromMap(row as Map<String, dynamic>))
         .toList();
+  }
+
+  /// Creates or updates (by the unique user/child + federation key) a
+  /// membership row for [userId] (an adult) or [childProfileId] (a minor) —
+  /// exactly one of the two must be set. Admin-only via RLS.
+  Future<void> upsertMembership({
+    String? userId,
+    String? childProfileId,
+    required String federation,
+    String? cardNumber,
+  }) async {
+    if ((userId == null) == (childProfileId == null)) {
+      throw ArgumentError('Exactly one of userId / childProfileId must be set');
+    }
+    await _client.from(_table).upsert({
+      if (userId != null) 'user_id': userId,
+      if (childProfileId != null) 'child_profile_id': childProfileId,
+      'federation': federation,
+      'card_number': cardNumber,
+      'updated_at': DateTime.now().toIso8601String(),
+      'source': 'manual',
+    }, onConflict: userId != null ? 'user_id,federation' : 'child_profile_id,federation');
+  }
+
+  /// Deletes the membership row for [userId] or [childProfileId] (exactly
+  /// one must be set) and [federation]. Admin-only via RLS.
+  Future<void> deleteMembership({
+    String? userId,
+    String? childProfileId,
+    required String federation,
+  }) async {
+    if ((userId == null) == (childProfileId == null)) {
+      throw ArgumentError('Exactly one of userId / childProfileId must be set');
+    }
+    var query = _client.from(_table).delete().eq('federation', federation);
+    query = userId != null
+        ? query.eq('user_id', userId)
+        : query.eq('child_profile_id', childProfileId!);
+    await query;
   }
 
   /// Upserts [rows] (one per person: {"codice_fiscale": ..., "numero_tessera":
