@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/app_export.dart';
@@ -33,7 +32,14 @@ enum _SumUpWaitStage { checking, notFound, needsReview, timedOut, reported }
 /// the showModalBottomSheet call in payment_history.dart — only its own
 /// buttons close it.
 class SumUpWaitingSheet extends StatefulWidget {
-  const SumUpWaitingSheet({Key? key, this.onConfirmed}) : super(key: key);
+  const SumUpWaitingSheet({Key? key, this.intentId, this.onConfirmed})
+      : super(key: key);
+
+  /// The specific payment_intents row to watch, already resolved by the
+  /// caller (the pending purchase being processed) — falls back to
+  /// [_findFallbackIntentId] if null, same as before this took an explicit
+  /// id.
+  final String? intentId;
 
   /// Called right before closing after a successful activation, so the
   /// caller can refresh its own payment list — mirrors
@@ -91,13 +97,7 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
   Future<void> _start() async {
     _absoluteTimer = Timer(_absoluteTimeout, _onAbsoluteTimeout);
 
-    String? intentId;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      intentId = prefs.getString('pendingIntentId');
-    } catch (_) {
-      intentId = null;
-    }
+    String? intentId = widget.intentId;
     if (intentId == null || intentId.isEmpty) {
       intentId = await _findFallbackIntentId();
     }
@@ -318,26 +318,16 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
     }
   }
 
-  /// Closes only this sheet and drops the pending-payment bookkeeping in
-  /// SharedPreferences — every exit (a button, or a successful activation
-  /// in _checkOnce) goes through here, so nothing is left that could make
-  /// a later resume/route event reopen this same sheet, and no polling
-  /// tick can fire once it's gone.
+  /// Closes this sheet — every exit (a button, or a successful activation
+  /// in _checkOnce) goes through here, so no polling tick can fire once
+  /// it's gone. The pending purchase itself was already claimed (removed
+  /// from the list) by the caller before this sheet was shown, so there is
+  /// nothing left to clean up in SharedPreferences.
   Future<void> _closeSheet() async {
     _isClosing = true;
     _pollTimer?.cancel();
     _absoluteTimer?.cancel();
     _phaseTimer?.cancel();
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('isPaymentPending');
-      await prefs.remove('pendingIntentId');
-      await prefs.remove('pendingPlanTitle');
-      await prefs.remove('pendingPlanId');
-      await prefs.remove('pendingPlanAmount');
-    } catch (_) {
-      // Best-effort cleanup — nothing more to do if this fails.
-    }
     if (mounted) Navigator.of(context).pop();
   }
 

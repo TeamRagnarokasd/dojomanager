@@ -354,6 +354,42 @@ class ChildProfileService {
     return hasDiscount ? discountedPrice : standardPrice;
   }
 
+  // ─── Booking Restriction ─────────────────────────────────────────────────
+
+  /// True when the guardian must book classes only through a child's
+  /// profile, never their own: they have at least one active child profile
+  /// AND have no active (and not expired) subscription of their own. A
+  /// guardian with their own active subscription can always book for
+  /// themselves, regardless of having children. Fails open (returns
+  /// false) on any error, so a transient DB issue never blocks booking
+  /// outright.
+  ///
+  /// Reuses [guardianHasActiveSubscription] (the same RPC already used for
+  /// the "Total Submission Kids" discount) rather than querying
+  /// `user_subscriptions` directly — that RPC already correctly excludes
+  /// the mandatory annual-registration row, which is not a real bookable
+  /// package and would otherwise make almost every guardian look like
+  /// they have "their own subscription".
+  ///
+  /// Pass [knownChildren] when the caller already has a fresh
+  /// `getChildProfiles()` result at hand (e.g. the profile switcher), so
+  /// this doesn't re-fetch the same list.
+  static Future<bool> mustBookForChildrenOnly({
+    List<Map<String, dynamic>>? knownChildren,
+  }) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return false;
+    try {
+      final children = knownChildren ?? await getChildProfiles();
+      if (children.isEmpty) return false;
+      final hasOwnSubscription = await guardianHasActiveSubscription();
+      return !hasOwnSubscription;
+    } catch (e) {
+      print('⚠️ ChildProfileService: mustBookForChildrenOnly check failed: $e');
+      return false;
+    }
+  }
+
   // ─── Receipt Helpers ─────────────────────────────────────────────────────
 
   /// Returns the guardian (adult) profile for receipt generation.

@@ -25,6 +25,8 @@ import './services/android_uninstall_intent.dart';
 import './services/auth_service.dart';
 import './services/locale_service.dart';
 import './services/paid_intents_service.dart';
+import './services/pending_purchases_processor.dart';
+import './services/pending_purchases_service.dart';
 import './services/realtime_notification_service.dart';
 import './services/supabase_service.dart';
 import './services/child_profile_service.dart';
@@ -191,6 +193,15 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
       // (not just login) — safe on every platform, including web.
       if (_authService.isAuthenticated) {
         AppVersionReportService.instance.reportCurrentVersion();
+        // 🆕 Process any pending purchases app-wide on every foreground
+        // return, not just when the user happens to be on one of the
+        // screens that also check for them (subscription_plan_selection,
+        // piani_convenzione, payment_history) — processPendingPurchases
+        // guards against running twice concurrently either way. Gated on
+        // isAuthenticated like the version report above: _handleAppResume
+        // just above may have redirected to login on a 1-hour inactivity
+        // timeout, and a purchase dialog must never show over that screen.
+        _checkPendingPurchases();
       }
     } else if (state == AppLifecycleState.paused) {
       print('📱 App moved to background');
@@ -523,6 +534,10 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
         // 🆕 Report this client's app version for the admin "Versioni app"
         // screen.
         AppVersionReportService.instance.reportCurrentVersion();
+        // 🆕 Process any pending purchases left over from a previous
+        // session too — not just when the user happens to land back on
+        // one of the screens that also check for them.
+        _checkPendingPurchases();
       }
       // Recheck the "Chiedi a Claude" bubble once at app startup too, in
       // case a session is already restored without a fresh signedIn event.
@@ -650,6 +665,31 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
       }
     } catch (e) {
       debugPrint('⚠️ PaidIntents check failed: $e');
+    }
+  }
+
+  /// Processes every pending purchase (SharedPreferences-backed, one entry
+  /// per plan tap — see PendingPurchasesService) app-wide: on startup for an
+  /// already-authenticated session, and on every foreground return. Not
+  /// just on the Payments screen. A short delay mirrors
+  /// _checkForUpdateAfterNav, giving the current route time to settle
+  /// before a dialog/sheet is shown over it; processPendingPurchases itself
+  /// guards against running twice concurrently (e.g. a screen's own
+  /// resume hook firing at the same time).
+  Future<void> _checkPendingPurchases() async {
+    try {
+      if (!await PendingPurchasesService.hasAny()) return;
+      await Future.delayed(const Duration(milliseconds: 800));
+      // Re-checked after the delay, not just by the caller before it: on
+      // resume, _handleAppResume runs unawaited and can sign the user out
+      // (1-hour inactivity) and redirect to login while this delay is in
+      // flight — never show a purchase dialog over the login screen.
+      if (!_authService.isAuthenticated) return;
+      final ctx = appNavigatorKey.currentContext;
+      if (ctx == null) return;
+      await processPendingPurchases(ctx);
+    } catch (e) {
+      debugPrint('⚠️ Pending purchases check failed: $e');
     }
   }
 

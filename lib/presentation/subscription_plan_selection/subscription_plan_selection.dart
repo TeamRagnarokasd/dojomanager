@@ -1,10 +1,9 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -14,9 +13,10 @@ import '../../services/auth_service.dart';
 import '../../services/child_profile_service.dart';
 import '../../services/feature_flags_service.dart';
 import '../../services/payment_service.dart';
+import '../../services/pending_purchases_processor.dart';
+import '../../services/pending_purchases_service.dart';
 import '../../services/realtime_notification_service.dart';
 import '../../services/subscription_service.dart';
-import '../payment_history/widgets/sumup_waiting_sheet.dart';
 import './widgets/subscription_option_card_widget.dart';
 
 class SubscriptionPlanSelection extends StatefulWidget {
@@ -47,12 +47,10 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   // iPhone web and silently block the popup. See _startSumUpPayment.
   bool _sumupAutoConfirm = false;
 
-  // 🆕 Guards for _checkPaymentConfirmation: _checkingPayment blocks
-  // concurrent runs (didChangeAppLifecycleState and the route observer can
-  // both fire close together), _sumupSheetOpen stops a second
-  // SumUpWaitingSheet from stacking on top of one already open.
+  // 🆕 Guard for _checkPaymentConfirmation: didChangeAppLifecycleState and
+  // the route observer can both fire close together — processPendingPurchases
+  // has its own re-entrancy guard too, but this avoids even entering it twice.
   bool _checkingPayment = false;
-  bool _sumupSheetOpen = false;
 
   void _loadSumUpAutoConfirmFlag() {
     FeatureFlagsService.instance.isEnabled('sumup_auto_confirm').then((v) {
@@ -297,13 +295,13 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
 
   /// 🆕 SATISPAY MODE: tapping a plan creates a Satispay payment intent via
   /// the 'satispay/create-payment' Edge Function and opens the redirect URL
-  /// in the external browser. isPaymentPending/pendingIntentId ARE now set
-  /// (before opening the page) so the shared waiting sheet in
-  /// _checkPaymentConfirmation can watch this click on return — the old
-  /// "did you pay?" dialog is skipped there whenever pendingIntentId is
-  /// present. On failure, shows a message and offers (asks, doesn't
-  /// auto-switch) today's fixed-link Satispay flow as a fallback — that
-  /// fallback stays exactly as it was (no pendingIntentId, today's manual
+  /// in the external browser. A pending purchase WITH an intent id is added
+  /// to PendingPurchasesService (before opening the page) so the shared
+  /// waiting sheet in _checkPaymentConfirmation can watch this click on
+  /// return — the old "did you pay?" dialog is skipped there whenever an
+  /// intent id is present. On failure, shows a message and offers (asks,
+  /// doesn't auto-switch) today's fixed-link Satispay flow as a fallback —
+  /// that fallback stays exactly as it was (no intent id, today's manual
   /// confirmation flow).
   Future<void> _launchSatispayForPlan(Map<String, dynamic> rawPlan) async {
     final planId = rawPlan['id'] as String?;
@@ -316,6 +314,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     if (!mounted) return;
     setState(() => _launchingSatispayPlanId = planId);
 
+    PendingPurchase? purchase;
     try {
       final response = await Supabase.instance.client.functions.invoke(
         'satispay/create-payment',
@@ -341,19 +340,28 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
         );
       }
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isPaymentPending', true);
-      await prefs.setString('pendingPaymentMethod', 'satispay');
-      await prefs.setString('pendingPlanTitle', planName);
-      await prefs.setString('pendingPlanId', planId);
-      await prefs.setString('pendingIntentId', intentId);
+      purchase = await PendingPurchasesService.add(
+        planId: planId,
+        planTitle: planName,
+        amount: 0.0,
+        method: 'satispay',
+        intentId: intentId,
+        beneficiaryId: ChildProfileService.getActiveUserId(),
+      );
 
       final opened = await _launchPaymentRedirectUrl(Uri.parse(redirectUrl));
       if (!opened) {
         throw Exception('launchUrl returned false');
       }
     } catch (e) {
-      print('❌ Satispay create-payment failed for plan "$planName": $e');
+      debugPrint('❌ Satispay create-payment failed for plan "$planName": $e');
+      // This attempt's own entry (if the server call actually got far
+      // enough to add one) never got a real chance to be paid — remove it
+      // before offering the fallback, which creates its own fresh entry if
+      // the user proceeds. Otherwise both would end up shown in sequence.
+      if (purchase != null) {
+        await PendingPurchasesService.remove(purchase.id);
+      }
       await _offerFixedSatispayLinkFallback();
     } finally {
       if (mounted) {
@@ -407,12 +415,24 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     try {
       const satispayUrl =
           'https://www.satispay.com/app/pay/shops/58875f70-d796-4596-a2f6-12fe91a8c202';
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isPaymentPending', true);
-      await prefs.setString('pendingPaymentMethod', 'satispay');
-      await launchUrl(
+      // Only record the pending purchase once the link actually opened —
+      // otherwise a phantom entry (no real payment behind it) would sit in
+      // the list forever and later surface a bogus "did you pay?" dialog.
+      final opened = await launchUrl(
         Uri.parse(satispayUrl),
         mode: LaunchMode.externalApplication,
+      );
+      if (!opened) return;
+      await PendingPurchasesService.add(
+        planTitle: '',
+        amount: 0.0,
+        method: 'satispay',
+        beneficiaryId: ChildProfileService.getActiveUserId(),
+      );
+      Fluttertoast.showToast(
+        msg: kManualPaymentModeMessage,
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.BOTTOM,
       );
     } catch (_) {
       // Nothing more we can do — the user can still open Satispay manually.
@@ -422,11 +442,11 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   /// 🆕 SumUp, 'sumup_auto_confirm' on: creates the payment intent via the
   /// 'sumup/create-payment' Edge Function (the server creates the
   /// payment_intents click, with provider_payment_id set) and opens the
-  /// redirect page — mirrors _launchSatispayForPlan. Unlike Satispay,
-  /// isPaymentPending/pendingIntentId ARE set: SumUpWaitingSheet watches
-  /// this specific click by id instead of showing the old "did you pay?"
-  /// dialog. On failure, shows a message and offers (only if the user
-  /// agrees) today's fixed-link SumUp flow, unchanged.
+  /// redirect page — mirrors _launchSatispayForPlan. A pending purchase
+  /// WITH an intent id is added: SumUpWaitingSheet watches this specific
+  /// click by id instead of showing the old "did you pay?" dialog. On
+  /// failure, shows a message and offers (only if the user agrees) today's
+  /// fixed-link SumUp flow, unchanged.
   Future<void> _launchSumUpForPlan(
     Map<String, dynamic> plan,
     String planTitle,
@@ -438,6 +458,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     }
 
     setState(() => _isLoading = true);
+    PendingPurchase? purchase;
     try {
       final response = await Supabase.instance.client.functions.invoke(
         'sumup/create-payment',
@@ -463,19 +484,27 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
         );
       }
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isPaymentPending', true);
-      await prefs.setString('pendingPaymentMethod', 'sumup');
-      await prefs.setString('pendingPlanTitle', planTitle);
-      await prefs.setString('pendingPlanId', planId);
-      await prefs.setString('pendingIntentId', intentId);
+      purchase = await PendingPurchasesService.add(
+        planId: planId,
+        planTitle: planTitle,
+        amount: (plan['price'] as num?)?.toDouble() ?? 0.0,
+        method: 'sumup',
+        intentId: intentId,
+        beneficiaryId: ChildProfileService.getActiveUserId(),
+      );
 
       final opened = await _launchPaymentRedirectUrl(Uri.parse(redirectUrl));
       if (!opened) {
         throw Exception('launchUrl returned false');
       }
     } catch (e) {
-      print('❌ SumUp create-payment failed for plan "$planTitle": $e');
+      debugPrint('❌ SumUp create-payment failed for plan "$planTitle": $e');
+      // Same reasoning as _launchSatispayForPlan: drop this attempt's own
+      // entry before offering the fallback, which adds its own if the
+      // user proceeds — otherwise both end up shown in sequence later.
+      if (purchase != null) {
+        await PendingPurchasesService.remove(purchase.id);
+      }
       await _offerFixedSumUpLinkFallback(plan, planTitle);
     } finally {
       if (mounted) {
@@ -531,6 +560,11 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
         false;
 
     if (!useOldFlow) return;
+    Fluttertoast.showToast(
+      msg: kManualPaymentModeMessage,
+      toastLength: Toast.LENGTH_LONG,
+      gravity: ToastGravity.BOTTOM,
+    );
     _launchSumUpUrl(plan['sumupUrl'] as String? ?? '', planTitle);
   }
 
@@ -1783,55 +1817,16 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
 
   Future<void> _checkPaymentConfirmation() async {
     // didChangeAppLifecycleState and the RouteObserver callbacks
-    // (didPush/didPopNext — the latter fires when the sheet below is
-    // popped) can both land close together; without this guard they can
-    // race and each try to open their own sheet.
+    // (didPush/didPopNext) can both land close together; without this
+    // guard they can race and each try to open their own dialog/sheet —
+    // processPendingPurchases has its own re-entrancy guard too, but this
+    // avoids even entering it twice from this screen.
     if (_checkingPayment) return;
     _checkingPayment = true;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final isPaymentPending = prefs.getBool('isPaymentPending') ?? false;
-      if (!isPaymentPending || !mounted) return;
-
-      // Satispay's own create-payment flow always sets pendingIntentId, and
-      // SumUp's does too when auto-confirm is on: watch the click's own
-      // status with the shared waiting sheet instead of navigating away to
-      // the "did you pay?" flow. Everything else (Satispay's fixed-link
-      // fallback, and SumUp with the flag off) keeps today's behaviour
-      // unchanged.
-      final paymentMethod = prefs.getString('pendingPaymentMethod');
-      final pendingIntentId = prefs.getString('pendingIntentId');
-      final hasIntentId = pendingIntentId != null && pendingIntentId.isNotEmpty;
-      final showWaitingSheet = hasIntentId &&
-          (paymentMethod == 'satispay' ||
-              (paymentMethod == 'sumup' &&
-                  await FeatureFlagsService.instance.isEnabled(
-                    'sumup_auto_confirm',
-                  )));
-      if (showWaitingSheet) {
-        if (!mounted || _sumupSheetOpen) return;
-
-        // Clear the pending flag now — the sheet itself reads
-        // pendingIntentId/pendingPlanTitle straight from SharedPreferences.
-        // Leaving isPaymentPending true would make the next resume or
-        // route event reopen this same sheet right after it closes.
-        await prefs.setBool('isPaymentPending', false);
-
-        _sumupSheetOpen = true;
-        showModalBottomSheet<void>(
-          context: context,
-          isDismissible: false,
-          enableDrag: false,
-          isScrollControlled: true,
-          useSafeArea: true,
-          builder: (context) => SumUpWaitingSheet(
-            onConfirmed: _refreshAllPlans,
-          ),
-        ).whenComplete(() => _sumupSheetOpen = false);
-        return;
-      }
-
-      Navigator.pushReplacementNamed(context, AppRoutes.paymentHistory);
+      if (!mounted) return;
+      if (!await PendingPurchasesService.hasAny()) return;
+      await processPendingPurchases(context, onConfirmed: _refreshAllPlans);
     } catch (e) {
       // Silent fail
     } finally {
@@ -1860,24 +1855,20 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
         throw Exception('Launch returned false');
       }
 
-      // 3. Do SharedPreferences writes after launchUrl returns
+      // 3. Record the pending purchase after launchUrl returns
       final selectedPlan = _allPlans.firstWhere(
         (plan) => plan['title'] == planTitle,
         orElse: () => <String, dynamic>{},
       );
+      final planAmount = (selectedPlan['price'] as num?)?.toDouble() ?? 0.0;
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isPaymentPending', true);
-      await prefs.setString(
-        'pendingPlanId',
-        (selectedPlan['id'] ?? '').toString(),
+      final purchase = await PendingPurchasesService.add(
+        planId: (selectedPlan['id'] ?? '').toString(),
+        planTitle: planTitle,
+        amount: planAmount,
+        method: 'sumup',
+        beneficiaryId: ChildProfileService.getActiveUserId(),
       );
-      await prefs.setString('pendingPlanTitle', planTitle);
-      await prefs.setDouble(
-        'pendingPlanAmount',
-        (selectedPlan['price'] as num?)?.toDouble() ?? 0.0,
-      );
-      await prefs.setString('pendingPaymentMethod', 'sumup');
 
       // 🆕 Best-effort bookkeeping row for the "click" — no auto-activation
       // for SumUp, this is only used for tracking. Never blocks the flow.
@@ -1891,23 +1882,21 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
                 'provider': 'sumup',
                 'custom_plan_id': selectedPlan['id'],
                 'plan_name': planTitle,
-                'amount': (selectedPlan['price'] as num?)?.toDouble() ?? 0.0,
+                'amount': planAmount,
                 'beneficiary_profile_id': ChildProfileService.getActiveUserId(),
               })
               .select('id')
               .single();
           final intentId = insertedRow['id'] as String?;
           if (intentId != null) {
-            await prefs.setString('pendingIntentId', intentId);
+            await PendingPurchasesService.setIntentId(purchase.id, intentId);
           }
         }
       } catch (_) {
         // Ignore — this is only a best-effort click record.
       }
     } catch (error) {
-      print('Error launching SumUp URL: $error');
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isPaymentPending', false);
+      debugPrint('Error launching SumUp URL: $error');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

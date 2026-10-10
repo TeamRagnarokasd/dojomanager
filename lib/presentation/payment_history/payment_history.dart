@@ -7,27 +7,25 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 import 'package:universal_html/html.dart' as html;
 
 import '../../core/app_export.dart';
 import '../../services/child_profile_service.dart';
-import '../../services/feature_flags_service.dart';
 import '../../services/italian_receipt_service.dart';
 import '../../services/payment_service.dart';
+import '../../services/pending_purchases_processor.dart';
+import '../../services/pending_purchases_service.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/main_navigation_wrapper.dart';
 import './widgets/empty_payment_state.dart';
 import './widgets/monthly_group_header.dart';
-import './widgets/payment_confirmation_dialog.dart';
 import './widgets/payment_filter_chips.dart';
 import './widgets/payment_search_bar.dart';
 import './widgets/payment_transaction_card.dart';
 import './widgets/subscription_plans_widget.dart';
 import './widgets/subscription_status_card.dart';
 import './widgets/sumup_payment_options_widget.dart';
-import './widgets/sumup_waiting_sheet.dart';
 
 class PaymentHistory extends StatefulWidget {
   const PaymentHistory({Key? key}) : super(key: key);
@@ -45,12 +43,10 @@ class _PaymentHistoryState extends State<PaymentHistory>
   bool _isLoading = false;
   bool _isOfflineMode = false;
 
-  // 🆕 Guards for _checkPaymentConfirmation: _checkingPayment blocks
-  // concurrent runs (didChangeAppLifecycleState can fire more than once
-  // close together), _sumupSheetOpen stops a second SumUpWaitingSheet
-  // from stacking on top of one already open.
+  // 🆕 Guard for _checkPaymentConfirmation: didChangeAppLifecycleState can
+  // fire more than once close together — processPendingPurchases has its
+  // own re-entrancy guard too, but this avoids even entering it twice.
   bool _checkingPayment = false;
-  bool _sumupSheetOpen = false;
 
   String _selectedFilter = 'all';
   String _searchQuery = '';
@@ -136,81 +132,21 @@ class _PaymentHistoryState extends State<PaymentHistory>
 
   Future<void> _checkPaymentConfirmation() async {
     // didChangeAppLifecycleState can fire more than once close together —
-    // without this guard two overlapping runs could each try to open
-    // their own sheet/dialog.
+    // without this guard two overlapping runs could each try to enter
+    // processPendingPurchases at once (it has its own re-entrancy guard
+    // too, but this avoids even entering it twice from this screen).
     if (_checkingPayment) return;
     _checkingPayment = true;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final isPaymentPending = prefs.getBool('isPaymentPending') ?? false;
-
-      if (isPaymentPending) {
-        // Clear flag to prevent duplicate dialogs
-        await prefs.setBool('isPaymentPending', false);
-
-        // Get pending payment data
-        final planId = prefs.getString('pendingPlanId');
-        final planTitle = prefs.getString('pendingPlanTitle');
-        final planAmount = prefs.getDouble('pendingPlanAmount');
-        final paymentMethod =
-            prefs.getString('pendingPaymentMethod') ?? 'sumup';
-        final pendingIntentId = prefs.getString('pendingIntentId');
-        final hasIntentId =
-            pendingIntentId != null && pendingIntentId.isNotEmpty;
-
-        // Satispay's own create-payment flow always sets pendingIntentId,
-        // and SumUp's does too when auto-confirm is on: watch the click's
-        // own status with the shared waiting sheet instead of asking the
-        // student "did you pay?". Everything else (Satispay's fixed-link
-        // fallback, and SumUp with the flag off) keeps using
-        // PaymentConfirmationDialog exactly as before.
-        final showWaitingSheet = hasIntentId &&
-            (paymentMethod == 'satispay' ||
-                (paymentMethod == 'sumup' &&
-                    await FeatureFlagsService.instance.isEnabled(
-                      'sumup_auto_confirm',
-                    )));
-        if (showWaitingSheet) {
-          if (mounted && !_sumupSheetOpen) {
-            _sumupSheetOpen = true;
-            showModalBottomSheet<void>(
-              context: context,
-              isDismissible: false,
-              enableDrag: false,
-              isScrollControlled: true,
-              useSafeArea: true,
-              builder: (context) => SumUpWaitingSheet(
-                onConfirmed: () => _loadPaymentData(),
-              ),
-            ).whenComplete(() => _sumupSheetOpen = false);
-          }
-          return;
-        }
-
-        // 🎯 FIX: Show dialog for both SumUp (with planId) and Satispay (without planId)
-        if (mounted) {
-          // Show confirmation dialog
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => PaymentConfirmationDialog(
-              planData: {
-                'plan_id': planId,
-                'plan_title': planTitle,
-                'amount': planAmount,
-                'payment_method': paymentMethod,
-              },
-              onConfirmed: () {
-                // 🔥 TRIGGER AGGIORNAMENTO: Refresh payment data immediately after confirmation
-                _loadPaymentData();
-              },
-            ),
-          );
-        }
-      }
+      if (!mounted) return;
+      if (!await PendingPurchasesService.hasAny()) return;
+      await processPendingPurchases(
+        context,
+        onConfirmed: () => _loadPaymentData(),
+      );
     } catch (e) {
       // Silent fail - don't disrupt user experience
-      print('ERROR checking payment confirmation: $e');
+      debugPrint('ERROR checking payment confirmation: $e');
     } finally {
       _checkingPayment = false;
     }
