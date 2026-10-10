@@ -24,9 +24,9 @@ class _ProfileSwitcherWidgetState extends State<ProfileSwitcherWidget> {
   List<Map<String, dynamic>> _children = [];
   bool _isLoading = true;
 
-  /// True when the guardian isn't also a student and has active children —
-  /// in that case they can only book through a child's profile, so the
-  /// adult tile below must not be selectable.
+  /// True when the guardian has active children and no active subscription
+  /// of their own — in that case they can only book through a child's
+  /// profile, so the adult tile below must not be selectable.
   bool _mustBookForChildrenOnly = false;
 
   @override
@@ -126,7 +126,7 @@ class _ProfileSwitcherWidgetState extends State<ProfileSwitcherWidget> {
           SizedBox(height: 1.5.h),
 
           // Adult profile tile — hidden when the guardian must book only
-          // through a child's profile (not also a student + has children).
+          // through a child's profile (has children, no own active sub).
           if (!_mustBookForChildrenOnly)
             _ProfileTile(
               name: adultName,
