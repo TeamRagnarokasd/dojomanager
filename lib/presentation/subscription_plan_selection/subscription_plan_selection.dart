@@ -13,11 +13,13 @@ import '../../services/child_profile_service.dart';
 import '../../services/feature_flags_service.dart';
 import '../../services/payment_service.dart';
 import '../../services/app_update_service.dart';
+import '../../services/paid_intents_service.dart';
 import '../../services/pending_purchases_processor.dart';
 import '../../services/pending_purchases_service.dart';
 import '../../services/realtime_notification_service.dart';
 import '../../services/subscription_service.dart';
 import '../../widgets/payment_build_blocked_dialog.dart';
+import '../../widgets/payment_confirm_dialog.dart';
 import '../../widgets/payment_not_started_dialog.dart';
 import './widgets/subscription_option_card_widget.dart';
 
@@ -191,6 +193,12 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // A subscription can be activated by a DIFFERENT caller than this
+    // screen's own processPendingPurchases/SumUpWaitingSheet run (the
+    // app-wide resume check in main.dart has no onConfirmed wired up) —
+    // listening here means the enrollment status and plan list are
+    // refreshed regardless of who actually triggered the activation.
+    PaidIntentsService.activationVersion.addListener(_onPaymentActivatedElsewhere);
     if (_isSatispayMode) {
       // Satispay entry point: go straight to the plan list, load only the
       // Satispay-specific plan list, skip the SumUp/admin data loads below.
@@ -316,8 +324,29 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       return;
     }
 
+    if (_launchingSatispayPlanId != null) return;
     if (!mounted) return;
     setState(() => _launchingSatispayPlanId = planId);
+
+    // "Stai pagando per" — confirmed right before the real network call,
+    // after every technical gate above has already passed.
+    final beneficiary = await ChildProfileService.getActiveBeneficiaryInfo();
+    final planAmount = (rawPlan['price'] as num?)?.toDouble() ??
+        (rawPlan['amount'] as num?)?.toDouble() ??
+        0.0;
+    if (!mounted) return;
+    final confirmed = await showPaymentConfirmDialog(
+      context,
+      beneficiaryName: beneficiary.name,
+      isChild: beneficiary.isChild,
+      planTitle: planName,
+      amount: planAmount,
+    );
+    if (!mounted) return;
+    if (!confirmed) {
+      setState(() => _launchingSatispayPlanId = null);
+      return;
+    }
 
     PendingPurchase? purchase;
     try {
@@ -514,6 +543,27 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       );
       return;
     }
+
+    // "Stai pagando per" — confirmed right before the real network call,
+    // after every technical gate above has already passed.
+    final beneficiary = await ChildProfileService.getActiveBeneficiaryInfo();
+    final planAmount = (plan['price'] as num?)?.toDouble() ??
+        (plan['amount'] as num?)?.toDouble() ??
+        0.0;
+    if (!mounted) return;
+    final confirmed = await showPaymentConfirmDialog(
+      context,
+      beneficiaryName: beneficiary.name,
+      isChild: beneficiary.isChild,
+      planTitle: planTitle,
+      amount: planAmount,
+    );
+    if (!mounted) return;
+    if (!confirmed) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
     await _launchSumUpForPlan(plan, planTitle);
   }
 
@@ -537,6 +587,19 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   @override
   void didPopNext() {
     _refreshAllPlans();
+  }
+
+  /// See [PaidIntentsService.activationVersion] — refreshes exactly what
+  /// an activation can change, whichever mode this screen is in.
+  void _onPaymentActivatedElsewhere() {
+    if (!mounted) return;
+    _checkEnrollmentStatus();
+    if (_isSatispayMode) {
+      _loadSatispayPlans();
+    } else {
+      _loadStandardPlans();
+      _loadCustomPlans();
+    }
   }
 
   void _refreshAllPlans() {
@@ -577,6 +640,9 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     _realtimeSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     AppRoutes.routeObserver.unsubscribe(this);
+    PaidIntentsService.activationVersion.removeListener(
+      _onPaymentActivatedElsewhere,
+    );
     super.dispose();
   }
 

@@ -426,6 +426,31 @@ class ChildProfileService {
     }
   }
 
+  /// Display info about whichever profile is currently active — used only
+  /// for the "stai pagando per" confirmation shown right before starting a
+  /// SumUp/Satispay payment. Never changes which profile purchases are
+  /// attributed to (still [getActiveUserId]/[_activeChildProfileId]): this
+  /// is purely what name and adult/minor label to show the payer.
+  static Future<({String name, bool isChild})> getActiveBeneficiaryInfo() async {
+    String nameFrom(Map<String, dynamic>? profile, {required String fallback}) {
+      final fullName = (profile?['full_name'] as String?)?.trim();
+      if (fullName != null && fullName.isNotEmpty) return fullName;
+      final composed =
+          '${profile?['first_name'] ?? ''} ${profile?['last_name'] ?? ''}'
+              .trim();
+      return composed.isNotEmpty ? composed : fallback;
+    }
+
+    if (_activeChildProfileId != null) {
+      final child = await getActiveChildProfile();
+      return (name: nameFrom(child, fallback: 'Minore'), isChild: true);
+    }
+
+    final guardian = await getGuardianProfile();
+    final fallback = _supabase.auth.currentUser?.email ?? 'Il tuo account';
+    return (name: nameFrom(guardian, fallback: fallback), isChild: false);
+  }
+
   /// Builds the "minor note" string for receipts when purchasing for a child.
   static String buildMinorNote(Map<String, dynamic> childProfile) {
     final name =

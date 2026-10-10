@@ -13,8 +13,10 @@ import '../../services/child_profile_service.dart';
 import '../../services/feature_flags_service.dart';
 import '../../services/payment_service.dart';
 import '../../services/app_update_service.dart';
+import '../../services/paid_intents_service.dart';
 import '../../services/pending_purchases_service.dart';
 import '../../widgets/payment_build_blocked_dialog.dart';
+import '../../widgets/payment_confirm_dialog.dart';
 import '../../widgets/payment_not_started_dialog.dart';
 import '../subscription_plan_selection/widgets/subscription_option_card_widget.dart';
 
@@ -64,6 +66,28 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
     _checkPrincipalAdminStatus();
     _loadConvenzionePlans();
     _checkEnrollmentStatus();
+    // A subscription can be activated by a DIFFERENT caller than this
+    // screen's own resume flow (the app-wide check in main.dart has no
+    // onConfirmed wired up, since this screen doesn't call
+    // processPendingPurchases itself) — listening here means the
+    // enrollment status is refreshed regardless of who actually triggered
+    // the activation.
+    PaidIntentsService.activationVersion.addListener(_onPaymentActivatedElsewhere);
+  }
+
+  @override
+  void dispose() {
+    PaidIntentsService.activationVersion.removeListener(
+      _onPaymentActivatedElsewhere,
+    );
+    super.dispose();
+  }
+
+  /// See [PaidIntentsService.activationVersion].
+  void _onPaymentActivatedElsewhere() {
+    if (!mounted) return;
+    _checkEnrollmentStatus();
+    _loadConvenzionePlans();
   }
 
   Future<void> _checkPrincipalAdminStatus() async {
@@ -334,6 +358,28 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
       );
       return;
     }
+
+    // "Stai pagando per" — confirmed right before the real network call,
+    // after every technical gate above has already passed.
+    final planTitle = plan['title'] as String? ?? plan['name'] as String? ?? '';
+    final planAmount = (plan['price'] as num?)?.toDouble() ??
+        (plan['amount'] as num?)?.toDouble() ??
+        0.0;
+    final beneficiary = await ChildProfileService.getActiveBeneficiaryInfo();
+    if (!mounted) return;
+    final confirmed = await showPaymentConfirmDialog(
+      context,
+      beneficiaryName: beneficiary.name,
+      isChild: beneficiary.isChild,
+      planTitle: planTitle,
+      amount: planAmount,
+    );
+    if (!mounted) return;
+    if (!confirmed) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
     await _launchSumUpForPlan(plan);
   }
 
