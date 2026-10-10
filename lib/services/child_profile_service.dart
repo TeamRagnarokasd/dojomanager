@@ -2,9 +2,40 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// One selectable beneficiary for a payment — either the guardian
+/// themselves ([id] null) or one of their registered children ([id] =
+/// that child_profiles row's id). Built by
+/// [ChildProfileService.getPaymentBeneficiaryOptions] for the "stai
+/// pagando per" picker shown before a SumUp/Satispay payment.
+class PaymentBeneficiaryOption {
+  const PaymentBeneficiaryOption({
+    required this.id,
+    required this.name,
+  });
+
+  /// null for the guardian's own (adult) profile; a child_profiles.id
+  /// otherwise.
+  final String? id;
+  final String name;
+
+  bool get isChild => id != null;
+}
+
 /// Service for managing child/minor profiles linked to an adult guardian.
 class ChildProfileService {
   static final _supabase = Supabase.instance.client;
+
+  static String _nameFrom(
+    Map<String, dynamic>? profile, {
+    required String fallback,
+  }) {
+    final fullName = (profile?['full_name'] as String?)?.trim();
+    if (fullName != null && fullName.isNotEmpty) return fullName;
+    final composed =
+        '${profile?['first_name'] ?? ''} ${profile?['last_name'] ?? ''}'
+            .trim();
+    return composed.isNotEmpty ? composed : fallback;
+  }
 
   // ─── Active Profile State ────────────────────────────────────────────────
 
@@ -426,31 +457,6 @@ class ChildProfileService {
     }
   }
 
-  /// Display info about whichever profile is currently active — used only
-  /// for the "stai pagando per" confirmation shown right before starting a
-  /// SumUp/Satispay payment. Never changes which profile purchases are
-  /// attributed to (still [getActiveUserId]/[_activeChildProfileId]): this
-  /// is purely what name and adult/minor label to show the payer.
-  static Future<({String name, bool isChild})> getActiveBeneficiaryInfo() async {
-    String nameFrom(Map<String, dynamic>? profile, {required String fallback}) {
-      final fullName = (profile?['full_name'] as String?)?.trim();
-      if (fullName != null && fullName.isNotEmpty) return fullName;
-      final composed =
-          '${profile?['first_name'] ?? ''} ${profile?['last_name'] ?? ''}'
-              .trim();
-      return composed.isNotEmpty ? composed : fallback;
-    }
-
-    if (_activeChildProfileId != null) {
-      final child = await getActiveChildProfile();
-      return (name: nameFrom(child, fallback: 'Minore'), isChild: true);
-    }
-
-    final guardian = await getGuardianProfile();
-    final fallback = _supabase.auth.currentUser?.email ?? 'Il tuo account';
-    return (name: nameFrom(guardian, fallback: fallback), isChild: false);
-  }
-
   /// Whether this guardian has at least one registered child profile — used
   /// to decide whether the "stai pagando per" confirmation is worth
   /// showing at all: a guardian with no minors only ever pays for
@@ -464,6 +470,31 @@ class ChildProfileService {
     } catch (e) {
       return true;
     }
+  }
+
+  /// Every profile this guardian could pay for right now — themselves
+  /// ([PaymentBeneficiaryOption.id] null) plus every registered child —
+  /// used to build the beneficiary picker in the "stai pagando per"
+  /// confirmation. Never changes which profile is active; the choice is
+  /// used for that single purchase only.
+  static Future<List<PaymentBeneficiaryOption>>
+      getPaymentBeneficiaryOptions() async {
+    final guardian = await getGuardianProfile();
+    final fallback = _supabase.auth.currentUser?.email ?? 'Il tuo account';
+    final adultOption = PaymentBeneficiaryOption(
+      id: null,
+      name: _nameFrom(guardian, fallback: fallback),
+    );
+
+    final children = await getChildProfiles();
+    return [
+      adultOption,
+      for (final child in children)
+        PaymentBeneficiaryOption(
+          id: child['id'] as String,
+          name: _nameFrom(child, fallback: 'Minore'),
+        ),
+    ];
   }
 
   /// Builds the "minor note" string for receipts when purchasing for a child.

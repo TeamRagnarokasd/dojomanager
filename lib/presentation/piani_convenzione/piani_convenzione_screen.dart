@@ -198,17 +198,22 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
     }
   }
 
-  void _handlePlanSelection(Map<String, dynamic> plan) {
+  Future<void> _handlePlanSelection(Map<String, dynamic> plan) async {
     if (_isPrincipalAdmin) {
       _showEditPlanDialog(plan: plan);
       return;
     }
-    // Same logic as /selezione-piano: check annual registration
-    if (!_hasAnnualRegistration) {
+    // Screen-level gate using the ACTIVE profile only — skipped entirely
+    // when the guardian has children: they might legitimately choose a
+    // DIFFERENT, eligible beneficiary in the confirm dialog shown inside
+    // _startSumUpPayment, which performs its own beneficiary-aware check
+    // right after that choice is made (see there).
+    final hasChildren = await ChildProfileService.hasAnyChildProfiles();
+    if (!mounted) return;
+    if (!hasChildren && !_hasAnnualRegistration) {
       _showAnnualRegistrationRequiredDialog();
       return;
     }
-    // User has annual registration — start the payment
     _startSumUpPayment(plan);
   }
 
@@ -234,7 +239,10 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
   /// way a subscription gets activated from here, never a plain "yes I
   /// paid". On failure, shows a clear message with a retry button — there
   /// is no fixed-link fallback any more.
-  Future<void> _launchSumUpForPlan(Map<String, dynamic> plan) async {
+  Future<void> _launchSumUpForPlan(
+    Map<String, dynamic> plan, {
+    required String? beneficiaryId,
+  }) async {
     final planId = (plan['id'] ?? plan['dbId'])?.toString();
     final planTitle = plan['title'] as String? ?? plan['name'] as String? ?? '';
     final planAmount = (plan['price'] as num?)?.toDouble() ??
@@ -257,7 +265,7 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
         'sumup/create-payment',
         body: {
           'plan_id': planId,
-          'beneficiary_profile_id': ChildProfileService.getActiveUserId(),
+          'beneficiary_profile_id': beneficiaryId,
           'redirect_url':
               'https://teamragnarokasd.github.io/dojomanager/payment-done.html',
         },
@@ -283,7 +291,7 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
         amount: planAmount,
         method: 'sumup',
         intentId: intentId,
-        beneficiaryId: ChildProfileService.getActiveUserId(),
+        beneficiaryId: beneficiaryId,
       );
 
       final opened = await _launchPaymentRedirectUrl(Uri.parse(redirectUrl));
@@ -359,38 +367,62 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
       return;
     }
 
-    // "Stai pagando per" — only worth asking when this guardian actually
-    // has a minor on the account; an adult paying only for themselves has
-    // nothing to confirm. Shown right before the real network call, after
-    // every technical gate above has already passed.
+    // Resolve who this purchase is actually for — only worth asking when
+    // this guardian actually has a minor on the account; an adult paying
+    // only for themselves has nothing to choose or confirm, exactly as
+    // before this feature existed.
     final hasChildren = await ChildProfileService.hasAnyChildProfiles();
     if (!mounted) return;
+    String? beneficiaryId = ChildProfileService.getActiveUserId();
     if (hasChildren) {
       final planTitle = plan['title'] as String? ?? plan['name'] as String? ?? '';
       final planAmount = (plan['price'] as num?)?.toDouble() ??
           (plan['amount'] as num?)?.toDouble() ??
           0.0;
-      final beneficiary = await ChildProfileService.getActiveBeneficiaryInfo();
+      final options = await ChildProfileService.getPaymentBeneficiaryOptions();
       if (!mounted) return;
-      final confirmed = await showPaymentConfirmDialog(
+      final choice = await showPaymentConfirmDialog(
         context,
-        beneficiaryName: beneficiary.name,
-        isChild: beneficiary.isChild,
+        options: options,
+        initialSelectedId: ChildProfileService.activeChildProfileId,
         planTitle: planTitle,
         amount: planAmount,
       );
       if (!mounted) return;
-      if (!confirmed) {
+      if (choice == null) {
         setState(() => _isLoading = false);
+        return;
+      }
+      beneficiaryId = choice.id ?? Supabase.instance.client.auth.currentUser?.id;
+
+      // The screen-level gate in _handlePlanSelection only looked at the
+      // ACTIVE profile and is skipped entirely when there are children —
+      // check the CHOSEN beneficiary's own annual registration here
+      // instead, so picking a different (eligible or ineligible) profile
+      // in the dialog above is judged correctly either way.
+      final hasAnnual =
+          await PaymentService.checkHasAnnualRegistration(beneficiaryId);
+      if (!mounted) return;
+      if (!hasAnnual) {
+        setState(() => _isLoading = false);
+        _showAnnualRegistrationRequiredDialog(
+          beneficiaryName: choice.isChild ? choice.name : null,
+        );
         return;
       }
     }
 
-    await _launchSumUpForPlan(plan);
+    await _launchSumUpForPlan(plan, beneficiaryId: beneficiaryId);
   }
 
   // DIALOG: "Non sei ancora iscritto!" — identical to subscription_plan_selection
-  void _showAnnualRegistrationRequiredDialog() {
+  void _showAnnualRegistrationRequiredDialog({String? beneficiaryName}) {
+    final title = beneficiaryName == null
+        ? 'Non sei ancora iscritto!'
+        : '$beneficiaryName non è ancora iscritto/a!';
+    final content = beneficiaryName == null
+        ? 'Procedi prima all\'acquisto dell\'iscrizione annuale, dopo potrai scegliere il tuo piano di abbonamento.'
+        : 'Procedi prima all\'acquisto dell\'iscrizione annuale per $beneficiaryName, dopo potrai scegliere il piano di abbonamento.';
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -406,7 +438,7 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
             SizedBox(width: 3.w),
             Expanded(
               child: Text(
-                'Non sei ancora iscritto!',
+                title,
                 style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: const Color(0xFFF39C12),
@@ -416,7 +448,7 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
           ],
         ),
         content: Text(
-          'Procedi prima all\'acquisto dell\'iscrizione annuale, dopo potrai scegliere il tuo piano di abbonamento.',
+          content,
           style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
             color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
             height: 1.4,
