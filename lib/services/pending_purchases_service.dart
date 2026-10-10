@@ -115,10 +115,17 @@ class PendingPurchasesService {
     );
   }
 
-  /// Adds a new pending purchase (never overwrites existing ones) and
-  /// returns it, so the caller can later call [setIntentId] once an intent
-  /// id becomes known asynchronously (the old fixed-link flow creates the
-  /// payment_intents row only after launchUrl already succeeded).
+  /// Adds a new pending purchase and returns it, so the caller can later
+  /// call [setIntentId] once an intent id becomes known asynchronously (the
+  /// old fixed-link flow creates the payment_intents row only after
+  /// launchUrl already succeeded).
+  ///
+  /// First removes any existing pending purchase for the SAME [planId] +
+  /// [beneficiaryId]: a retry (SumUp click expired, tapped the same plan
+  /// again) must replace the previous attempt in the queue, not pile up
+  /// next to it — otherwise every abandoned click before the one that
+  /// actually gets paid sits in the queue and gets shown, one after
+  /// another, as its own "hai pagato?" sheet once the app resumes.
   static Future<PendingPurchase> add({
     String? planId,
     required String planTitle,
@@ -139,9 +146,38 @@ class PendingPurchasesService {
     );
     return _runExclusive(() async {
       final all = await getAll();
+      if (planId != null && planId.isNotEmpty) {
+        all.removeWhere(
+          (p) => p.planId == planId && p.beneficiaryId == beneficiaryId,
+        );
+      }
       all.add(purchase);
       await _saveAll(all);
       return purchase;
+    });
+  }
+
+  /// Removes every pending purchase for the given [planId] + [beneficiaryId]
+  /// (optionally keeping [keepId]) — called once an intent for that same
+  /// plan+beneficiary is found matched/confirmed, so sibling entries left
+  /// over from earlier, now-moot attempts (expired clicks before the one
+  /// that actually got paid) are never shown as a "hai pagato?" sheet after
+  /// the subscription is already active.
+  static Future<void> removeMatching({
+    required String? planId,
+    required String? beneficiaryId,
+    String? keepId,
+  }) {
+    if (planId == null || planId.isEmpty) return Future.value();
+    return _runExclusive(() async {
+      final all = await getAll();
+      all.removeWhere(
+        (p) =>
+            p.id != keepId &&
+            p.planId == planId &&
+            p.beneficiaryId == beneficiaryId,
+      );
+      await _saveAll(all);
     });
   }
 

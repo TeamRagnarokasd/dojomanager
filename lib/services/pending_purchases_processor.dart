@@ -1,8 +1,22 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../presentation/payment_history/widgets/sumup_waiting_sheet.dart';
 import 'pending_purchases_service.dart';
+
+/// A pending purchase older than this is discarded outright, never shown
+/// as a "hai pagato?" sheet — by this point the SumUp/Satispay page it
+/// opened has long since expired, and the backend reconciliation
+/// (PaidIntentsService, run independently on every resume) will still
+/// activate the subscription on its own if the payment did somehow still
+/// go through server-side.
+const _kMaxPendingPurchaseAge = Duration(minutes: 45);
+
+/// Intent statuses that mean "nothing left to watch for" — a pending
+/// purchase whose intent is in one of these states (or no longer exists at
+/// all) is discarded outright instead of being shown.
+const _kTerminalIntentStatuses = {'expired', 'rejected'};
 
 /// True while [processPendingPurchases] is already draining the queue
 /// somewhere (a screen's own resume hook, or the app-wide hook in
@@ -55,6 +69,23 @@ Future<void> processPendingPurchases(
         continue;
       }
 
+      if (DateTime.now().difference(purchase.startedAt) >
+          _kMaxPendingPurchaseAge) {
+        debugPrint(
+          '⚠️ processPendingPurchases: discarding pending purchase older '
+          'than ${_kMaxPendingPurchaseAge.inMinutes}min: ${purchase.id}',
+        );
+        continue;
+      }
+
+      if (await _isIntentTerminalOrMissing(purchase.intentId!)) {
+        debugPrint(
+          '⚠️ processPendingPurchases: discarding pending purchase whose '
+          'intent is expired/rejected/missing: ${purchase.id}',
+        );
+        continue;
+      }
+
       if (!context.mounted) {
         // Already claimed via takeNext() — put it back rather than
         // dropping it, since there is no context left to show it in.
@@ -63,14 +94,22 @@ Future<void> processPendingPurchases(
       }
 
       try {
+        // useRootNavigator: true explicitly on both ends (here and this
+        // sheet's own Navigator.pop) — the sheet must always come from, and
+        // close on, the SAME Navigator no matter which screen's context
+        // this was called with, so it is never left showing underneath
+        // something else that was actually popped instead of it.
         await showModalBottomSheet<void>(
           context: context,
+          useRootNavigator: true,
           isDismissible: false,
           enableDrag: false,
           isScrollControlled: true,
           useSafeArea: true,
           builder: (context) => SumUpWaitingSheet(
             intentId: purchase.intentId,
+            planId: purchase.planId,
+            beneficiaryId: purchase.beneficiaryId,
             onConfirmed: onConfirmed,
           ),
         );
@@ -85,5 +124,26 @@ Future<void> processPendingPurchases(
     }
   } finally {
     _isProcessing = false;
+  }
+}
+
+/// True when [intentId]'s `payment_intents` row no longer exists, or is in
+/// a terminal state ('expired'/'rejected') that leaves nothing to watch
+/// for. Fails OPEN on any read error (shows the sheet as usual) — a
+/// transient network hiccup here must never silently discard a purchase
+/// that might still be genuinely pending.
+Future<bool> _isIntentTerminalOrMissing(String intentId) async {
+  try {
+    final row = await Supabase.instance.client
+        .from('payment_intents')
+        .select('status')
+        .eq('id', intentId)
+        .maybeSingle();
+    if (row == null) return true;
+    final status = row['status'] as String?;
+    return status != null && _kTerminalIntentStatuses.contains(status);
+  } catch (e) {
+    debugPrint('⚠️ processPendingPurchases: intent status check failed: $e');
+    return false;
   }
 }

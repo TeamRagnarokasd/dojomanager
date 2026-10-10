@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/app_export.dart';
 import '../../../services/paid_intents_service.dart';
 import '../../../services/payment_block_error.dart';
+import '../../../services/pending_purchases_service.dart';
 
 enum _SumUpWaitStage { checking, notFound, needsReview, timedOut, reported }
 
@@ -32,14 +33,28 @@ enum _SumUpWaitStage { checking, notFound, needsReview, timedOut, reported }
 /// the showModalBottomSheet call in payment_history.dart — only its own
 /// buttons close it.
 class SumUpWaitingSheet extends StatefulWidget {
-  const SumUpWaitingSheet({Key? key, this.intentId, this.onConfirmed})
-      : super(key: key);
+  const SumUpWaitingSheet({
+    Key? key,
+    this.intentId,
+    this.planId,
+    this.beneficiaryId,
+    this.onConfirmed,
+  }) : super(key: key);
 
   /// The specific payment_intents row to watch, already resolved by the
   /// caller (the pending purchase being processed) — falls back to
   /// [_findFallbackIntentId] if null, same as before this took an explicit
   /// id.
   final String? intentId;
+
+  /// Plan + beneficiary of the pending purchase this sheet is watching —
+  /// used only to purge sibling pending purchases for the same plan and
+  /// beneficiary once this one activates (see [PendingPurchasesService.
+  /// removeMatching]): earlier, now-moot attempts (expired SumUp clicks
+  /// before the one that actually got paid) must never surface as their
+  /// own "hai pagato?" sheet after the subscription is already active.
+  final String? planId;
+  final String? beneficiaryId;
 
   /// Called right before closing after a successful activation, so the
   /// caller can refresh its own payment list.
@@ -254,6 +269,14 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
       backgroundColor: Colors.green,
       textColor: Colors.white,
     );
+    // The subscription is active now — any OTHER pending purchase still
+    // queued for this same plan+beneficiary (earlier, abandoned clicks
+    // before this one actually got paid) is now moot and must never
+    // surface as its own "hai pagato?" sheet afterwards.
+    await PendingPurchasesService.removeMatching(
+      planId: widget.planId,
+      beneficiaryId: widget.beneficiaryId,
+    );
     widget.onConfirmed?.call();
     if (mounted) await _closeSheet();
   }
@@ -321,13 +344,22 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
   /// in _checkOnce) goes through here, so no polling tick can fire once
   /// it's gone. The pending purchase itself was already claimed (removed
   /// from the list) by the caller before this sheet was shown, so there is
-  /// nothing left to clean up in SharedPreferences.
+  /// nothing left to clean up in SharedPreferences. Never touches the
+  /// server: no RPC, no cancellation — the underlying intent is left
+  /// exactly as it is, so it's still checked (and can still activate) by
+  /// the backend reconciliation on the next app resume even after closing
+  /// here by hand.
+  ///
+  /// Pops with rootNavigator: true to match exactly how this sheet is
+  /// opened (see processPendingPurchases) — always the SAME Navigator
+  /// regardless of which screen's context triggered it, so this can never
+  /// end up popping some other route stacked on top instead of itself.
   Future<void> _closeSheet() async {
     _isClosing = true;
     _pollTimer?.cancel();
     _absoluteTimer?.cancel();
     _phaseTimer?.cancel();
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) Navigator.of(context, rootNavigator: true).pop();
   }
 
   List<Widget> _buildStageContent(BuildContext context) {
@@ -348,6 +380,18 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
+          // Always reachable, even while still checking — closing here
+          // never cancels the intent (see _closeSheet): it's still watched
+          // on the next app resume, so there must never be a moment where
+          // the only way out is force-closing the app.
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: _closeSheet,
+              child: const Text('Chiudi'),
+            ),
+          ),
         ];
       case _SumUpWaitStage.notFound:
         return [

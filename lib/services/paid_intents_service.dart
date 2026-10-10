@@ -34,6 +34,16 @@ class PaidIntentsService {
 
   static final SupabaseClient _supabase = Supabase.instance.client;
 
+  /// Bumped every time [processPaidIntents] actually activates at least one
+  /// subscription — regardless of which caller triggered the run (the
+  /// app-wide reconciliation on resume, or a SumUpWaitingSheet watching one
+  /// specific click). A purchase screen's own enrollment-status check
+  /// (_hasAnnualRegistration) can be refreshed purely by listening to this,
+  /// instead of depending on whichever caller happened to win the
+  /// processPendingPurchases race also being the one with its onConfirmed
+  /// callback wired up — which it may well not be.
+  static final ValueNotifier<int> activationVersion = ValueNotifier<int>(0);
+
   // Guards against overlapping runs (e.g. a resume event firing while the
   // startup call is still in flight).
   bool _isProcessing = false;
@@ -109,6 +119,7 @@ class PaidIntentsService {
       _isProcessing = false;
     }
 
+    if (results.isNotEmpty) activationVersion.value++;
     return results;
   }
 
