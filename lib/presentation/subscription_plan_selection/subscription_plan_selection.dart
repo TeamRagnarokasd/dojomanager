@@ -328,24 +328,30 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     if (!mounted) return;
     setState(() => _launchingSatispayPlanId = planId);
 
-    // "Stai pagando per" — confirmed right before the real network call,
-    // after every technical gate above has already passed.
-    final beneficiary = await ChildProfileService.getActiveBeneficiaryInfo();
-    final planAmount = (rawPlan['price'] as num?)?.toDouble() ??
-        (rawPlan['amount'] as num?)?.toDouble() ??
-        0.0;
+    // "Stai pagando per" — only worth asking when this guardian actually
+    // has a minor on the account; an adult paying only for themselves has
+    // nothing to confirm. Shown right before the real network call, after
+    // every technical gate above has already passed.
+    final hasChildren = await ChildProfileService.hasAnyChildProfiles();
     if (!mounted) return;
-    final confirmed = await showPaymentConfirmDialog(
-      context,
-      beneficiaryName: beneficiary.name,
-      isChild: beneficiary.isChild,
-      planTitle: planName,
-      amount: planAmount,
-    );
-    if (!mounted) return;
-    if (!confirmed) {
-      setState(() => _launchingSatispayPlanId = null);
-      return;
+    if (hasChildren) {
+      final beneficiary = await ChildProfileService.getActiveBeneficiaryInfo();
+      final planAmount = (rawPlan['price'] as num?)?.toDouble() ??
+          (rawPlan['amount'] as num?)?.toDouble() ??
+          0.0;
+      if (!mounted) return;
+      final confirmed = await showPaymentConfirmDialog(
+        context,
+        beneficiaryName: beneficiary.name,
+        isChild: beneficiary.isChild,
+        planTitle: planName,
+        amount: planAmount,
+      );
+      if (!mounted) return;
+      if (!confirmed) {
+        setState(() => _launchingSatispayPlanId = null);
+        return;
+      }
     }
 
     PendingPurchase? purchase;
@@ -544,24 +550,30 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       return;
     }
 
-    // "Stai pagando per" — confirmed right before the real network call,
-    // after every technical gate above has already passed.
-    final beneficiary = await ChildProfileService.getActiveBeneficiaryInfo();
-    final planAmount = (plan['price'] as num?)?.toDouble() ??
-        (plan['amount'] as num?)?.toDouble() ??
-        0.0;
+    // "Stai pagando per" — only worth asking when this guardian actually
+    // has a minor on the account; an adult paying only for themselves has
+    // nothing to confirm. Shown right before the real network call, after
+    // every technical gate above has already passed.
+    final hasChildren = await ChildProfileService.hasAnyChildProfiles();
     if (!mounted) return;
-    final confirmed = await showPaymentConfirmDialog(
-      context,
-      beneficiaryName: beneficiary.name,
-      isChild: beneficiary.isChild,
-      planTitle: planTitle,
-      amount: planAmount,
-    );
-    if (!mounted) return;
-    if (!confirmed) {
-      setState(() => _isLoading = false);
-      return;
+    if (hasChildren) {
+      final beneficiary = await ChildProfileService.getActiveBeneficiaryInfo();
+      final planAmount = (plan['price'] as num?)?.toDouble() ??
+          (plan['amount'] as num?)?.toDouble() ??
+          0.0;
+      if (!mounted) return;
+      final confirmed = await showPaymentConfirmDialog(
+        context,
+        beneficiaryName: beneficiary.name,
+        isChild: beneficiary.isChild,
+        planTitle: planTitle,
+        amount: planAmount,
+      );
+      if (!mounted) return;
+      if (!confirmed) {
+        setState(() => _isLoading = false);
+        return;
+      }
     }
 
     await _launchSumUpForPlan(plan, planTitle);

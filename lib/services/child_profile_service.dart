@@ -451,6 +451,21 @@ class ChildProfileService {
     return (name: nameFrom(guardian, fallback: fallback), isChild: false);
   }
 
+  /// Whether this guardian has at least one registered child profile — used
+  /// to decide whether the "stai pagando per" confirmation is worth
+  /// showing at all: a guardian with no minors only ever pays for
+  /// themselves, so there is nothing to confirm. Fails SAFE (returns true,
+  /// i.e. still show the confirmation) on any read error — never let a
+  /// transient failure here silently skip a confirmation that was needed.
+  static Future<bool> hasAnyChildProfiles() async {
+    try {
+      final children = await getChildProfiles();
+      return children.isNotEmpty;
+    } catch (e) {
+      return true;
+    }
+  }
+
   /// Builds the "minor note" string for receipts when purchasing for a child.
   static String buildMinorNote(Map<String, dynamic> childProfile) {
     final name =

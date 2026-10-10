@@ -359,25 +359,31 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
       return;
     }
 
-    // "Stai pagando per" — confirmed right before the real network call,
-    // after every technical gate above has already passed.
-    final planTitle = plan['title'] as String? ?? plan['name'] as String? ?? '';
-    final planAmount = (plan['price'] as num?)?.toDouble() ??
-        (plan['amount'] as num?)?.toDouble() ??
-        0.0;
-    final beneficiary = await ChildProfileService.getActiveBeneficiaryInfo();
+    // "Stai pagando per" — only worth asking when this guardian actually
+    // has a minor on the account; an adult paying only for themselves has
+    // nothing to confirm. Shown right before the real network call, after
+    // every technical gate above has already passed.
+    final hasChildren = await ChildProfileService.hasAnyChildProfiles();
     if (!mounted) return;
-    final confirmed = await showPaymentConfirmDialog(
-      context,
-      beneficiaryName: beneficiary.name,
-      isChild: beneficiary.isChild,
-      planTitle: planTitle,
-      amount: planAmount,
-    );
-    if (!mounted) return;
-    if (!confirmed) {
-      setState(() => _isLoading = false);
-      return;
+    if (hasChildren) {
+      final planTitle = plan['title'] as String? ?? plan['name'] as String? ?? '';
+      final planAmount = (plan['price'] as num?)?.toDouble() ??
+          (plan['amount'] as num?)?.toDouble() ??
+          0.0;
+      final beneficiary = await ChildProfileService.getActiveBeneficiaryInfo();
+      if (!mounted) return;
+      final confirmed = await showPaymentConfirmDialog(
+        context,
+        beneficiaryName: beneficiary.name,
+        isChild: beneficiary.isChild,
+        planTitle: planTitle,
+        amount: planAmount,
+      );
+      if (!mounted) return;
+      if (!confirmed) {
+        setState(() => _isLoading = false);
+        return;
+      }
     }
 
     await _launchSumUpForPlan(plan);
