@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -13,10 +12,13 @@ import '../../services/auth_service.dart';
 import '../../services/child_profile_service.dart';
 import '../../services/feature_flags_service.dart';
 import '../../services/payment_service.dart';
+import '../../services/app_update_service.dart';
 import '../../services/pending_purchases_processor.dart';
 import '../../services/pending_purchases_service.dart';
 import '../../services/realtime_notification_service.dart';
 import '../../services/subscription_service.dart';
+import '../../widgets/payment_build_blocked_dialog.dart';
+import '../../widgets/payment_not_started_dialog.dart';
 import './widgets/subscription_option_card_widget.dart';
 
 class SubscriptionPlanSelection extends StatefulWidget {
@@ -40,23 +42,10 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   bool _isLoading = false;
   int? _selectedPlanId;
 
-  // 🆕 Read ahead of time (never awaited right before launchUrl) so that
-  // with the flag off, tapping a plan launches the fixed SumUp link
-  // synchronously — exactly like today — instead of waiting on a network
-  // read first, which would consume Safari's "user gesture" allowance on
-  // iPhone web and silently block the popup. See _startSumUpPayment.
-  bool _sumupAutoConfirm = false;
-
   // 🆕 Guard for _checkPaymentConfirmation: didChangeAppLifecycleState and
   // the route observer can both fire close together — processPendingPurchases
   // has its own re-entrancy guard too, but this avoids even entering it twice.
   bool _checkingPayment = false;
-
-  void _loadSumUpAutoConfirmFlag() {
-    FeatureFlagsService.instance.isEnabled('sumup_auto_confirm').then((v) {
-      if (mounted) setState(() => _sumupAutoConfirm = v);
-    });
-  }
 
   // Realtime subscription for admin data changes
   StreamSubscription<RealtimeDataChangeEvent>? _realtimeSubscription;
@@ -202,7 +191,6 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadSumUpAutoConfirmFlag();
     if (_isSatispayMode) {
       // Satispay entry point: go straight to the plan list, load only the
       // Satispay-specific plan list, skip the SumUp/admin data loads below.
@@ -304,10 +292,27 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   /// that fallback stays exactly as it was (no intent id, today's manual
   /// confirmation flow).
   Future<void> _launchSatispayForPlan(Map<String, dynamic> rawPlan) async {
+    // Checked BEFORE anything else: a build old enough to be below
+    // min_payment_build must never even reach a create-payment call.
+    if (!kIsWeb) {
+      final blockedApkUrl =
+          await AppUpdateService.instance.checkPaymentBuildGate();
+      if (!mounted) return;
+      if (blockedApkUrl != null) {
+        showPaymentBuildBlockedDialog(context, apkUrl: blockedApkUrl);
+        return;
+      }
+    }
+
     final planId = rawPlan['id'] as String?;
     final planName = rawPlan['name'] as String? ?? '';
     if (planId == null || planId.isEmpty) {
-      await _offerFixedSatispayLinkFallback();
+      if (mounted) {
+        showPaymentNotStartedDialog(
+          context,
+          onRetry: () => _launchSatispayForPlan(rawPlan),
+        );
+      }
       return;
     }
 
@@ -362,80 +367,16 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       if (purchase != null) {
         await PendingPurchasesService.remove(purchase.id);
       }
-      await _offerFixedSatispayLinkFallback();
+      if (mounted) {
+        showPaymentNotStartedDialog(
+          context,
+          onRetry: () => _launchSatispayForPlan(rawPlan),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _launchingSatispayPlanId = null);
       }
-    }
-  }
-
-  /// 🆕 SATISPAY MODE fallback: shows a message explaining the new flow
-  /// couldn't start, and — only if the user explicitly agrees — reproduces
-  /// today's fixed-link Satispay flow (same URL and SharedPreferences flags
-  /// as sumup_payment_options_widget._launchSatispayUrl), so nothing is
-  /// switched to the old confirm-by-hand flow without the user choosing it.
-  Future<void> _offerFixedSatispayLinkFallback() async {
-    if (!mounted) return;
-    final useOldFlow = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            backgroundColor: AppTheme.darkTheme.cardColor,
-            title: Text(
-              'Pagamento non avviato',
-              style: AppTheme.darkTheme.textTheme.titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            content: Text(
-              'Non è stato possibile avviare il pagamento Satispay per questo '
-              'piano. Vuoi provare con il link diretto di Satispay?',
-              style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
-                height: 1.4,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(
-                  'common.cancel'.tr(),
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: Text('Usa link diretto'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-
-    if (!useOldFlow) return;
-
-    try {
-      const satispayUrl =
-          'https://www.satispay.com/app/pay/shops/58875f70-d796-4596-a2f6-12fe91a8c202';
-      // Only record the pending purchase once the link actually opened —
-      // otherwise a phantom entry (no real payment behind it) would sit in
-      // the list forever and later surface a bogus "did you pay?" dialog.
-      final opened = await launchUrl(
-        Uri.parse(satispayUrl),
-        mode: LaunchMode.externalApplication,
-      );
-      if (!opened) return;
-      await PendingPurchasesService.add(
-        planTitle: '',
-        amount: 0.0,
-        method: 'satispay',
-        beneficiaryId: ChildProfileService.getActiveUserId(),
-      );
-      Fluttertoast.showToast(
-        msg: kManualPaymentModeMessage,
-        toastLength: Toast.LENGTH_LONG,
-        gravity: ToastGravity.BOTTOM,
-      );
-    } catch (_) {
-      // Nothing more we can do — the user can still open Satispay manually.
     }
   }
 
@@ -444,16 +385,21 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   /// payment_intents click, with provider_payment_id set) and opens the
   /// redirect page — mirrors _launchSatispayForPlan. A pending purchase
   /// WITH an intent id is added: SumUpWaitingSheet watches this specific
-  /// click by id instead of showing the old "did you pay?" dialog. On
-  /// failure, shows a message and offers (only if the user agrees) today's
-  /// fixed-link SumUp flow, unchanged.
+  /// click by id — the only way a subscription gets activated from here.
+  /// On failure, shows a clear message with a retry button — there is no
+  /// fixed-link fallback any more.
   Future<void> _launchSumUpForPlan(
     Map<String, dynamic> plan,
     String planTitle,
   ) async {
     final planId = plan['id']?.toString();
     if (planId == null || planId.isEmpty) {
-      await _offerFixedSumUpLinkFallback(plan, planTitle);
+      if (mounted) {
+        showPaymentNotStartedDialog(
+          context,
+          onRetry: () => _startSumUpPayment(plan, planTitle),
+        );
+      }
       return;
     }
 
@@ -505,7 +451,12 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       if (purchase != null) {
         await PendingPurchasesService.remove(purchase.id);
       }
-      await _offerFixedSumUpLinkFallback(plan, planTitle);
+      if (mounted) {
+        showPaymentNotStartedDialog(
+          context,
+          onRetry: () => _startSumUpPayment(plan, planTitle),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -516,76 +467,54 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     }
   }
 
-  /// 🆕 SumUp create-payment fallback: shows a message explaining the new
-  /// flow couldn't start, and — only if the user explicitly agrees —
-  /// reproduces today's fixed-link SumUp flow (_launchSumUpUrl, unchanged),
-  /// so nothing is switched to the old manual-confirmation flow without
-  /// the user choosing it.
-  Future<void> _offerFixedSumUpLinkFallback(
+  /// Dispatches a SumUp payment: the create-payment flow is now the only
+  /// way to pay — there is no fixed-link fallback left. 'sumup_auto_confirm'
+  /// now acts as a kill switch for the whole SumUp flow: its read is
+  /// awaited reliably (one retry on a transient failure — see
+  /// [FeatureFlagsService.isEnabledReliable]) rather than assumed off just
+  /// because it hasn't loaded yet, since there is nothing left to silently
+  /// fall back to. Off (or a plan with no id) shows the same "Pagamento non
+  /// avviato" message as a failed create-payment call, with a Riprova
+  /// button that re-runs this same check.
+  Future<void> _startSumUpPayment(
     Map<String, dynamic> plan,
     String planTitle,
   ) async {
-    if (!mounted) return;
-    final useOldFlow = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            backgroundColor: AppTheme.darkTheme.cardColor,
-            title: Text(
-              'Pagamento non avviato',
-              style: AppTheme.darkTheme.textTheme.titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            content: Text(
-              'Non è stato possibile avviare il pagamento SumUp per questo '
-              'piano. Vuoi provare con il link diretto di SumUp?',
-              style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
-                height: 1.4,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(
-                  'common.cancel'.tr(),
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: Text('Usa link diretto'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+    // Set before the flag's network round trip, not after: otherwise a
+    // quick double-tap could both read the flag before either sets
+    // _isLoading, each proceeding to its own create-payment call.
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
 
-    if (!useOldFlow) return;
-    Fluttertoast.showToast(
-      msg: kManualPaymentModeMessage,
-      toastLength: Toast.LENGTH_LONG,
-      gravity: ToastGravity.BOTTOM,
-    );
-    _launchSumUpUrl(plan['sumupUrl'] as String? ?? '', planTitle);
-  }
+    // Checked BEFORE the feature flag: a build old enough to be below
+    // min_payment_build must never even reach a create-payment call.
+    if (!kIsWeb) {
+      final blockedApkUrl =
+          await AppUpdateService.instance.checkPaymentBuildGate();
+      if (!mounted) return;
+      if (blockedApkUrl != null) {
+        setState(() => _isLoading = false);
+        showPaymentBuildBlockedDialog(context, apkUrl: blockedApkUrl);
+        return;
+      }
+    }
 
-  /// Dispatches a SumUp payment: uses the new create-payment flow when
-  /// 'sumup_auto_confirm' is on and the plan has a valid id, otherwise
-  /// falls back to today's fixed-link flow unchanged — with the flag off
-  /// this always takes the fixed-link branch, so nothing changes.
-  ///
-  /// _sumupAutoConfirm is read synchronously (no await before deciding):
-  /// with the flag off (or not loaded yet), _launchSumUpUrl fires
-  /// immediately after the tap exactly like today, which matters on web —
-  /// an await here first would consume Safari's "user gesture" allowance
-  /// on iPhone and silently block the popup (see RULE 2 in
-  /// _handlePlanSelection for the same reasoning).
-  void _startSumUpPayment(Map<String, dynamic> plan, String planTitle) {
     final planId = plan['id']?.toString();
-    if (_sumupAutoConfirm && planId != null && planId.isNotEmpty) {
-      _launchSumUpForPlan(plan, planTitle);
+    final hasValidPlan = planId != null && planId.isNotEmpty;
+    final enabled = hasValidPlan &&
+        await FeatureFlagsService.instance.isEnabledReliable(
+          'sumup_auto_confirm',
+        );
+    if (!mounted) return;
+    if (!enabled) {
+      setState(() => _isLoading = false);
+      showPaymentNotStartedDialog(
+        context,
+        onRetry: () => _startSumUpPayment(plan, planTitle),
+      );
       return;
     }
-    _launchSumUpUrl(plan['sumupUrl'] as String? ?? '', planTitle);
+    await _launchSumUpForPlan(plan, planTitle);
   }
 
   @override
@@ -601,14 +530,12 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   /// Called when this screen is pushed onto the navigator stack
   @override
   void didPush() {
-    _loadSumUpAutoConfirmFlag();
     _refreshAllPlans();
   }
 
   /// Called when a screen on top of this one is popped (user navigates back here)
   @override
   void didPopNext() {
-    _loadSumUpAutoConfirmFlag();
     _refreshAllPlans();
   }
 
@@ -1807,7 +1734,6 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      _loadSumUpAutoConfirmFlag();
       _checkPaymentConfirmation();
       // Fresh fetch every time app comes back to foreground
       _loadStandardPlans();
@@ -1831,89 +1757,6 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       // Silent fail
     } finally {
       _checkingPayment = false;
-    }
-  }
-
-  Future<void> _launchSumUpUrl(String url, String planTitle) async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      // 1. Parse the URL
-      final String sanitizedUrl = url.trim();
-      final Uri uri = Uri.parse(sanitizedUrl);
-
-      // 2. Call launchUrl immediately, before any await on SharedPreferences
-      HapticFeedback.lightImpact();
-      final launched = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-
-      if (!launched) {
-        throw Exception('Launch returned false');
-      }
-
-      // 3. Record the pending purchase after launchUrl returns
-      final selectedPlan = _allPlans.firstWhere(
-        (plan) => plan['title'] == planTitle,
-        orElse: () => <String, dynamic>{},
-      );
-      final planAmount = (selectedPlan['price'] as num?)?.toDouble() ?? 0.0;
-
-      final purchase = await PendingPurchasesService.add(
-        planId: (selectedPlan['id'] ?? '').toString(),
-        planTitle: planTitle,
-        amount: planAmount,
-        method: 'sumup',
-        beneficiaryId: ChildProfileService.getActiveUserId(),
-      );
-
-      // 🆕 Best-effort bookkeeping row for the "click" — no auto-activation
-      // for SumUp, this is only used for tracking. Never blocks the flow.
-      try {
-        final currentUserId = Supabase.instance.client.auth.currentUser?.id;
-        if (currentUserId != null) {
-          final insertedRow = await Supabase.instance.client
-              .from('payment_intents')
-              .insert({
-                'user_id': currentUserId,
-                'provider': 'sumup',
-                'custom_plan_id': selectedPlan['id'],
-                'plan_name': planTitle,
-                'amount': planAmount,
-                'beneficiary_profile_id': ChildProfileService.getActiveUserId(),
-              })
-              .select('id')
-              .single();
-          final intentId = insertedRow['id'] as String?;
-          if (intentId != null) {
-            await PendingPurchasesService.setIntentId(purchase.id, intentId);
-          }
-        }
-      } catch (_) {
-        // Ignore — this is only a best-effort click record.
-      }
-    } catch (error) {
-      debugPrint('Error launching SumUp URL: $error');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Errore: $error'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _selectedPlanId = null;
-        });
-      }
     }
   }
 

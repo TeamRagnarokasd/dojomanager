@@ -10,8 +10,8 @@ import '../../../services/payment_block_error.dart';
 
 enum _SumUpWaitStage { checking, notFound, needsReview, timedOut, reported }
 
-/// Shown instead of PaymentConfirmationDialog when the user returns from a
-/// SumUp or Satispay payment page and the click can be watched
+/// Shown when the user returns from a SumUp or Satispay payment page and
+/// the click can be watched
 /// automatically (see subscription_plan_selection.dart/payment_history.dart
 /// for exactly when): watches the click's own `payment_intents` row and,
 /// when it has a `provider_payment_id`, also asks the matching provider
@@ -42,8 +42,7 @@ class SumUpWaitingSheet extends StatefulWidget {
   final String? intentId;
 
   /// Called right before closing after a successful activation, so the
-  /// caller can refresh its own payment list — mirrors
-  /// PaymentConfirmationDialog.onConfirmed.
+  /// caller can refresh its own payment list.
   final VoidCallback? onConfirmed;
 
   @override

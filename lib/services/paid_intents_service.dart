@@ -69,9 +69,13 @@ class PaidIntentsService {
       if (userId == null) return [];
 
       // SumUp intents only join in when 'sumup_auto_confirm' is on — off,
-      // this query is identical to before (satispay only).
-      final sumupEnabled =
-          await FeatureFlagsService.instance.isEnabled('sumup_auto_confirm');
+      // this query is identical to before (satispay only). Read reliably
+      // (one retry on failure, see isEnabledReliable): with no manual
+      // fallback left for SumUp, a transient read failure here must never
+      // silently drop an already-matched intent from this query and leave
+      // it stuck forever.
+      final sumupEnabled = await FeatureFlagsService.instance
+          .isEnabledReliable('sumup_auto_confirm');
       final providers = sumupEnabled ? ['satispay', 'sumup'] : ['satispay'];
 
       List<Map<String, dynamic>> intents;

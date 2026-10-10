@@ -35,6 +35,31 @@ class FeatureFlagsService {
     _cache[key] = _CachedFlag(value: value, expiresAt: DateTime.now().add(_cacheTtl));
     return value;
   }
+
+  /// Like [isEnabled], but for a gate where a transient read failure must
+  /// never be silently treated the same as a genuine "off" — e.g. the
+  /// SumUp/Satispay payment kill-switch, where there is no manual fallback
+  /// left to offer if this comes back wrong. Bypasses the cache and retries
+  /// the read once before giving up; only a confirmed `enabled = false` row,
+  /// or two failed reads in a row, return false.
+  Future<bool> isEnabledReliable(String key) async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final row = await _client
+            .from(_table)
+            .select('enabled')
+            .eq('key', key)
+            .maybeSingle();
+        final value = row?['enabled'] as bool? ?? false;
+        _cache[key] =
+            _CachedFlag(value: value, expiresAt: DateTime.now().add(_cacheTtl));
+        return value;
+      } catch (_) {
+        if (attempt == 1) return false;
+      }
+    }
+    return false;
+  }
 }
 
 class _CachedFlag {

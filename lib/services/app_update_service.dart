@@ -127,4 +127,51 @@ class AppUpdateService {
       return null;
     }
   }
+
+  /// Checks whether the locally installed build is too old to be allowed to
+  /// start a NEW SumUp/Satispay payment — i.e. strictly below
+  /// `app_version.min_payment_build`. These are builds that predate the
+  /// removal of the vulnerable manual "hai pagato?" confirmation flow
+  /// (incident of 27/09/2026): the server-side trigger now rejects their
+  /// unverified payment rows anyway, but letting the user pay first and
+  /// only then hit a confusing failure is bad enough to pre-empt here.
+  ///
+  /// Returns the apk download URL to offer when blocked, or `null` when
+  /// payment may proceed — including on web (this gate is Android-only;
+  /// the web app has no separate build to be behind) and on any read
+  /// failure, since a transient network error must never silently block
+  /// every legitimate payment, adult and minor alike. The DB trigger is the
+  /// real backstop regardless of this check's outcome.
+  ///
+  /// Must only be called on Android (i.e. when `!kIsWeb`).
+  Future<String?> checkPaymentBuildGate() async {
+    if (kIsWeb) return null;
+
+    try {
+      final response = await Supabase.instance.client
+          .from('app_version')
+          .select('min_payment_build, apk_url')
+          .limit(1)
+          .maybeSingle();
+
+      if (response == null) return null;
+
+      final minPaymentBuild = (response['min_payment_build'] as num?)?.toInt();
+      if (minPaymentBuild == null) return null;
+
+      final apkUrl = (response['apk_url'] as String?) ?? '';
+      if (apkUrl.isEmpty) return null;
+
+      final packageInfo = await PackageInfo.fromPlatform();
+      final localVersionCode = int.tryParse(packageInfo.buildNumber) ?? 0;
+
+      if (localVersionCode < minPaymentBuild) {
+        return apkUrl;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ AppUpdateService.checkPaymentBuildGate error: $e');
+      return null;
+    }
+  }
 }
