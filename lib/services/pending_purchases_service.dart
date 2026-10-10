@@ -4,13 +4,6 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
-/// Shown right before falling back to a fixed payment link, whichever
-/// provider or screen offers it — kept in one place so the wording never
-/// drifts between the SumUp and Satispay fallback flows.
-const String kManualPaymentModeMessage =
-    'Pagamento in modalità manuale: dopo il pagamento torna nell\'app e '
-    'conferma.';
-
 /// One purchase the student tapped but hasn't confirmed or cancelled yet.
 /// Multiple can coexist — e.g. tapping "Iscrizione" (€35) and then "Doppio
 /// corso" (€105) one after another — each tap adds its own entry instead of

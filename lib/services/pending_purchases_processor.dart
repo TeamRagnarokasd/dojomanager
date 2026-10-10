@@ -1,8 +1,7 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 
-import '../presentation/payment_history/widgets/payment_confirmation_dialog.dart';
 import '../presentation/payment_history/widgets/sumup_waiting_sheet.dart';
-import 'feature_flags_service.dart';
 import 'pending_purchases_service.dart';
 
 /// True while [processPendingPurchases] is already draining the queue
@@ -13,13 +12,22 @@ import 'pending_purchases_service.dart';
 /// a different purchase and show two dialogs stacked on top of each other.
 bool _isProcessing = false;
 
-/// Processes ALL pending purchases, oldest first, one at a time — using
-/// the exact same per-purchase UI as before a single purchase could be
-/// remembered (SumUpWaitingSheet for an auto-watched SumUp/Satispay click,
-/// PaymentConfirmationDialog otherwise). Each purchase is atomically
-/// claimed via [PendingPurchasesService.takeNext] before its dialog/sheet
-/// is shown, so it can never be confirmed twice even if this is called
-/// from more than one place in a row.
+/// Processes ALL pending purchases, oldest first, one at a time. Every
+/// purchase created today always carries an intent id (the create-payment
+/// flow is the only way to start one) and is watched with
+/// [SumUpWaitingSheet], which only ever activates a subscription after a
+/// verified 'matched'/'confirmed' intent — there is no other path left to
+/// activate anything from here.
+///
+/// A purchase with no intent id is a leftover from the old fixed-link flow
+/// (a build that predates this check) and is discarded outright, never
+/// shown as something to confirm by hand — see the incident that removed
+/// that flow entirely: a plain "sì" used to be enough to activate a
+/// subscription and print a receipt with nothing behind it.
+///
+/// Each purchase is atomically claimed via [PendingPurchasesService.takeNext]
+/// before its sheet is shown (or it is discarded), so it can never be
+/// confirmed twice even if this is called from more than one place in a row.
 Future<void> processPendingPurchases(
   BuildContext context, {
   VoidCallback? onConfirmed,
@@ -38,12 +46,14 @@ Future<void> processPendingPurchases(
 
       final hasIntentId =
           purchase.intentId != null && purchase.intentId!.isNotEmpty;
-      final showWaitingSheet = hasIntentId &&
-          (purchase.method == 'satispay' ||
-              (purchase.method == 'sumup' &&
-                  await FeatureFlagsService.instance.isEnabled(
-                    'sumup_auto_confirm',
-                  )));
+      if (!hasIntentId) {
+        debugPrint(
+          '⚠️ processPendingPurchases: discarding pending purchase with no '
+          'intent id (leftover from the old manual-confirmation flow): '
+          '${purchase.id}',
+        );
+        continue;
+      }
 
       if (!context.mounted) {
         // Already claimed via takeNext() — put it back rather than
@@ -53,34 +63,17 @@ Future<void> processPendingPurchases(
       }
 
       try {
-        if (showWaitingSheet) {
-          await showModalBottomSheet<void>(
-            context: context,
-            isDismissible: false,
-            enableDrag: false,
-            isScrollControlled: true,
-            useSafeArea: true,
-            builder: (context) => SumUpWaitingSheet(
-              intentId: purchase.intentId,
-              onConfirmed: onConfirmed,
-            ),
-          );
-        } else {
-          await showDialog<void>(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => PaymentConfirmationDialog(
-              planData: {
-                'plan_id': purchase.planId,
-                'plan_title': purchase.planTitle,
-                'amount': purchase.amount,
-                'payment_method': purchase.method,
-                'beneficiary_id': purchase.beneficiaryId,
-              },
-              onConfirmed: onConfirmed,
-            ),
-          );
-        }
+        await showModalBottomSheet<void>(
+          context: context,
+          isDismissible: false,
+          enableDrag: false,
+          isScrollControlled: true,
+          useSafeArea: true,
+          builder: (context) => SumUpWaitingSheet(
+            intentId: purchase.intentId,
+            onConfirmed: onConfirmed,
+          ),
+        );
       } catch (e) {
         // The purchase was already claimed above — if it couldn't actually
         // be shown (e.g. the Navigator was torn down mid-call), put it

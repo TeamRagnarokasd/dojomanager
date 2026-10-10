@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -13,7 +12,10 @@ import '../../services/auth_service.dart';
 import '../../services/child_profile_service.dart';
 import '../../services/feature_flags_service.dart';
 import '../../services/payment_service.dart';
+import '../../services/app_update_service.dart';
 import '../../services/pending_purchases_service.dart';
+import '../../widgets/payment_build_blocked_dialog.dart';
+import '../../widgets/payment_not_started_dialog.dart';
 import '../subscription_plan_selection/widgets/subscription_option_card_widget.dart';
 
 class PianiConvenzioneScreen extends StatefulWidget {
@@ -34,17 +36,6 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
   // ENROLLMENT CHECK: same logic as subscription_plan_selection
   bool _hasAnnualRegistration = false;
   bool _isLoadingEnrollmentStatus = true;
-
-  // 🆕 Read ahead of time (never awaited right before launchUrl) so that
-  // with the flag off, tapping a plan launches the fixed SumUp link
-  // synchronously — exactly like today. See _startSumUpPayment.
-  bool _sumupAutoConfirm = false;
-
-  void _loadSumUpAutoConfirmFlag() {
-    FeatureFlagsService.instance.isEnabled('sumup_auto_confirm').then((v) {
-      if (mounted) setState(() => _sumupAutoConfirm = v);
-    });
-  }
 
   int _getColorForPlanName(String name) {
     final lower = name.toLowerCase();
@@ -70,7 +61,6 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSumUpAutoConfirmFlag();
     _checkPrincipalAdminStatus();
     _loadConvenzionePlans();
     _checkEnrollmentStatus();
@@ -184,92 +174,6 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
     }
   }
 
-  Future<void> _launchSumUpUrl(
-    String url,
-    String planTitle, {
-    String? planId,
-    double? planAmount,
-  }) async {
-    setState(() => _isLoading = true);
-    PendingPurchase? purchase;
-    try {
-      purchase = await PendingPurchasesService.add(
-        planId: (planId != null && planId.isNotEmpty) ? planId : null,
-        planTitle: planTitle,
-        amount: planAmount ?? 0.0,
-        method: 'sumup',
-        beneficiaryId: ChildProfileService.getActiveUserId(),
-      );
-
-      // 🆕 Best-effort bookkeeping row for the "click" — no auto-activation
-      // for SumUp, this is only used for tracking. Never blocks the flow.
-      try {
-        final currentUserId = Supabase.instance.client.auth.currentUser?.id;
-        if (currentUserId != null) {
-          final insertedRow = await Supabase.instance.client
-              .from('payment_intents')
-              .insert({
-                'user_id': currentUserId,
-                'provider': 'sumup',
-                'custom_plan_id': (planId != null && planId.isNotEmpty)
-                    ? planId
-                    : null,
-                'plan_name': planTitle,
-                'amount': planAmount ?? 0.0,
-                'beneficiary_profile_id': ChildProfileService.getActiveUserId(),
-              })
-              .select('id')
-              .single();
-          final intentId = insertedRow['id'] as String?;
-          if (intentId != null) {
-            await PendingPurchasesService.setIntentId(purchase.id, intentId);
-          }
-        }
-      } catch (_) {
-        // Ignore — this is only a best-effort click record.
-      }
-
-      HapticFeedback.lightImpact();
-
-      final Uri uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        await PendingPurchasesService.remove(purchase.id);
-        if (mounted) {
-          Fluttertoast.showToast(
-            msg: 'common.link_open_error'.tr(),
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.BOTTOM,
-            backgroundColor: Colors.red,
-            textColor: Colors.white,
-          );
-        }
-      }
-    } catch (error) {
-      debugPrint('Error launching SumUp URL: $error');
-      if (purchase != null) {
-        await PendingPurchasesService.remove(purchase.id);
-      }
-      if (mounted) {
-        Fluttertoast.showToast(
-          msg: 'common.link_open_failed'.tr(),
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.BOTTOM,
-          backgroundColor: Colors.red,
-          textColor: Colors.white,
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _selectedPlanId = null;
-        });
-      }
-    }
-  }
-
   void _handlePlanSelection(Map<String, dynamic> plan) {
     if (_isPrincipalAdmin) {
       _showEditPlanDialog(plan: plan);
@@ -300,12 +204,12 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
   /// 🆕 SumUp, 'sumup_auto_confirm' on: creates the payment intent via the
   /// 'sumup/create-payment' Edge Function (the server creates the
   /// payment_intents click, with provider_payment_id set) and opens the
-  /// redirect page. A pending purchase WITH an intent id is added, same as
-  /// today's fixed-link flow, so SumUpWaitingSheet (opened by whichever
-  /// screen processes pending purchases on resume) can watch this specific
-  /// click by id instead of showing the old "did you pay?" dialog. On
-  /// failure, shows a message and offers (only if the user agrees) today's
-  /// fixed-link SumUp flow, unchanged.
+  /// redirect page. A pending purchase WITH an intent id is added, so
+  /// SumUpWaitingSheet (opened by whichever screen processes pending
+  /// purchases on resume) can watch this specific click by id — the only
+  /// way a subscription gets activated from here, never a plain "yes I
+  /// paid". On failure, shows a clear message with a retry button — there
+  /// is no fixed-link fallback any more.
   Future<void> _launchSumUpForPlan(Map<String, dynamic> plan) async {
     final planId = (plan['id'] ?? plan['dbId'])?.toString();
     final planTitle = plan['title'] as String? ?? plan['name'] as String? ?? '';
@@ -313,7 +217,12 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
         (plan['amount'] as num?)?.toDouble() ??
         0.0;
     if (planId == null || planId.isEmpty) {
-      await _offerFixedSumUpLinkFallback(plan);
+      if (mounted) {
+        showPaymentNotStartedDialog(
+          context,
+          onRetry: () => _startSumUpPayment(plan),
+        );
+      }
       return;
     }
 
@@ -359,13 +268,18 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
       }
     } catch (e) {
       debugPrint('Error creating SumUp payment: $e');
-      // Drop this attempt's own entry before offering the fallback, which
-      // adds its own if the user proceeds — otherwise both end up shown
-      // in sequence later.
+      // No manual fallback left: drop this attempt's own entry (there is
+      // no real payment behind it) and tell the student to retry — see
+      // _showPaymentNotStartedDialog.
       if (purchase != null) {
         await PendingPurchasesService.remove(purchase.id);
       }
-      await _offerFixedSumUpLinkFallback(plan);
+      if (mounted) {
+        showPaymentNotStartedDialog(
+          context,
+          onRetry: () => _startSumUpPayment(plan),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -376,92 +290,51 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
     }
   }
 
-  /// 🆕 SumUp create-payment fallback: shows a message explaining the new
-  /// flow couldn't start, and — only if the user explicitly agrees —
-  /// reproduces today's fixed-link SumUp flow (_launchSumUpUrl, unchanged).
-  Future<void> _offerFixedSumUpLinkFallback(Map<String, dynamic> plan) async {
-    if (!mounted) return;
-    final useOldFlow = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            backgroundColor: AppTheme.darkTheme.cardColor,
-            title: Text(
-              'Pagamento non avviato',
-              style: AppTheme.darkTheme.textTheme.titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            content: Text(
-              'Non è stato possibile avviare il pagamento SumUp per questo '
-              'piano. Vuoi provare con il link diretto di SumUp?',
-              style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
-                height: 1.4,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(
-                  'common.cancel'.tr(),
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: Text('Usa link diretto'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+  /// Dispatches a SumUp payment: the create-payment flow is now the only
+  /// way to pay — there is no fixed-link fallback left. 'sumup_auto_confirm'
+  /// now acts as a kill switch for the whole SumUp flow: its read is
+  /// awaited reliably (one retry on a transient failure — see
+  /// [FeatureFlagsService.isEnabledReliable]) rather than assumed off just
+  /// because it hasn't loaded yet, since there is nothing left to silently
+  /// fall back to. Off (or a plan with no id) shows the same "Pagamento non
+  /// avviato" message as a failed create-payment call, with a Riprova
+  /// button that re-runs this same check.
+  Future<void> _startSumUpPayment(Map<String, dynamic> plan) async {
+    // Set before the flag's network round trip, not after: otherwise a
+    // quick double-tap could both read the flag before either sets
+    // _isLoading, each proceeding to its own create-payment call.
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
 
-    if (!useOldFlow) return;
-    Fluttertoast.showToast(
-      msg: kManualPaymentModeMessage,
-      toastLength: Toast.LENGTH_LONG,
-      gravity: ToastGravity.BOTTOM,
-    );
-    _launchFixedSumUpUrl(plan);
-  }
+    // Checked BEFORE the feature flag: a build old enough to be below
+    // min_payment_build must never even reach a create-payment call.
+    if (!kIsWeb) {
+      final blockedApkUrl =
+          await AppUpdateService.instance.checkPaymentBuildGate();
+      if (!mounted) return;
+      if (blockedApkUrl != null) {
+        setState(() => _isLoading = false);
+        showPaymentBuildBlockedDialog(context, apkUrl: blockedApkUrl);
+        return;
+      }
+    }
 
-  /// Dispatches a SumUp payment: uses the new create-payment flow when
-  /// 'sumup_auto_confirm' is on and the plan has a valid id, otherwise
-  /// falls back to today's fixed-link flow unchanged — with the flag off
-  /// this always takes the fixed-link branch, so nothing changes.
-  ///
-  /// _sumupAutoConfirm is read synchronously (no await before deciding):
-  /// with the flag off (or not loaded yet), _launchFixedSumUpUrl fires
-  /// immediately after the tap exactly like today, with no extra wait
-  /// before its own launchUrl.
-  void _startSumUpPayment(Map<String, dynamic> plan) {
     final planId = (plan['id'] ?? plan['dbId'])?.toString();
-    if (_sumupAutoConfirm && planId != null && planId.isNotEmpty) {
-      _launchSumUpForPlan(plan);
+    final hasValidPlan = planId != null && planId.isNotEmpty;
+    final enabled = hasValidPlan &&
+        await FeatureFlagsService.instance.isEnabledReliable(
+          'sumup_auto_confirm',
+        );
+    if (!mounted) return;
+    if (!enabled) {
+      setState(() => _isLoading = false);
+      showPaymentNotStartedDialog(
+        context,
+        onRetry: () => _startSumUpPayment(plan),
+      );
       return;
     }
-    _launchFixedSumUpUrl(plan);
-  }
-
-  /// Today's fixed-link SumUp flow, unchanged — used both when the flag is
-  /// off and as the fallback when the create-payment flow fails.
-  void _launchFixedSumUpUrl(Map<String, dynamic> plan) {
-    final url =
-        plan['sumupUrl'] as String? ?? plan['external_url'] as String? ?? '';
-    final title = plan['title'] as String? ?? plan['name'] as String? ?? '';
-    final planId = (plan['id'] ?? plan['dbId'] ?? '').toString();
-    final planAmount = (plan['price'] as num?)?.toDouble() ??
-        (plan['amount'] as num?)?.toDouble() ??
-        0.0;
-    if (url.isNotEmpty) {
-      _launchSumUpUrl(url, title, planId: planId, planAmount: planAmount);
-    } else {
-      Fluttertoast.showToast(
-        msg: 'Nessun link di pagamento disponibile per questo piano.',
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.red,
-        textColor: Colors.white,
-      );
-    }
+    await _launchSumUpForPlan(plan);
   }
 
   // DIALOG: "Non sei ancora iscritto!" — identical to subscription_plan_selection
