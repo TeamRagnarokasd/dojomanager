@@ -24,41 +24,24 @@ class _ProfileSwitcherWidgetState extends State<ProfileSwitcherWidget> {
   List<Map<String, dynamic>> _children = [];
   bool _isLoading = true;
 
-  /// True when the guardian has active children and no active subscription
-  /// of their own — in that case they can only book through a child's
-  /// profile, so the adult tile below must not be selectable.
-  bool _mustBookForChildrenOnly = false;
-
   @override
   void initState() {
     super.initState();
     _loadChildren();
   }
 
+  /// Loads the guardian's child profiles for the switcher list. The adult
+  /// tile is always shown and selectable here, and the active profile is
+  /// never changed automatically: "mustBookForChildrenOnly" is a BOOKING
+  /// rule (checkBookingEligibility in class_schedule_service.dart) — it has
+  /// nothing to do with which profile the guardian is allowed to pick, or
+  /// to pay for themselves, elsewhere in the app.
   Future<void> _loadChildren() async {
     try {
       final children = await ChildProfileService.getChildProfiles();
-      final mustBookForChildrenOnly =
-          await ChildProfileService.mustBookForChildrenOnly(
-        knownChildren: children,
-      );
-      // If the guardian's own profile is currently active but they must
-      // book only through a child, switch to the first child automatically
-      // — otherwise the switcher would show the adult tile hidden with no
-      // child tile selected either, while bookings still silently resolve
-      // to (and get rejected for) the adult profile underneath.
-      if (mustBookForChildrenOnly &&
-          !ChildProfileService.isChildProfileActive &&
-          children.isNotEmpty) {
-        await ChildProfileService.setActiveProfile(
-          children.first['id'] as String,
-        );
-        widget.onProfileChanged?.call();
-      }
       if (mounted) {
         setState(() {
           _children = children;
-          _mustBookForChildrenOnly = mustBookForChildrenOnly;
           _isLoading = false;
         });
       }
@@ -125,21 +108,21 @@ class _ProfileSwitcherWidgetState extends State<ProfileSwitcherWidget> {
           ),
           SizedBox(height: 1.5.h),
 
-          // Adult profile tile — hidden when the guardian must book only
-          // through a child's profile (has children, no own active sub).
-          if (!_mustBookForChildrenOnly)
-            _ProfileTile(
-              name: adultName,
-              subtitle: 'Profilo Adulto',
-              icon: Icons.person,
-              isSelected: !_isChildActive,
-              onTap: () async {
-                Navigator.pop(ctx);
-                await ChildProfileService.setActiveProfile(null);
-                if (mounted) setState(() {});
-                widget.onProfileChanged?.call();
-              },
-            ),
+          // Adult profile tile — always visible and selectable: picking a
+          // profile (here, for payments, everywhere but booking a class)
+          // is never restricted by mustBookForChildrenOnly.
+          _ProfileTile(
+            name: adultName,
+            subtitle: 'Profilo Adulto',
+            icon: Icons.person,
+            isSelected: !_isChildActive,
+            onTap: () async {
+              Navigator.pop(ctx);
+              await ChildProfileService.setActiveProfile(null);
+              if (mounted) setState(() {});
+              widget.onProfileChanged?.call();
+            },
+          ),
 
           if (_children.isNotEmpty) ...[
             SizedBox(height: 1.h),

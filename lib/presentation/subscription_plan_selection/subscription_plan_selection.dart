@@ -328,29 +328,48 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     if (!mounted) return;
     setState(() => _launchingSatispayPlanId = planId);
 
-    // "Stai pagando per" — only worth asking when this guardian actually
-    // has a minor on the account; an adult paying only for themselves has
-    // nothing to confirm. Shown right before the real network call, after
-    // every technical gate above has already passed.
+    // Resolve who this purchase is actually for — only worth asking when
+    // this guardian actually has a minor on the account; an adult paying
+    // only for themselves has nothing to choose or confirm. Shown right
+    // before the real network call, after every technical gate above has
+    // already passed.
+    final isAnnualRegistrationPlan = _isSatispayAnnualRegistrationPlan(rawPlan);
     final hasChildren = await ChildProfileService.hasAnyChildProfiles();
     if (!mounted) return;
+    String? beneficiaryId = ChildProfileService.getActiveUserId();
     if (hasChildren) {
-      final beneficiary = await ChildProfileService.getActiveBeneficiaryInfo();
       final planAmount = (rawPlan['price'] as num?)?.toDouble() ??
           (rawPlan['amount'] as num?)?.toDouble() ??
           0.0;
+      final options = await ChildProfileService.getPaymentBeneficiaryOptions();
       if (!mounted) return;
-      final confirmed = await showPaymentConfirmDialog(
+      final choice = await showPaymentConfirmDialog(
         context,
-        beneficiaryName: beneficiary.name,
-        isChild: beneficiary.isChild,
+        options: options,
+        initialSelectedId: ChildProfileService.activeChildProfileId,
         planTitle: planName,
         amount: planAmount,
       );
       if (!mounted) return;
-      if (!confirmed) {
+      if (choice == null) {
         setState(() => _launchingSatispayPlanId = null);
         return;
+      }
+      beneficiaryId = choice.id ?? Supabase.instance.client.auth.currentUser?.id;
+
+      // Same deferral as SumUp: check the CHOSEN beneficiary's own annual
+      // registration here, skipped when buying the annual plan itself.
+      if (!isAnnualRegistrationPlan) {
+        final hasAnnual =
+            await PaymentService.checkHasAnnualRegistration(beneficiaryId);
+        if (!mounted) return;
+        if (!hasAnnual) {
+          setState(() => _launchingSatispayPlanId = null);
+          _showSatispayAnnualRegistrationRequiredDialog(
+            beneficiaryName: choice.isChild ? choice.name : null,
+          );
+          return;
+        }
       }
     }
 
@@ -360,7 +379,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
         'satispay/create-payment',
         body: {
           'plan_id': planId,
-          'beneficiary_profile_id': ChildProfileService.getActiveUserId(),
+          'beneficiary_profile_id': beneficiaryId,
           'redirect_url':
               'https://teamragnarokasd.github.io/dojomanager/payment-done.html',
         },
@@ -386,7 +405,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
         amount: 0.0,
         method: 'satispay',
         intentId: intentId,
-        beneficiaryId: ChildProfileService.getActiveUserId(),
+        beneficiaryId: beneficiaryId,
       );
 
       final opened = await _launchPaymentRedirectUrl(Uri.parse(redirectUrl));
@@ -425,8 +444,9 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   /// fixed-link fallback any more.
   Future<void> _launchSumUpForPlan(
     Map<String, dynamic> plan,
-    String planTitle,
-  ) async {
+    String planTitle, {
+    required String? beneficiaryId,
+  }) async {
     final planId = plan['id']?.toString();
     if (planId == null || planId.isEmpty) {
       if (mounted) {
@@ -445,7 +465,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
         'sumup/create-payment',
         body: {
           'plan_id': planId,
-          'beneficiary_profile_id': ChildProfileService.getActiveUserId(),
+          'beneficiary_profile_id': beneficiaryId,
           'redirect_url':
               'https://teamragnarokasd.github.io/dojomanager/payment-done.html',
         },
@@ -471,7 +491,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
         amount: (plan['price'] as num?)?.toDouble() ?? 0.0,
         method: 'sumup',
         intentId: intentId,
-        beneficiaryId: ChildProfileService.getActiveUserId(),
+        beneficiaryId: beneficiaryId,
       );
 
       final opened = await _launchPaymentRedirectUrl(Uri.parse(redirectUrl));
@@ -550,33 +570,58 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       return;
     }
 
-    // "Stai pagando per" — only worth asking when this guardian actually
-    // has a minor on the account; an adult paying only for themselves has
-    // nothing to confirm. Shown right before the real network call, after
-    // every technical gate above has already passed.
+    // Resolve who this purchase is actually for — only worth asking when
+    // this guardian actually has a minor on the account; an adult paying
+    // only for themselves has nothing to choose or confirm, exactly as
+    // before this feature existed.
+    final planType = plan['planType'] as String? ?? '';
+    final isAnnualRegistrationPlan = planType == 'annual' ||
+        planTitle.toLowerCase().contains('iscrizione annuale');
     final hasChildren = await ChildProfileService.hasAnyChildProfiles();
     if (!mounted) return;
+    String? beneficiaryId = ChildProfileService.getActiveUserId();
     if (hasChildren) {
-      final beneficiary = await ChildProfileService.getActiveBeneficiaryInfo();
       final planAmount = (plan['price'] as num?)?.toDouble() ??
           (plan['amount'] as num?)?.toDouble() ??
           0.0;
+      final options = await ChildProfileService.getPaymentBeneficiaryOptions();
       if (!mounted) return;
-      final confirmed = await showPaymentConfirmDialog(
+      final choice = await showPaymentConfirmDialog(
         context,
-        beneficiaryName: beneficiary.name,
-        isChild: beneficiary.isChild,
+        options: options,
+        initialSelectedId: ChildProfileService.activeChildProfileId,
         planTitle: planTitle,
         amount: planAmount,
       );
       if (!mounted) return;
-      if (!confirmed) {
+      if (choice == null) {
         setState(() => _isLoading = false);
         return;
       }
+      beneficiaryId = choice.id ?? Supabase.instance.client.auth.currentUser?.id;
+
+      // The screen-level gate in _handlePlanSelection only looked at the
+      // ACTIVE profile and is skipped entirely when there are children —
+      // check the CHOSEN beneficiary's own annual registration here
+      // instead, so picking a different (eligible or ineligible) profile
+      // in the dialog above is judged correctly either way. Skipped when
+      // buying the annual registration plan itself — that purchase is
+      // exactly how a beneficiary without one gets registered.
+      if (!isAnnualRegistrationPlan) {
+        final hasAnnual =
+            await PaymentService.checkHasAnnualRegistration(beneficiaryId);
+        if (!mounted) return;
+        if (!hasAnnual) {
+          setState(() => _isLoading = false);
+          _showAnnualRegistrationRequiredDialog(
+            beneficiaryName: choice.isChild ? choice.name : null,
+          );
+          return;
+        }
+      }
     }
 
-    await _launchSumUpForPlan(plan, planTitle);
+    await _launchSumUpForPlan(plan, planTitle, beneficiaryId: beneficiaryId);
   }
 
   @override
@@ -1863,8 +1908,14 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       }
 
       // RULE 2: Use already-loaded _hasAnnualRegistration state (avoids consuming
-      // the user-gesture permission on iOS Safari with an async await before launchUrl).
-      if (!_hasAnnualRegistration) {
+      // the user-gesture permission on iOS Safari with an async await before launchUrl)
+      // — but ONLY when this guardian has no children: with at least one
+      // child on the account, this check only reflects the ACTIVE profile,
+      // while the actual beneficiary is chosen later in _startSumUpPayment,
+      // so the real registration check is deferred there instead.
+      final hasChildrenForGate = await ChildProfileService.hasAnyChildProfiles();
+      if (!mounted) return;
+      if (!hasChildrenForGate && !_hasAnnualRegistration) {
         _showAnnualRegistrationRequiredDialog();
         return;
       }
@@ -1897,7 +1948,13 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   }
 
   // DIALOG: Show when annual registration is required
-  void _showAnnualRegistrationRequiredDialog() {
+  void _showAnnualRegistrationRequiredDialog({String? beneficiaryName}) {
+    final dialogTitle = beneficiaryName == null
+        ? 'Non sei ancora iscritto!'
+        : '$beneficiaryName non è ancora iscritto/a!';
+    final dialogContent = beneficiaryName == null
+        ? 'Procedi prima all\'acquisto dell\'iscrizione annuale, dopo potrai scegliere il tuo piano di abbonamento.'
+        : 'Procedi prima all\'acquisto dell\'iscrizione annuale per $beneficiaryName, dopo potrai scegliere il piano di abbonamento.';
     // Find the annual plan — search all plans (standard + custom)
     Map<String, dynamic> annualPlan = _allPlans.firstWhere(
       (plan) =>
@@ -1947,7 +2004,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
             SizedBox(width: 3.w),
             Expanded(
               child: Text(
-                'Non sei ancora iscritto!',
+                dialogTitle,
                 style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: const Color(0xFFF39C12),
@@ -1957,7 +2014,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
           ],
         ),
         content: Text(
-          'Procedi prima all\'acquisto dell\'iscrizione annuale, dopo potrai scegliere il tuo piano di abbonamento.',
+          dialogContent,
           style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
             color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
             height: 1.4,
@@ -2112,9 +2169,16 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   /// shows the "Non sei ancora iscritto!" dialog and starts no payment.
   /// The annual registration itself is always purchasable. Applies to both
   /// the main list and the convenzioni sub-list.
-  void _handleSatispayPlanTap(Map<String, dynamic> rawPlan) {
-    if (!_isSatispayAnnualRegistrationPlan(rawPlan) &&
-        !_hasAnnualRegistration) {
+  Future<void> _handleSatispayPlanTap(Map<String, dynamic> rawPlan) async {
+    final isAnnualPlan = _isSatispayAnnualRegistrationPlan(rawPlan);
+    // Same deferral as SumUp's _handlePlanSelection: with at least one
+    // child on the account the real beneficiary (and so the real
+    // registration check) is only known once _launchSatispayForPlan's own
+    // dialog resolves it, so this early gate — based only on the ACTIVE
+    // profile — is skipped entirely in that case.
+    final hasChildren = await ChildProfileService.hasAnyChildProfiles();
+    if (!mounted) return;
+    if (!isAnnualPlan && !hasChildren && !_hasAnnualRegistration) {
       _showSatispayAnnualRegistrationRequiredDialog();
       return;
     }
@@ -2124,8 +2188,14 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
   /// 🆕 SATISPAY MODE — mirrors _showAnnualRegistrationRequiredDialog
   /// (SumUp) exactly in appearance/text, but its CTA launches the Satispay
   /// payment for the annual plan instead of the SumUp flow.
-  void _showSatispayAnnualRegistrationRequiredDialog() {
+  void _showSatispayAnnualRegistrationRequiredDialog({String? beneficiaryName}) {
     final annualPlan = _findSatispayAnnualPlan();
+    final dialogTitle = beneficiaryName == null
+        ? 'Non sei ancora iscritto!'
+        : '$beneficiaryName non è ancora iscritto/a!';
+    final dialogContent = beneficiaryName == null
+        ? 'Procedi prima all\'acquisto dell\'iscrizione annuale, dopo potrai scegliere il tuo piano di abbonamento.'
+        : 'Procedi prima all\'acquisto dell\'iscrizione annuale per $beneficiaryName, dopo potrai scegliere il piano di abbonamento.';
 
     showDialog(
       context: context,
@@ -2142,7 +2212,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
             SizedBox(width: 3.w),
             Expanded(
               child: Text(
-                'Non sei ancora iscritto!',
+                dialogTitle,
                 style: AppTheme.darkTheme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: const Color(0xFFF39C12),
@@ -2152,7 +2222,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
           ],
         ),
         content: Text(
-          'Procedi prima all\'acquisto dell\'iscrizione annuale, dopo potrai scegliere il tuo piano di abbonamento.',
+          dialogContent,
           style: AppTheme.darkTheme.textTheme.bodyLarge?.copyWith(
             color: AppTheme.darkTheme.colorScheme.onSurfaceVariant,
             height: 1.4,

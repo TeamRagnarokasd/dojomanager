@@ -661,7 +661,7 @@ class ClassScheduleService {
         );
         return {
           'allowed': false,
-          'reason': 'Per prenotare scegli il profilo del minore.',
+          'reason': 'Per prenotare seleziona il profilo del minore.',
         };
       }
 
