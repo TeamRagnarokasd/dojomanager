@@ -142,6 +142,12 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
   bool _routeResolved = false;
   bool _updateChecked = false;
 
+  // 🆕 Resume update check: at most one check every 60s (see
+  // _checkForUpdateOnResume), and never a second update dialog stacked on
+  // top of one already open or mid-download (see _showUpdateDialog).
+  DateTime? _lastUpdateCheckOnResumeAt;
+  bool _isUpdateDialogShowing = false;
+
   // Auth state stream subscription — cancelled on dispose to prevent leaks
   StreamSubscription<AuthState>? _authStateSub;
 
@@ -189,6 +195,10 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
       // 🆕 Reconcile Satispay payment_intents on every foreground return —
       // this is how activation happens even hours after the payment.
       _runPaidIntentsCheck();
+      // 🆕 Re-check for an app update on every foreground return, not just
+      // at startup — throttled and dialog-guarded, see
+      // _checkForUpdateOnResume.
+      _checkForUpdateOnResume();
       // 🆕 Report this client's app version on every foreground return too
       // (not just login) — safe on every platform, including web.
       if (_authService.isAuthenticated) {
@@ -668,6 +678,64 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
     }
   }
 
+  /// Shared entry point for every place in this file that shows the update
+  /// dialog: refuses to open a second one while one is already open (the
+  /// only time a download can be in progress is while this dialog is on
+  /// screen, so this single flag also covers "a download is in progress").
+  Future<void> _showUpdateDialog(BuildContext ctx, AppUpdateInfo info) async {
+    if (_isUpdateDialogShowing) return;
+    _isUpdateDialogShowing = true;
+    try {
+      await showAppUpdateDialog(ctx, info);
+    } finally {
+      _isUpdateDialogShowing = false;
+    }
+  }
+
+  /// Checks for an app update every time the app comes back to the
+  /// foreground, not just at startup — Android only, via
+  /// [AppUpdateService.checkForUpdate]; the web app is always on the
+  /// latest deployed code, so this check is meaningless there (and skipped,
+  /// same as every other update check in this file).
+  ///
+  /// Throttled to at most one check every 60 seconds, so switching in and
+  /// out of the app repeatedly never spams the network. A failed check
+  /// (no connection, server error) is silent — there is nothing actionable
+  /// to tell the user, and the next resume tries again.
+  ///
+  /// When an update is found, shows the very same dialog used at startup —
+  /// mandatory updates come back non-dismissible — above whatever the user
+  /// is doing right now (another screen, even a pending-payment sheet),
+  /// with one exception: the login screen, where popping an update dialog
+  /// before the user has even signed in would be confusing. That case is
+  /// simply skipped; the next resume (or the existing post-login checks)
+  /// picks it up once the user is past login.
+  Future<void> _checkForUpdateOnResume() async {
+    if (kIsWeb) return;
+
+    final now = DateTime.now();
+    if (_lastUpdateCheckOnResumeAt != null &&
+        now.difference(_lastUpdateCheckOnResumeAt!) <
+            const Duration(seconds: 60)) {
+      return;
+    }
+    _lastUpdateCheckOnResumeAt = now;
+
+    if (_isUpdateDialogShowing) return;
+
+    try {
+      final updateInfo = await AppUpdateService.instance.checkForUpdate();
+      if (updateInfo == null) return;
+      if (_routeObserver._lastRouteName == AppRoutes.login) return;
+
+      final ctx = appNavigatorKey.currentContext;
+      if (ctx == null || !ctx.mounted) return;
+      await _showUpdateDialog(ctx, updateInfo);
+    } catch (e) {
+      debugPrint('⚠️ Resume update check failed: $e');
+    }
+  }
+
   /// Processes every pending purchase (SharedPreferences-backed, one entry
   /// per plan tap — see PendingPurchasesService) app-wide: on startup for an
   /// already-authenticated session, and on every foreground return. Not
@@ -705,7 +773,7 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
       await Future.delayed(const Duration(milliseconds: 800));
       final ctx = appNavigatorKey.currentContext;
       if (ctx != null) {
-        await showAppUpdateDialog(ctx, updateInfo);
+        await _showUpdateDialog(ctx, updateInfo);
       }
     } catch (e) {
       debugPrint('⚠️ Update check failed: $e');
@@ -732,7 +800,7 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
           await Future.delayed(const Duration(milliseconds: 800));
           final ctx = appNavigatorKey.currentContext;
           if (ctx != null) {
-            await showAppUpdateDialog(ctx, updateInfo);
+            await _showUpdateDialog(ctx, updateInfo);
           }
         });
         return true; // allow navigation to proceed immediately
@@ -740,7 +808,7 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
       // Mandatory: show dialog over the splash screen and do NOT return until
       // the user has installed the update (dialog is not dismissible).
       if (splashContext.mounted) {
-        await showAppUpdateDialog(splashContext, updateInfo);
+        await _showUpdateDialog(splashContext, updateInfo);
       }
       // After the dialog closes (only possible once install intent fires),
       // allow navigation.
@@ -1111,6 +1179,30 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
   // must never go back to "Aggiorna ora" after a successful download, only
   // ever offer to relaunch the install from the file already on disk.
   bool _downloadCompleted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // If a complete, verified APK for this exact version is already on
+    // disk from a previous attempt (dialog dismissed after downloading, or
+    // a previous app session), show "Installa aggiornamento" right away
+    // instead of making the user tap "Aggiorna ora" again just to find out
+    // there is nothing left to download — same check _ensureApkDownloaded
+    // already does mid-download, just run once up front too.
+    _checkAlreadyDownloaded();
+  }
+
+  Future<void> _checkAlreadyDownloaded() async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final apkPath = '${tempDir.path}/update.apk';
+      if (await _hasVerifiedApk(apkPath) && mounted) {
+        setState(() => _downloadCompleted = true);
+      }
+    } catch (e) {
+      debugPrint('⚠️ Could not check for an already-downloaded APK: $e');
+    }
+  }
 
   // A single Dio instance for the whole dialog lifetime, reused across
   // every download attempt and every "Installa aggiornamento" relaunch,
