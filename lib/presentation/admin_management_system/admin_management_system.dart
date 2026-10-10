@@ -537,7 +537,9 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
             await FederationMembershipService.instance.getMembershipsForUsers(userIds);
         final Map<String, List<FederationMembership>> byUser = {};
         for (final membership in memberships) {
-          byUser.putIfAbsent(membership.userId, () => []).add(membership);
+          final userId = membership.userId;
+          if (userId == null) continue;
+          byUser.putIfAbsent(userId, () => []).add(membership);
         }
         _membershipsByUserId = byUser;
       } catch (e) {

@@ -10,6 +10,7 @@ import '../../services/supabase_service.dart';
 import '../../services/child_profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../../constants/app_constants.dart';
+import '../../widgets/federation_memberships_widget.dart';
 import '../user_profile/widgets/subscription_details_widget.dart';
 
 /// Full profile screen for admin to view and edit a child/minor profile.
@@ -790,6 +791,15 @@ class _AdminChildProfileScreenState extends State<AdminChildProfileScreen> {
               children: [_buildDocumentsSection()],
             ),
             SizedBox(height: 4.h),
+
+            // ── Federation memberships (Tesseramenti) ────────────────
+            if (_child?['id'] != null) ...[
+              FederationMembershipsWidget(
+                childProfileId: _child!['id'].toString(),
+                canManage: true,
+              ),
+              SizedBox(height: 4.h),
+            ],
 
             // ── Subscription / annual registration ───────────────────
             if (_child?['id'] != null) ...[

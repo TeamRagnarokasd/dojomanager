@@ -6,6 +6,7 @@ import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_export.dart';
+import '../../services/federation_membership_service.dart';
 import '../../services/supabase_service.dart';
 import './widgets/bulk_actions_widget.dart';
 import './widgets/filter_chips_widget.dart';
@@ -31,6 +32,17 @@ class _UserManagementSystemState extends State<UserManagementSystem> {
   String selectedRoleFilter = 'all';
   String selectedStatusFilter = 'all';
   String selectedActivityFilter = 'all';
+  bool selectedNonTesseratiFilter = false;
+
+  // Tessere e genitori "non allievo", caricate in poche query in
+  // _loadFederationData() — non una per utente.
+  Map<String, List<FederationMembership>> _membershipsByUserId = {};
+  Map<String, List<FederationMembership>> _membershipsByChildId = {};
+  Set<String> _nonStudentGuardianIds = {};
+  // True when _loadFederationData() failed: an empty membership map then
+  // means "unknown", not "no tessera", so the filter must show nothing
+  // rather than falsely flag everyone as untesserato.
+  bool _federationDataLoadFailed = false;
 
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _editFullNameController = TextEditingController();
@@ -183,6 +195,7 @@ class _UserManagementSystemState extends State<UserManagementSystem> {
       );
 
       systemUsers = enrichedUsers;
+      await _loadFederationData();
       _applyFilters();
 
       // 🔍 DIAGNOSTIC: Confirm data enrichment
@@ -197,6 +210,275 @@ class _UserManagementSystemState extends State<UserManagementSystem> {
       print('Error loading users: $e');
       systemUsers = [];
     }
+  }
+
+  /// Loads, in a handful of queries (never one per user), everything the
+  /// "Non tesserati" filter needs: every tessera for the adults shown and
+  /// for their active children, plus which guardians don't train
+  /// themselves (have an active child AND no active subscription of their
+  /// own — same rule as ChildProfileService.mustBookForChildrenOnly) so
+  /// they can be excluded from the "untessered adults" list.
+  Future<void> _loadFederationData() async {
+    try {
+      final userIds = systemUsers
+          .map((u) => (u as Map<String, dynamic>)['id']?.toString())
+          .whereType<String>()
+          .toList();
+      final childIds = <String>[];
+      for (final u in systemUsers) {
+        final children = (u as Map<String, dynamic>)['child_profiles'] as List?;
+        if (children == null) continue;
+        for (final c in children) {
+          final id = (c as Map<String, dynamic>)['id']?.toString();
+          if (id != null) childIds.add(id);
+        }
+      }
+
+      final userMemberships =
+          await FederationMembershipService.instance.getMembershipsForUsers(userIds);
+      final Map<String, List<FederationMembership>> byUser = {};
+      for (final membership in userMemberships) {
+        final userId = membership.userId;
+        if (userId == null) continue;
+        byUser.putIfAbsent(userId, () => []).add(membership);
+      }
+
+      final childMemberships = childIds.isEmpty
+          ? <FederationMembership>[]
+          : await FederationMembershipService.instance
+              .getMembershipsForChildren(childIds);
+      final Map<String, List<FederationMembership>> byChild = {};
+      for (final membership in childMemberships) {
+        final childProfileId = membership.childProfileId;
+        if (childProfileId == null) continue;
+        byChild.putIfAbsent(childProfileId, () => []).add(membership);
+      }
+
+      // Guardians with at least one active child, checked against the same
+      // "has an active subscription of their own" RPC used elsewhere
+      // (guardian_has_active_subscription) — one call per actual guardian,
+      // never per every user in the list.
+      final actualGuardianIds = <String>{};
+      for (final u in systemUsers) {
+        final user = u as Map<String, dynamic>;
+        final children = user['child_profiles'] as List?;
+        if (children != null && children.isNotEmpty) {
+          final id = user['id']?.toString();
+          if (id != null) actualGuardianIds.add(id);
+        }
+      }
+
+      final client = SupabaseService.instance.client;
+      final nonStudentGuardianIds = <String>{};
+      await Future.wait(actualGuardianIds.map((guardianId) async {
+        try {
+          final result = await client.rpc(
+            'guardian_has_active_subscription',
+            params: {'guardian_uuid': guardianId},
+          );
+          if (result != true) nonStudentGuardianIds.add(guardianId);
+        } catch (e) {
+          debugPrint('Error checking guardian subscription for $guardianId: $e');
+          // Unknown subscription status fails closed the same way as a
+          // confirmed non-student guardian: omit them from "Non tesserati"
+          // rather than risk falsely flagging someone who doesn't actually
+          // need a tessera of their own.
+          nonStudentGuardianIds.add(guardianId);
+        }
+      }));
+
+      _membershipsByUserId = byUser;
+      _membershipsByChildId = byChild;
+      _nonStudentGuardianIds = nonStudentGuardianIds;
+      _federationDataLoadFailed = false;
+    } catch (e) {
+      debugPrint('Error loading federation data: $e');
+      _membershipsByUserId = {};
+      _membershipsByChildId = {};
+      _nonStudentGuardianIds = {};
+      // Fail closed, not open: an empty map here must not be read as
+      // "nobody has a tessera" by _buildNonTesseratiEntries().
+      _federationDataLoadFailed = true;
+    }
+  }
+
+  /// Entries for the "Non tesserati" filter: active minors with no tessera
+  /// at all (labeled "Minore – figlio/a di <genitore>"), plus adults with no
+  /// tessera who aren't a non-student guardian (a guardian who only ever
+  /// books for their children and never trains themselves isn't expected to
+  /// have one). Combines with search and the active/inactive filter exactly
+  /// like the normal list.
+  List<Map<String, dynamic>> _buildNonTesseratiEntries() {
+    // Fail closed: if the last load errored, an empty membership map means
+    // "unknown", not "nobody has a tessera" — show nothing rather than
+    // falsely flag the whole roster as untesserato.
+    if (_federationDataLoadFailed) return const [];
+
+    final entries = <Map<String, dynamic>>[];
+    final searchLower = searchQuery.toLowerCase();
+
+    for (final u in systemUsers) {
+      final user = u as Map<String, dynamic>;
+      final userId = user['id']?.toString();
+      if (userId == null) continue;
+
+      if (selectedRoleFilter != 'all') {
+        final role = user['role']?.toString() ?? 'student';
+        if (role != selectedRoleFilter) continue;
+      }
+      final isActive = user['is_active'] == true;
+      final passesStatusFilter = selectedStatusFilter == 'all' ||
+          (selectedStatusFilter == 'active' && isActive) ||
+          (selectedStatusFilter == 'inactive' && !isActive);
+      // A guardian who fails role/status mirrors the normal list, where
+      // their nested children disappear along with them — so skip both
+      // the adult entry and their children together.
+      if (!passesStatusFilter) continue;
+
+      final isUntesseratoAdult =
+          (_membershipsByUserId[userId]?.isEmpty ?? true) &&
+              !_nonStudentGuardianIds.contains(userId);
+      if (isUntesseratoAdult) {
+        final name = user['full_name']?.toString().toLowerCase() ?? '';
+        final email = user['email']?.toString().toLowerCase() ?? '';
+        final phone = user['phone']?.toString().toLowerCase() ?? '';
+        if (searchQuery.isEmpty ||
+            name.contains(searchLower) ||
+            email.contains(searchLower) ||
+            phone.contains(searchLower)) {
+          entries.add({...user, '_entryType': 'adult'});
+        }
+      }
+
+      final children = (user['child_profiles'] as List?)
+              ?.cast<Map<String, dynamic>>() ??
+          const <Map<String, dynamic>>[];
+      for (final child in children) {
+        final childId = child['id']?.toString();
+        if (childId == null) continue;
+        final isUntesserato = _membershipsByChildId[childId]?.isEmpty ?? true;
+        if (!isUntesserato) continue;
+
+        final childName =
+            '${child['first_name'] ?? ''} ${child['last_name'] ?? ''}'
+                .trim()
+                .toLowerCase();
+        final parentName = user['full_name']?.toString().toLowerCase() ?? '';
+        if (searchQuery.isNotEmpty &&
+            !childName.contains(searchLower) &&
+            !parentName.contains(searchLower)) {
+          continue;
+        }
+        entries.add({'_entryType': 'child', 'child': child, 'parent': user});
+      }
+    }
+    return entries;
+  }
+
+  /// The same user card used in the normal list, with all its admin
+  /// actions — reused by both the normal list and the "Non tesserati" list
+  /// so adult entries behave identically in either view.
+  Widget _buildUserCardWidget(Map<String, dynamic> user) {
+    final isSelected = selectedUsers.contains(user['id']);
+    return UserCardWidget(
+      key: ValueKey('user_card_${user['id']}_surgical_v5'),
+      user: user,
+      isSelected: isSelected,
+      isPrincipalAdmin: isPrincipalAdmin,
+      onTap: () {
+        setState(() {
+          if (isSelected) {
+            selectedUsers.remove(user['id']);
+          } else {
+            selectedUsers.add(user['id']);
+          }
+        });
+      },
+      onLongPress: () => _showUserEditDialog(user),
+      onUpdatePhoto: () => _updateUserPhoto(user['id']),
+      onViewProfile: () => _showUserDetailDialog(user),
+      onChangeRole: () => _showPromotionDialog(user),
+      onSendMessage: () => _sendMessageToUser(user['id']),
+      onSuspendAccount: () => _suspendUser(user['id'], user['is_active'] == true),
+      onSendWelcomeEmail: () => _sendWelcomeEmail(user['id']),
+      onResetPassword: () => _resetPassword(user['id']),
+      onGenerateReport: () => _generateUserReport(user['id']),
+      onDeleteUser: () => _deleteUser(
+        user['id'],
+        user['full_name']?.toString() ?? 'common.user'.tr(),
+      ),
+      onFullProfileEdit: () => _openFullUserProfile(user['id']),
+      onTogglePasspartout:
+          isPrincipalAdmin ? () => _showPasspartoutDialog(user) : null,
+      onViewReceipts: () => _showUserReceiptsBottomSheet(user),
+    );
+  }
+
+  /// A minor entry in the "Non tesserati" list: tapping it opens their
+  /// profile directly, same destination as the child cards nested under a
+  /// parent in the normal list.
+  Widget _buildNonTesseratoChildTile(
+    Map<String, dynamic> child,
+    Map<String, dynamic> parent,
+  ) {
+    final firstName = child['first_name'] as String? ?? '';
+    final lastName = child['last_name'] as String? ?? '';
+    final childName = '$firstName $lastName'.trim();
+    final parentName = parent['full_name']?.toString() ?? '';
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => Navigator.pushNamed(
+          context,
+          AppRoutes.adminChildProfile,
+          arguments: {'child': child, 'parent': parent},
+        ).then((_) => _loadSystemUsers()),
+        borderRadius: BorderRadius.circular(12.0),
+        child: Container(
+          margin: EdgeInsets.only(bottom: 8.h),
+          padding: EdgeInsets.all(12.w),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12.0),
+            border: Border.all(color: Colors.purple.withAlpha(77)),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: Colors.purple.withAlpha(26),
+                child: Icon(Icons.child_care, color: Colors.purple),
+              ),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      childName.isEmpty ? 'Minore' : childName,
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13.sp,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      'Minore – figlio/a di $parentName',
+                      style: GoogleFonts.inter(
+                        fontSize: 11.sp,
+                        color: Colors.grey.shade600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: Colors.grey.shade400),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _applyFilters() {
@@ -727,6 +1009,10 @@ class _UserManagementSystemState extends State<UserManagementSystem> {
     final pendingUsers = systemUsers
         .where((u) => u['medical_certificate_status'] == 'pending')
         .length;
+    // Computed once per build (depends on live filters) and reused for
+    // both the filter-chip count and the list itself, instead of redoing
+    // the scan twice.
+    final nonTesseratiEntries = _buildNonTesseratiEntries();
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
@@ -779,6 +1065,11 @@ class _UserManagementSystemState extends State<UserManagementSystem> {
             selectedRoleFilter: selectedRoleFilter,
             selectedStatusFilter: selectedStatusFilter,
             selectedActivityFilter: selectedActivityFilter,
+            isNonTesseratiSelected: selectedNonTesseratiFilter,
+            nonTesseratiCount: nonTesseratiEntries.length,
+            onNonTesseratiToggled: (selected) {
+              setState(() => selectedNonTesseratiFilter = selected);
+            },
             onRoleFilterChanged: (filter) {
               setState(() {
                 selectedRoleFilter = filter;
@@ -822,256 +1113,9 @@ class _UserManagementSystemState extends State<UserManagementSystem> {
               },
             ),
           Expanded(
-            child: filteredUsers.isEmpty
-                ? Center(child: Text('reminders.no_users_found'.tr()))
-                : ListView.builder(
-                    key: ValueKey(
-                      'user_list_widget_v5_surgical_${DateTime.now().millisecondsSinceEpoch}',
-                    ),
-                    padding: EdgeInsets.all(16.w),
-                    itemCount: filteredUsers.length,
-                    itemBuilder: (context, index) {
-                      final user = filteredUsers[index];
-                      final isSelected = selectedUsers.contains(user['id']);
-                      final childProfiles =
-                          (user['child_profiles'] as List<dynamic>?)
-                              ?.cast<Map<String, dynamic>>() ??
-                          [];
-
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          UserCardWidget(
-                            key: ValueKey(
-                              'user_card_${user['id']}_surgical_v5',
-                            ),
-                            user: user,
-                            isSelected: isSelected,
-                            isPrincipalAdmin: isPrincipalAdmin,
-                            onTap: () {
-                              setState(() {
-                                if (isSelected) {
-                                  selectedUsers.remove(user['id']);
-                                } else {
-                                  selectedUsers.add(user['id']);
-                                }
-                              });
-                            },
-                            onLongPress: () => _showUserEditDialog(user),
-                            onUpdatePhoto: () => _updateUserPhoto(user['id']),
-                            onViewProfile: () => _showUserDetailDialog(user),
-                            onChangeRole: () => _showPromotionDialog(user),
-                            onSendMessage: () => _sendMessageToUser(user['id']),
-                            onSuspendAccount: () => _suspendUser(
-                              user['id'],
-                              user['is_active'] == true,
-                            ),
-                            onSendWelcomeEmail: () =>
-                                _sendWelcomeEmail(user['id']),
-                            onResetPassword: () => _resetPassword(user['id']),
-                            onGenerateReport: () =>
-                                _generateUserReport(user['id']),
-                            onDeleteUser: () => _deleteUser(
-                              user['id'],
-                              user['full_name']?.toString() ??
-                                  'common.user'.tr(),
-                            ),
-                            onFullProfileEdit: () =>
-                                _openFullUserProfile(user['id']),
-                            onTogglePasspartout: isPrincipalAdmin
-                                ? () => _showPasspartoutDialog(user)
-                                : null,
-                            onViewReceipts: () =>
-                                _showUserReceiptsBottomSheet(user),
-                          ),
-                          // ── Child profiles inline under parent ──────────
-                          if (childProfiles.isNotEmpty)
-                            Padding(
-                              padding: EdgeInsets.only(left: 8.w, bottom: 8.h),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: childProfiles.map((child) {
-                                  final firstName =
-                                      child['first_name'] as String? ?? '';
-                                  final lastName =
-                                      child['last_name'] as String? ?? '';
-                                  final childName = '$firstName $lastName'
-                                      .trim();
-                                  final imageConsent =
-                                      child['image_consent'] as bool? ?? false;
-                                  final birthDate =
-                                      child['birth_date'] as String?;
-                                  String? age;
-                                  if (birthDate != null) {
-                                    try {
-                                      final bd = DateTime.parse(birthDate);
-                                      final now = DateTime.now();
-                                      int a = now.year - bd.year;
-                                      if (now.month < bd.month ||
-                                          (now.month == bd.month &&
-                                              now.day < bd.day))
-                                        a--;
-                                      age = '$a anni';
-                                    } catch (_) {}
-                                  }
-                                  return Container(
-                                    margin: EdgeInsets.only(bottom: 6.h),
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 12.w,
-                                      vertical: 10.h,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF1A1A1A),
-                                      borderRadius: BorderRadius.circular(10.0),
-                                      border: Border.all(
-                                        color: imageConsent
-                                            ? Colors.green.withValues(
-                                                alpha: 0.4,
-                                              )
-                                            : Colors.orange.withValues(
-                                                alpha: 0.5,
-                                              ),
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        // Indent indicator
-                                        Container(
-                                          width: 3,
-                                          height: 36.h,
-                                          decoration: BoxDecoration(
-                                            color: imageConsent
-                                                ? Colors.green
-                                                : Colors.orange,
-                                            borderRadius: BorderRadius.circular(
-                                              2.0,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(width: 10.w),
-                                        Container(
-                                          padding: EdgeInsets.all(6.w),
-                                          decoration: BoxDecoration(
-                                            color: Colors.blue.withValues(
-                                              alpha: 0.15,
-                                            ),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: Icon(
-                                            Icons.child_care,
-                                            color: Colors.blue[300],
-                                            size: 16.sp,
-                                          ),
-                                        ),
-                                        SizedBox(width: 10.w),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: Text(
-                                                      childName,
-                                                      style: GoogleFonts.inter(
-                                                        fontSize: 13.sp,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        color: Colors.white,
-                                                      ),
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                    ),
-                                                  ),
-                                                  Container(
-                                                    padding:
-                                                        EdgeInsets.symmetric(
-                                                          horizontal: 6.w,
-                                                          vertical: 2.h,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.blue
-                                                          .withValues(
-                                                            alpha: 0.2,
-                                                          ),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            6.0,
-                                                          ),
-                                                    ),
-                                                    child: Text(
-                                                      'Minore',
-                                                      style: GoogleFonts.inter(
-                                                        fontSize: 10.sp,
-                                                        color: Colors.blue[300],
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              SizedBox(height: 3.h),
-                                              Row(
-                                                children: [
-                                                  if (age != null) ...[
-                                                    Icon(
-                                                      Icons.cake,
-                                                      size: 11.sp,
-                                                      color: Colors.grey[500],
-                                                    ),
-                                                    SizedBox(width: 3.w),
-                                                    Text(
-                                                      age,
-                                                      style: GoogleFonts.inter(
-                                                        fontSize: 11.sp,
-                                                        color: Colors.grey[400],
-                                                      ),
-                                                    ),
-                                                    SizedBox(width: 10.w),
-                                                  ],
-                                                  Icon(
-                                                    imageConsent
-                                                        ? Icons.photo_camera
-                                                        : Icons
-                                                              .no_photography_outlined,
-                                                    size: 11.sp,
-                                                    color: imageConsent
-                                                        ? Colors.green[400]
-                                                        : Colors.orange[400],
-                                                  ),
-                                                  SizedBox(width: 3.w),
-                                                  Text(
-                                                    imageConsent
-                                                        ? 'Liberatoria OK'
-                                                        : 'No liberatoria',
-                                                    style: GoogleFonts.inter(
-                                                      fontSize: 11.sp,
-                                                      color: imageConsent
-                                                          ? Colors.green[400]
-                                                          : Colors.orange[400],
-                                                      fontWeight: imageConsent
-                                                          ? FontWeight.w400
-                                                          : FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
+            child: selectedNonTesseratiFilter
+                ? _buildNonTesseratiList(nonTesseratiEntries)
+                : _buildNormalUsersList(),
           ),
         ],
       ),
@@ -1089,6 +1133,241 @@ class _UserManagementSystemState extends State<UserManagementSystem> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildNonTesseratiList(List<Map<String, dynamic>> entries) {
+    if (entries.isEmpty) {
+      return const Center(child: Text('Nessun utente non tesserato trovato'));
+    }
+    return ListView.builder(
+      key: ValueKey('non_tesserati_list_${entries.length}'),
+      padding: EdgeInsets.all(16.w),
+      itemCount: entries.length,
+      itemBuilder: (context, index) {
+        final entry = entries[index];
+        if (entry['_entryType'] == 'child') {
+          return _buildNonTesseratoChildTile(
+            entry['child'] as Map<String, dynamic>,
+            entry['parent'] as Map<String, dynamic>,
+          );
+        }
+        return Padding(
+          padding: EdgeInsets.only(bottom: 4.h),
+          child: _buildUserCardWidget(entry),
+        );
+      },
+    );
+  }
+
+  Widget _buildNormalUsersList() {
+    if (filteredUsers.isEmpty) {
+      return Center(child: Text('reminders.no_users_found'.tr()));
+    }
+    return ListView.builder(
+      key: ValueKey(
+        'user_list_widget_v5_surgical_${DateTime.now().millisecondsSinceEpoch}',
+      ),
+      padding: EdgeInsets.all(16.w),
+      itemCount: filteredUsers.length,
+      itemBuilder: (context, index) {
+        final user = filteredUsers[index];
+        final childProfiles =
+            (user['child_profiles'] as List<dynamic>?)
+                ?.cast<Map<String, dynamic>>() ??
+            [];
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildUserCardWidget(user),
+            // ── Child profiles inline under parent ──────────
+            if (childProfiles.isNotEmpty)
+              Padding(
+                padding: EdgeInsets.only(left: 8.w, bottom: 8.h),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: childProfiles.map((child) {
+                    final firstName =
+                        child['first_name'] as String? ?? '';
+                    final lastName =
+                        child['last_name'] as String? ?? '';
+                    final childName = '$firstName $lastName'
+                        .trim();
+                    final imageConsent =
+                        child['image_consent'] as bool? ?? false;
+                    final birthDate =
+                        child['birth_date'] as String?;
+                    String? age;
+                    if (birthDate != null) {
+                      try {
+                        final bd = DateTime.parse(birthDate);
+                        final now = DateTime.now();
+                        int a = now.year - bd.year;
+                        if (now.month < bd.month ||
+                            (now.month == bd.month &&
+                                now.day < bd.day))
+                          a--;
+                        age = '$a anni';
+                      } catch (_) {}
+                    }
+                    return Container(
+                      margin: EdgeInsets.only(bottom: 6.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12.w,
+                        vertical: 10.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1A1A),
+                        borderRadius: BorderRadius.circular(10.0),
+                        border: Border.all(
+                          color: imageConsent
+                              ? Colors.green.withValues(
+                                  alpha: 0.4,
+                                )
+                              : Colors.orange.withValues(
+                                  alpha: 0.5,
+                                ),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          // Indent indicator
+                          Container(
+                            width: 3,
+                            height: 36.h,
+                            decoration: BoxDecoration(
+                              color: imageConsent
+                                  ? Colors.green
+                                  : Colors.orange,
+                              borderRadius: BorderRadius.circular(
+                                2.0,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 10.w),
+                          Container(
+                            padding: EdgeInsets.all(6.w),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withValues(
+                                alpha: 0.15,
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.child_care,
+                              color: Colors.blue[300],
+                              size: 16.sp,
+                            ),
+                          ),
+                          SizedBox(width: 10.w),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        childName,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 13.sp,
+                                          fontWeight:
+                                              FontWeight.w600,
+                                          color: Colors.white,
+                                        ),
+                                        overflow:
+                                            TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    Container(
+                                      padding:
+                                          EdgeInsets.symmetric(
+                                            horizontal: 6.w,
+                                            vertical: 2.h,
+                                          ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue
+                                            .withValues(
+                                              alpha: 0.2,
+                                            ),
+                                        borderRadius:
+                                            BorderRadius.circular(
+                                              6.0,
+                                            ),
+                                      ),
+                                      child: Text(
+                                        'Minore',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10.sp,
+                                          color: Colors.blue[300],
+                                          fontWeight:
+                                              FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: 3.h),
+                                Row(
+                                  children: [
+                                    if (age != null) ...[
+                                      Icon(
+                                        Icons.cake,
+                                        size: 11.sp,
+                                        color: Colors.grey[500],
+                                      ),
+                                      SizedBox(width: 3.w),
+                                      Text(
+                                        age,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 11.sp,
+                                          color: Colors.grey[400],
+                                        ),
+                                      ),
+                                      SizedBox(width: 10.w),
+                                    ],
+                                    Icon(
+                                      imageConsent
+                                          ? Icons.photo_camera
+                                          : Icons
+                                                .no_photography_outlined,
+                                      size: 11.sp,
+                                      color: imageConsent
+                                          ? Colors.green[400]
+                                          : Colors.orange[400],
+                                    ),
+                                    SizedBox(width: 3.w),
+                                    Text(
+                                      imageConsent
+                                          ? 'Liberatoria OK'
+                                          : 'No liberatoria',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 11.sp,
+                                        color: imageConsent
+                                            ? Colors.green[400]
+                                            : Colors.orange[400],
+                                        fontWeight: imageConsent
+                                            ? FontWeight.w400
+                                            : FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
