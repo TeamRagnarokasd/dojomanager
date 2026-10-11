@@ -96,6 +96,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
   static const String _chipNoReg = 'no_reg';
   static const String _chipWithReg = 'with_reg';
   static const String _chipNotUpdated = 'not_updated';
+  static const String _chipNotMember = 'not_member';
 
   Set<String> _subscribedUserIds = {};
   Set<String> _annualRegisteredIds = {};
@@ -194,6 +195,14 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
         }
         final userId = user['id']?.toString() ?? '';
         chipMatch = userId.isEmpty || !_annualRegisteredIds.contains(userId);
+      } else if (chip == _chipNotMember) {
+        final role = user['role']?.toString() ?? '';
+        if (role != 'student' && role != 'instructor_student') {
+          return false; // other roles are excluded entirely from this filter
+        }
+        final userId = user['id']?.toString() ?? '';
+        chipMatch = userId.isEmpty ||
+            (_membershipsByUserId[userId]?.isEmpty ?? true);
       } else if (chip == _chipWithReg) {
         final role = user['role']?.toString() ?? '';
         if (role != 'student' && role != 'instructor_student') {
@@ -1314,6 +1323,7 @@ class _AdminManagementSystemState extends State<AdminManagementSystem> {
             _buildFilterChip('Senza abbonamento', _chipNoSub),
             _buildFilterChip('Con iscrizione', _chipWithReg),
             _buildFilterChip('Senza iscrizione', _chipNoReg),
+            _buildFilterChip('Non ancora tesserati', _chipNotMember),
             _buildFilterChip('Non ancora aggiornati', _chipNotUpdated),
           ],
         ),
