@@ -30,61 +30,126 @@ import './services/pending_purchases_service.dart';
 import './services/realtime_notification_service.dart';
 import './services/supabase_service.dart';
 import './services/child_profile_service.dart';
+import './services/web_bridge.dart';
 import './theme/app_theme.dart';
 
 // Global navigator key — must be top-level so it is never re-created
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await EasyLocalization.ensureInitialized();
+void main() {
+  // Everything below runs inside a guarded zone: an error escaping all the
+  // way up here (e.g. an unguarded await before runApp is even reached)
+  // would otherwise kill the isolate's startup silently — on web that is
+  // exactly what a blank white page looks like, with nothing in the DOM to
+  // explain why. On web, the error handler itself renders a screen with the
+  // error message and a "Riprova" button instead, and marks the app as
+  // started so web/index.html's own loading screen gets out of the way.
+  runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
 
-  final savedLocale = await LocaleService.getSavedLocale();
+      // Reports every Flutter framework error (build/layout/paint/gesture)
+      // to the console — unchanged default behaviour, kept explicit here
+      // since this is also where ErrorWidget.builder is set below.
+      FlutterError.onError = (FlutterErrorDetails details) {
+        FlutterError.presentError(details);
+      };
 
-  // Initialize Supabase - single initialization
-  try {
-    await SupabaseService.initialize();
-    print('✅ Supabase initialized successfully');
-  } catch (e) {
-    debugPrint('❌ Failed to initialize Supabase: $e');
-  }
+      // Web only: tracks whether the real app's first frame has already
+      // been drawn (flipped alongside markAppStarted() in the
+      // addPostFrameCallback below). Before that point, a widget throwing
+      // during build would otherwise fall back to Flutter's default error
+      // widget, which in release mode is a plain grey box with no text —
+      // indistinguishable from a blank page — so the full-screen
+      // _StartupErrorScreen covers that case instead. Once the app has
+      // actually started, a single widget failing during build is no
+      // longer a startup problem and goes back to Flutter's own default
+      // error widget, local to that widget instead of covering the whole
+      // page. Android keeps Flutter's default ErrorWidget untouched always.
+      var firstFrameRendered = false;
+      if (kIsWeb) {
+        final defaultErrorWidgetBuilder = ErrorWidget.builder;
+        ErrorWidget.builder = (FlutterErrorDetails details) {
+          if (firstFrameRendered) {
+            return defaultErrorWidgetBuilder(details);
+          }
+          return _StartupErrorScreen(message: details.exceptionAsString());
+        };
+      }
 
-  // Initialize authentication system (includes session restoration)
-  try {
-    await AuthService.instance.initializeAuthSystem().timeout(
-      const Duration(seconds: 8),
-      onTimeout: () {
-        debugPrint(
-          '⚠️ Auth system initialization timed out — continuing with current session state',
+      try {
+        await EasyLocalization.ensureInitialized();
+      } catch (e) {
+        debugPrint('❌ Failed to initialize EasyLocalization: $e');
+      }
+
+      final savedLocale = await LocaleService.getSavedLocale();
+
+      // Initialize Supabase - single initialization
+      try {
+        await SupabaseService.initialize();
+        print('✅ Supabase initialized successfully');
+      } catch (e) {
+        debugPrint('❌ Failed to initialize Supabase: $e');
+      }
+
+      // Initialize authentication system (includes session restoration)
+      try {
+        await AuthService.instance.initializeAuthSystem().timeout(
+          const Duration(seconds: 8),
+          onTimeout: () {
+            debugPrint(
+              '⚠️ Auth system initialization timed out — continuing with current session state',
+            );
+          },
         );
-      },
-    );
-    print('✅ Auth system initialized successfully');
-  } catch (e) {
-    debugPrint('❌ Failed to initialize auth system: $e');
-  }
+        print('✅ Auth system initialized successfully');
+      } catch (e) {
+        debugPrint('❌ Failed to initialize auth system: $e');
+      }
 
-  // Load persisted active child profile (if any)
-  try {
-    await ChildProfileService.loadActiveProfile();
-    print('✅ Child profile context loaded');
-  } catch (e) {
-    debugPrint('⚠️ Could not load child profile context: $e');
-  }
+      // Load persisted active child profile (if any)
+      try {
+        await ChildProfileService.loadActiveProfile();
+        print('✅ Child profile context loaded');
+      } catch (e) {
+        debugPrint('⚠️ Could not load child profile context: $e');
+      }
 
-  // Force portrait orientation
-  if (!kIsWeb) {
-    await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  }
+      // Force portrait orientation
+      if (!kIsWeb) {
+        await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      }
 
-  runApp(
-    EasyLocalization(
-      supportedLocales: LocaleService.supportedLocales,
-      path: 'assets/translations',
-      fallbackLocale: LocaleService.defaultLocale,
-      startLocale: savedLocale ?? LocaleService.defaultLocale,
-      child: const TeamRagnarokAsdApp(),
-    ),
+      runApp(
+        EasyLocalization(
+          supportedLocales: LocaleService.supportedLocales,
+          path: 'assets/translations',
+          fallbackLocale: LocaleService.defaultLocale,
+          startLocale: savedLocale ?? LocaleService.defaultLocale,
+          child: const TeamRagnarokAsdApp(),
+        ),
+      );
+
+      // Web only: tells web/index.html's loading screen that Flutter has
+      // painted its first frame, so it hides itself instead of waiting out
+      // its 30-second timeout. Also flips firstFrameRendered, so
+      // ErrorWidget.builder above stops treating a later widget error as a
+      // startup failure.
+      if (kIsWeb) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          firstFrameRendered = true;
+          markAppStarted();
+        });
+      }
+    },
+    (error, stackTrace) {
+      debugPrint('❌ Uncaught startup error: $error\n$stackTrace');
+      if (kIsWeb) {
+        markAppStarted();
+        runApp(_StartupErrorApp(message: error.toString()));
+      }
+    },
   );
 }
 
@@ -275,28 +340,36 @@ class _TeamRagnarokAsdAppState extends State<TeamRagnarokAsdApp>
         final defaultRoute = await _getDefaultRouteForRole();
         if (!mounted) return;
 
-        final savedRoute = await _authService.getLastVisitedRoute();
-        if (!mounted) return;
-        if (savedRoute != null && savedRoute != AppRoutes.login) {
-          // Validate that the saved route is appropriate for the user's role
-          final isRouteAllowed = await _isRouteAllowedForUser(savedRoute);
+        // On web, always open the role's dashboard at startup and skip
+        // restoring any saved route entirely — a stale or no-longer-valid
+        // route left over from a previous session is one known cause of a
+        // blank page for some users; this keeps web startup on the one
+        // well-exercised path.
+        if (!kIsWeb) {
+          final savedRoute = await _authService.getLastVisitedRoute();
           if (!mounted) return;
-          if (isRouteAllowed) {
-            setState(() {
-              _initialRoute = savedRoute;
-              _defaultDashboardRoute = defaultRoute;
-              _isRestoringState = true;
-              _routeResolved = true;
-            });
-            return;
-          } else {
-            // Saved route is not allowed for this user's role — clear it
-            await _authService.clearLastVisitedRoute();
-            // Fall through to role-based default route below
+          if (savedRoute != null && savedRoute != AppRoutes.login) {
+            // Validate that the saved route is appropriate for the user's role
+            final isRouteAllowed = await _isRouteAllowedForUser(savedRoute);
+            if (!mounted) return;
+            if (isRouteAllowed) {
+              setState(() {
+                _initialRoute = savedRoute;
+                _defaultDashboardRoute = defaultRoute;
+                _isRestoringState = true;
+                _routeResolved = true;
+              });
+              return;
+            } else {
+              // Saved route is not allowed for this user's role — clear it
+              await _authService.clearLastVisitedRoute();
+              // Fall through to role-based default route below
+            }
           }
         }
 
-        // No valid saved route — determine default route by role
+        // No valid saved route (or running on web) — determine default
+        // route by role
         if (!mounted) return;
         setState(() {
           _initialRoute = defaultRoute;
@@ -1044,6 +1117,73 @@ class _AskClaudeSheet extends StatelessWidget {
               const SizedBox(height: 8),
               const Expanded(child: AdminAskClaudeBody()),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Standalone MaterialApp shown (web only) when main()'s own startup
+/// sequence throws before the real app ever gets to call runApp — see the
+/// runZonedGuarded error handler above. Wraps [_StartupErrorScreen] in its
+/// own MaterialApp since, at this point, nothing else has been built yet.
+class _StartupErrorApp extends StatelessWidget {
+  final String message;
+  const _StartupErrorApp({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark(),
+      home: _StartupErrorScreen(message: message),
+    );
+  }
+}
+
+/// Shown (web only) in place of a blank/grey screen whenever startup itself
+/// fails: either main()'s own sequence (via [_StartupErrorApp] above) or a
+/// widget throwing during build (via ErrorWidget.builder, set in main()).
+/// "Riprova" reloads the page — the same recovery offered by
+/// web/index.html's own JavaScript-side loading screen.
+class _StartupErrorScreen extends StatelessWidget {
+  final String message;
+  const _StartupErrorScreen({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  'Non riesco ad aprire l\'app.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: reloadPage,
+                  child: const Text('Riprova'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
