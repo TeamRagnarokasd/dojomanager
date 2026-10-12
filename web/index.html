@@ -35,6 +35,99 @@
 </head>
 <body>
   <!--
+    Loading screen shown while Flutter's engine starts up — visible the
+    instant the page's HTML is parsed, well before any Dart code runs.
+    If main.dart (see lib/main.dart) never manages to set
+    window.__appStarted within 12 seconds — a crash before runApp, a
+    network failure fetching an asset, CanvasKit failing to load, etc. — the
+    script below replaces it with an error message and a "Riprova" button,
+    instead of leaving a blank white page with no way to tell what happened.
+  -->
+  <div id="app-loading-overlay" style="position:fixed;inset:0;background:#000000;color:#ffffff;display:flex;align-items:center;justify-content:center;z-index:9999;font-family:sans-serif;">
+    <div id="app-loading-content" style="text-align:center;padding:24px;">
+      <div style="font-size:28px;font-weight:700;letter-spacing:1px;margin-bottom:16px;">Team Ragnarok</div>
+      <div id="app-loading-spinner" style="margin:0 auto 16px;width:36px;height:36px;border:4px solid rgba(255,255,255,0.2);border-top-color:#ffffff;border-radius:50%;animation:app-loading-spin 1s linear infinite;"></div>
+      <div style="font-size:14px;color:#cccccc;">Caricamento...</div>
+    </div>
+  </div>
+  <style>
+    @keyframes app-loading-spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+  <script>
+    (function () {
+      var lastError = null;
+
+      window.addEventListener('error', function (event) {
+        lastError = event.message ||
+          (event.error && event.error.toString()) ||
+          'Errore JavaScript sconosciuto';
+      });
+      window.addEventListener('unhandledrejection', function (event) {
+        var reason = event.reason;
+        lastError = (reason && (reason.message || String(reason))) ||
+          'Promise rifiutata senza motivo';
+      });
+
+      var overlay = document.getElementById('app-loading-overlay');
+      var content = document.getElementById('app-loading-content');
+
+      function hideOverlay() {
+        if (overlay) overlay.style.display = 'none';
+      }
+
+      function showStartupError() {
+        if (!content) return;
+        content.innerHTML = '';
+
+        var title = document.createElement('div');
+        title.style.fontSize = '20px';
+        title.style.fontWeight = '700';
+        title.style.marginBottom = '12px';
+        title.textContent = 'Non riesco ad aprire l’app.';
+        content.appendChild(title);
+
+        var detail = document.createElement('div');
+        detail.style.fontSize = '12px';
+        detail.style.color = '#999999';
+        detail.style.maxWidth = '320px';
+        detail.style.margin = '0 auto 20px';
+        detail.style.wordBreak = 'break-word';
+        detail.textContent = lastError || 'Nessun dettaglio disponibile.';
+        content.appendChild(detail);
+
+        var retryButton = document.createElement('button');
+        retryButton.textContent = 'Riprova';
+        retryButton.style.padding = '10px 24px';
+        retryButton.style.fontSize = '14px';
+        retryButton.style.background = '#d32f2f';
+        retryButton.style.color = '#ffffff';
+        retryButton.style.border = 'none';
+        retryButton.style.borderRadius = '6px';
+        retryButton.style.cursor = 'pointer';
+        retryButton.addEventListener('click', function () {
+          window.location.reload();
+        });
+        content.appendChild(retryButton);
+      }
+
+      var checkInterval = setInterval(function () {
+        if (window.__appStarted) {
+          clearInterval(checkInterval);
+          clearTimeout(failTimeout);
+          hideOverlay();
+        }
+      }, 200);
+
+      var failTimeout = setTimeout(function () {
+        if (window.__appStarted) return;
+        clearInterval(checkInterval);
+        showStartupError();
+      }, 12000);
+    })();
+  </script>
+  <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
     or to give the user feedback during the initialization process.
