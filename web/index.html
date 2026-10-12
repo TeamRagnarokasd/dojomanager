@@ -38,10 +38,13 @@
     Loading screen shown while Flutter's engine starts up — visible the
     instant the page's HTML is parsed, well before any Dart code runs.
     If main.dart (see lib/main.dart) never manages to set
-    window.__appStarted within 12 seconds — a crash before runApp, a
+    window.__appStarted within 30 seconds — a crash before runApp, a
     network failure fetching an asset, CanvasKit failing to load, etc. — the
     script below replaces it with an error message and a "Riprova" button,
     instead of leaving a blank white page with no way to tell what happened.
+    That replacement keeps watching window.__appStarted too: if the app
+    does start late, the overlay (error message included) still hides
+    itself instead of staying stuck on screen.
   -->
   <div id="app-loading-overlay" style="position:fixed;inset:0;background:#000000;color:#ffffff;display:flex;align-items:center;justify-content:center;z-index:9999;font-family:sans-serif;">
     <div id="app-loading-content" style="text-align:center;padding:24px;">
@@ -112,6 +115,10 @@
         content.appendChild(retryButton);
       }
 
+      // Kept running even after the 30-second timeout below fires: if the
+      // app does start late (a slow network, a retried request), the
+      // overlay — error message included — must still hide itself rather
+      // than stay stuck on screen forever.
       var checkInterval = setInterval(function () {
         if (window.__appStarted) {
           clearInterval(checkInterval);
@@ -122,9 +129,8 @@
 
       var failTimeout = setTimeout(function () {
         if (window.__appStarted) return;
-        clearInterval(checkInterval);
         showStartupError();
-      }, 12000);
+      }, 30000);
     })();
   </script>
   <!--

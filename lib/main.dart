@@ -55,13 +55,26 @@ void main() {
         FlutterError.presentError(details);
       };
 
-      // Web only: a widget that throws during build would otherwise fall
-      // back to Flutter's default error widget, which in release mode is a
-      // plain grey box with no text — indistinguishable from a blank page.
-      // Android keeps Flutter's default ErrorWidget untouched.
+      // Web only: tracks whether the real app's first frame has already
+      // been drawn (flipped alongside markAppStarted() in the
+      // addPostFrameCallback below). Before that point, a widget throwing
+      // during build would otherwise fall back to Flutter's default error
+      // widget, which in release mode is a plain grey box with no text —
+      // indistinguishable from a blank page — so the full-screen
+      // _StartupErrorScreen covers that case instead. Once the app has
+      // actually started, a single widget failing during build is no
+      // longer a startup problem and goes back to Flutter's own default
+      // error widget, local to that widget instead of covering the whole
+      // page. Android keeps Flutter's default ErrorWidget untouched always.
+      var firstFrameRendered = false;
       if (kIsWeb) {
-        ErrorWidget.builder = (FlutterErrorDetails details) =>
-            _StartupErrorScreen(message: details.exceptionAsString());
+        final defaultErrorWidgetBuilder = ErrorWidget.builder;
+        ErrorWidget.builder = (FlutterErrorDetails details) {
+          if (firstFrameRendered) {
+            return defaultErrorWidgetBuilder(details);
+          }
+          return _StartupErrorScreen(message: details.exceptionAsString());
+        };
       }
 
       try {
@@ -120,9 +133,12 @@ void main() {
 
       // Web only: tells web/index.html's loading screen that Flutter has
       // painted its first frame, so it hides itself instead of waiting out
-      // its 12-second timeout.
+      // its 30-second timeout. Also flips firstFrameRendered, so
+      // ErrorWidget.builder above stops treating a later widget error as a
+      // startup failure.
       if (kIsWeb) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
+          firstFrameRendered = true;
           markAppStarted();
         });
       }
