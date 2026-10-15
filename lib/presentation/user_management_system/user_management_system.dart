@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/app_export.dart';
 import '../../services/federation_membership_service.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/document_viewer_dialog.dart';
 import './widgets/bulk_actions_widget.dart';
 import './widgets/filter_chips_widget.dart';
 import './widgets/user_card_widget.dart';
@@ -1982,6 +1983,17 @@ class _UserManagementSystemState extends State<UserManagementSystem> {
       } catch (urlError) {
         debugPrint('⚠️ Could not regenerate URL: $urlError');
         // Continue with existing URL if regeneration fails
+      }
+
+      // Web: launchUrl right after the await above is routinely blocked by
+      // Safari/mobile Chrome's popup blocker with no visible error — show a
+      // dialog instead, whose own button calls launchUrl from a fresh user
+      // gesture. Android keeps the exact retry behaviour below, unchanged.
+      if (kIsWeb) {
+        if (mounted) {
+          await openDocumentUrl(context, freshUrl!, title: 'Certificato pronto');
+        }
+        return;
       }
 
       final url = Uri.parse(freshUrl!);

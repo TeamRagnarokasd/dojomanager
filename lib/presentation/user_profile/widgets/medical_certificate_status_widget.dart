@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sizer/sizer.dart';
@@ -9,6 +10,7 @@ import '../../../constants/app_constants.dart';
 import '../../../core/app_export.dart';
 import '../../../services/child_profile_service.dart';
 import '../../../services/supabase_service.dart';
+import '../../../widgets/document_viewer_dialog.dart';
 
 // Add this import for min function
 // Add this import for launchUrl
@@ -269,6 +271,21 @@ class _MedicalCertificateStatusWidgetState
       } catch (urlError) {
         debugPrint('⚠️ Could not regenerate URL: $urlError');
         // Continue with existing URL if regeneration fails
+      }
+
+      // Web: launchUrl right after the await above is routinely blocked by
+      // Safari/mobile Chrome's popup blocker with no visible error — show a
+      // dialog instead, whose own button calls launchUrl from a fresh user
+      // gesture. Android keeps the exact retry behaviour below, unchanged.
+      if (kIsWeb) {
+        if (mounted) {
+          await openDocumentUrl(
+            context,
+            freshUrl!,
+            title: 'Certificato pronto',
+          );
+        }
+        return;
       }
 
       final url = Uri.parse(freshUrl!);

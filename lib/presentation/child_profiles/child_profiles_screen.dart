@@ -864,6 +864,7 @@ class _ChildProfileFormState extends State<_ChildProfileForm> {
   final _emergencyPhoneCtrl = TextEditingController();
   final _medicalNotesCtrl = TextEditingController();
   DateTime? _birthDate;
+  bool _birthDateError = false;
   bool _isSaving = false;
 
   // Medical certificate
@@ -936,7 +937,12 @@ class _ChildProfileFormState extends State<_ChildProfileForm> {
         child: child!,
       ),
     );
-    if (picked != null) setState(() => _birthDate = picked);
+    if (picked != null) {
+      setState(() {
+        _birthDate = picked;
+        _birthDateError = false;
+      });
+    }
   }
 
   Future<void> _pickCertificate(ImageSource source) async {
@@ -968,7 +974,10 @@ class _ChildProfileFormState extends State<_ChildProfileForm> {
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
+    final formValid = _formKey.currentState!.validate();
+    final birthDateValid = _birthDate != null;
+    if (!birthDateValid) setState(() => _birthDateError = true);
+    if (!formValid || !birthDateValid) return;
 
     final childFullName =
         '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()}'.trim();
@@ -1165,12 +1174,17 @@ class _ChildProfileFormState extends State<_ChildProfileForm> {
     String label, {
     bool required = false,
     TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
+    TextCapitalization textCapitalization = TextCapitalization.none,
+    String? Function(String?)? validator,
   }) {
     return Padding(
       padding: EdgeInsets.only(bottom: 1.5.h),
       child: TextFormField(
         controller: ctrl,
         keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
+        textCapitalization: textCapitalization,
         style: GoogleFonts.inter(color: Colors.white, fontSize: 13.sp),
         decoration: InputDecoration(
           labelText: label + (required ? ' *' : ''),
@@ -1189,10 +1203,12 @@ class _ChildProfileFormState extends State<_ChildProfileForm> {
             vertical: 1.5.h,
           ),
         ),
-        validator: required
-            ? (v) =>
-                (v == null || v.trim().isEmpty) ? 'Campo obbligatorio' : null
-            : null,
+        validator: validator ??
+            (required
+                ? (v) => (v == null || v.trim().isEmpty)
+                    ? 'Campo obbligatorio'
+                    : null
+                : null),
       ),
     );
   }
@@ -1276,7 +1292,7 @@ class _ChildProfileFormState extends State<_ChildProfileForm> {
                       Text(
                         _birthDate != null
                             ? 'Data di nascita: ${_birthDate!.day.toString().padLeft(2, '0')}/${_birthDate!.month.toString().padLeft(2, '0')}/${_birthDate!.year}'
-                            : 'Data di nascita (opzionale)',
+                            : 'Data di nascita *',
                         style: GoogleFonts.inter(
                           color: _birthDate != null
                               ? Colors.white
@@ -1288,8 +1304,36 @@ class _ChildProfileFormState extends State<_ChildProfileForm> {
                   ),
                 ),
               ),
-              _field(_birthPlaceCtrl, 'Luogo di nascita'),
-              _field(_taxCodeCtrl, 'Codice Fiscale'),
+              if (_birthDateError && _birthDate == null)
+                Padding(
+                  padding: EdgeInsets.only(bottom: 1.5.h, left: 1.w),
+                  child: Text(
+                    'Campo obbligatorio',
+                    style: GoogleFonts.inter(
+                      color: Colors.red,
+                      fontSize: 11.sp,
+                    ),
+                  ),
+                ),
+              _field(_birthPlaceCtrl, 'Luogo di nascita', required: true),
+              _field(
+                _taxCodeCtrl,
+                'Codice Fiscale',
+                required: true,
+                textCapitalization: TextCapitalization.characters,
+                inputFormatters: [_UpperCaseTextFormatter()],
+                validator: (v) {
+                  final value = v?.trim() ?? '';
+                  if (value.isEmpty) return 'Campo obbligatorio';
+                  final regex = RegExp(
+                    r'^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$',
+                  );
+                  if (!regex.hasMatch(value.toUpperCase())) {
+                    return 'Codice fiscale non valido';
+                  }
+                  return null;
+                },
+              ),
               _field(_phoneCtrl, 'Telefono', keyboardType: TextInputType.phone),
               _field(
                 _emailCtrl,
@@ -1307,10 +1351,13 @@ class _ChildProfileFormState extends State<_ChildProfileForm> {
                 ),
               ),
               SizedBox(height: 1.h),
-              _field(_addressCtrl, 'Indirizzo'),
+              _field(_addressCtrl, 'Indirizzo', required: true),
               Row(
                 children: [
-                  Expanded(flex: 2, child: _field(_cityCtrl, 'Città')),
+                  Expanded(
+                    flex: 2,
+                    child: _field(_cityCtrl, 'Città', required: true),
+                  ),
                   SizedBox(width: 2.w),
                   Expanded(child: _field(_provinceCtrl, 'Prov.')),
                   SizedBox(width: 2.w),
@@ -1334,10 +1381,15 @@ class _ChildProfileFormState extends State<_ChildProfileForm> {
                 ),
               ),
               SizedBox(height: 1.h),
-              _field(_emergencyNameCtrl, 'Nome contatto emergenza'),
+              _field(
+                _emergencyNameCtrl,
+                'Nome contatto emergenza',
+                required: true,
+              ),
               _field(
                 _emergencyPhoneCtrl,
                 'Telefono emergenza',
+                required: true,
                 keyboardType: TextInputType.phone,
               ),
 
@@ -1589,5 +1641,16 @@ class _ChildProfileFormState extends State<_ChildProfileForm> {
         ),
       ),
     );
+  }
+}
+
+/// Forces the Codice Fiscale field's text to uppercase as the user types.
+class _UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    return newValue.copyWith(text: newValue.text.toUpperCase());
   }
 }
