@@ -134,6 +134,35 @@
     })();
   </script>
   <!--
+    Best-effort cleanup: on every page open, unregister any leftover
+    service worker and clear any leftover cache from an older build (the
+    workflow used to ship a service worker that cached the app; some
+    phones may still have it registered from before). Fire-and-forget —
+    it never reloads the page or blocks the app below from starting.
+  -->
+  <script>
+    (function () {
+      try {
+        if (navigator.serviceWorker) {
+          navigator.serviceWorker.getRegistrations().then(function (registrations) {
+            registrations.forEach(function (registration) {
+              registration.unregister().catch(function () {});
+            });
+          }).catch(function () {});
+        }
+      } catch (e) {}
+      try {
+        if (window.caches && caches.keys) {
+          caches.keys().then(function (names) {
+            names.forEach(function (name) {
+              caches.delete(name).catch(function () {});
+            });
+          }).catch(function () {});
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <!--
     Version check: fetches version.json (produced by `flutter build web`,
     cache-busted below) and compares it against the copy saved in
     sessionStorage. If this tab already saw a different version, the new

@@ -83,9 +83,13 @@ jobs:
       - name: Build Web
         run: |
           flutter build web --release --base-href "/dojomanager/" --no-web-resources-cdn \
-            --pwa-strategy=none \
             --dart-define=SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
             --dart-define=SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}"
+
+      - name: Diagnostica service worker
+        run: |
+          flutter --version
+          head -n 30 build/web/flutter_service_worker.js
 
       - name: Pubblica su GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
