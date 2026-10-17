@@ -9,6 +9,7 @@ import '../../../constants/app_constants.dart';
 import '../../../services/user_document_service.dart';
 import '../../../services/terms_document_service.dart';
 import '../../../core/app_export.dart';
+import '../../../widgets/document_viewer_dialog.dart';
 
 class UserDocumentsWidget extends StatefulWidget {
   final String? userId;
@@ -72,6 +73,15 @@ class _UserDocumentsWidgetState extends State<UserDocumentsWidget> {
   Future<void> _viewDocument(String filePath) async {
     try {
       final url = await _documentService.getDocumentUrl(filePath);
+      if (!mounted) return;
+      // Web: launchUrl right after the await above is routinely blocked by
+      // Safari/mobile Chrome's popup blocker with no visible error — show a
+      // dialog instead, whose own button calls launchUrl from a fresh user
+      // gesture. Android keeps the previous behaviour, unchanged.
+      if (kIsWeb) {
+        await openDocumentUrl(context, url, title: 'Documento pronto');
+        return;
+      }
       if (await canLaunchUrl(Uri.parse(url))) {
         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
       }

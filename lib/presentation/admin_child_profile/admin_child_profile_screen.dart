@@ -4,12 +4,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sizer/sizer.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/supabase_service.dart';
 import '../../services/child_profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../../constants/app_constants.dart';
+import '../../widgets/document_viewer_dialog.dart';
 import '../../widgets/federation_memberships_widget.dart';
 import '../user_profile/widgets/subscription_details_widget.dart';
 
@@ -1319,8 +1319,8 @@ class _AdminChildProfileScreenState extends State<AdminChildProfileScreen> {
       final signedUrl = await SupabaseService.instance.client.storage
           .from('user_docs')
           .createSignedUrl(fullPath, 86400);
-      final uri = Uri.parse(signedUrl);
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!mounted) return;
+      await openDocumentUrl(context, signedUrl, title: 'Certificato pronto');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
