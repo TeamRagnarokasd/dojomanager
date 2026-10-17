@@ -248,7 +248,13 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
       return;
     }
 
-    if (results.isEmpty) {
+    // Se l'attivazione l'ha già fatta il server, l'intento è 'confirmed' con
+    // la conferma agganciata e processPaidIntents() (che guarda solo
+    // pending/matched) torna vuoto: è un successo, non un'attesa.
+    final activatedByServer = results.isEmpty && await _isActivatedOnServer();
+    if (!mounted) return;
+
+    if (results.isEmpty && !activatedByServer) {
       // Nessun blocco riconosciuto, ma l'attivazione non ha davvero
       // prodotto nulla (es. un errore di rete transitorio durante la
       // conferma): NON mostrare il toast di successo — sarebbe falso, e in
@@ -279,6 +285,21 @@ class _SumUpWaitingSheetState extends State<SumUpWaitingSheet> {
     );
     widget.onConfirmed?.call();
     if (mounted) await _closeSheet();
+  }
+
+  Future<bool> _isActivatedOnServer() async {
+    final intentId = _intentId;
+    if (intentId == null) return false;
+    try {
+      final row = await _client
+          .from('payment_intents')
+          .select('status, confirmation_id')
+          .eq('id', intentId)
+          .maybeSingle();
+      return row?['status'] == 'confirmed' && row?['confirmation_id'] != null;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// "Sì, ho pagato": rechecks for 30 more seconds before falling back to
