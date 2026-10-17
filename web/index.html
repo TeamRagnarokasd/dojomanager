@@ -134,6 +134,42 @@
     })();
   </script>
   <!--
+    Version check: fetches version.json (produced by `flutter build web`,
+    cache-busted below) and compares it against the copy saved in
+    sessionStorage. If this tab already saw a different version, the new
+    build was just deployed under it — save the new value and reload once
+    so the user picks it up immediately. A first visit (nothing saved yet)
+    just records the current version without reloading, so this never
+    loops. Everything here is best-effort: sessionStorage can be
+    unavailable (private browsing, blocked storage) or the fetch can fail,
+    and in either case the app below just loads normally.
+  -->
+  <script>
+    (function () {
+      try {
+        fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+          .then(function (response) {
+            return response.ok ? response.text() : null;
+          })
+          .then(function (text) {
+            if (!text) return;
+            var stored = null;
+            try {
+              stored = sessionStorage.getItem('app_version_json');
+            } catch (e) {}
+            if (stored === text) return;
+            try {
+              sessionStorage.setItem('app_version_json', text);
+            } catch (e) {}
+            if (stored !== null) {
+              window.location.reload();
+            }
+          })
+          .catch(function () {});
+      } catch (e) {}
+    })();
+  </script>
+  <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
     or to give the user feedback during the initialization process.

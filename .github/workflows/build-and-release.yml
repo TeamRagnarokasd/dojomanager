@@ -83,6 +83,7 @@ jobs:
       - name: Build Web
         run: |
           flutter build web --release --base-href "/dojomanager/" --no-web-resources-cdn \
+            --pwa-strategy=none \
             --dart-define=SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
             --dart-define=SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}"
 

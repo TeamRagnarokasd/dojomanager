@@ -70,31 +70,52 @@
         fallbackLink.href = targetUrl;
       }
 
-      try {
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.getRegistrations().then(function (registrations) {
-            registrations.forEach(function (registration) {
-              registration.unregister();
-            });
-          }).catch(function () {});
-        }
-      } catch (e) {}
-
-      try {
-        if (window.caches && caches.keys) {
-          caches.keys().then(function (names) {
-            names.forEach(function (name) {
-              caches.delete(name);
-            });
-          }).catch(function () {});
-        }
-      } catch (e) {}
-
-      setTimeout(function () {
+      var redirected = false;
+      function redirectNow() {
+        if (redirected) return;
+        redirected = true;
         try {
           location.replace(targetUrl);
         } catch (e) {}
-      }, 1500);
+      }
+
+      var unregisterDone = new Promise(function (resolve) {
+        try {
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function (registrations) {
+              return Promise.all(registrations.map(function (registration) {
+                return registration.unregister().catch(function () {});
+              }));
+            }).then(resolve).catch(resolve);
+          } else {
+            resolve();
+          }
+        } catch (e) {
+          resolve();
+        }
+      });
+
+      var cachesCleared = new Promise(function (resolve) {
+        try {
+          if (window.caches && caches.keys) {
+            caches.keys().then(function (names) {
+              return Promise.all(names.map(function (name) {
+                return caches.delete(name).catch(function () {});
+              }));
+            }).then(resolve).catch(resolve);
+          } else {
+            resolve();
+          }
+        } catch (e) {
+          resolve();
+        }
+      });
+
+      // Redirect only once both cleanups have finished, but never wait more
+      // than 4 seconds for them — a stuck service worker or cache API must
+      // not strand the user on this page.
+      Promise.all([unregisterDone, cachesCleared]).then(redirectNow).catch(redirectNow);
+      setTimeout(redirectNow, 4000);
     })();
   </script>
 </body>
