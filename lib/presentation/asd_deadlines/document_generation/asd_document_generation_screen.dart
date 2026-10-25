@@ -80,6 +80,8 @@ class _AsdDocumentGenerationScreenState
   TimeOfDay? _oraPrima;
   DateTime? _dataSeconda;
   TimeOfDay? _oraSeconda;
+  DateTime? _dataInizio;
+  DateTime? _dataFine;
   String _modalita = 'in presenza';
   String _trimestre = _kTrimestreOptions.first;
 
@@ -286,6 +288,10 @@ class _AsdDocumentGenerationScreenState
         return _formatDate(_dataSeconda);
       case 'ora_seconda':
         return _formatTime(_oraSeconda);
+      case 'data_inizio':
+        return _formatDate(_dataInizio);
+      case 'data_fine':
+        return _formatDate(_dataFine);
       case 'modalita':
         return _modalita;
       case 'luogo_data':
@@ -669,6 +675,12 @@ class _AsdDocumentGenerationScreenState
       case 'ora_seconda':
         return _buildTimeField('Ora seconda convocazione', _oraSeconda,
             (t) => setState(() => _oraSeconda = t));
+      case 'data_inizio':
+        return _buildDateField('Data inizio contratto', _dataInizio,
+            (d) => setState(() => _dataInizio = d));
+      case 'data_fine':
+        return _buildDateField('Data fine contratto', _dataFine,
+            (d) => setState(() => _dataFine = d));
       case 'modalita':
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
