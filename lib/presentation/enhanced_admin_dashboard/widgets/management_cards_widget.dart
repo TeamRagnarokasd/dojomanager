@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../../../core/app_export.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../../services/admin_section_visibility_service.dart';
@@ -39,6 +40,17 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
   bool _showEmailPalestraCard = false;
   int _emailPalestraUnreadCount = 0;
 
+  /// "Link iscrizione" — link da mandare ai nuovi iscritti; visibile solo
+  /// per admin/principal_admin.
+  bool _showEnrollLinkCard = false;
+
+  /// App web (iPhone e chiunque non usi l'APK) e APK Android: quest'ultimo
+  /// punta sempre all'ultima release su GitHub.
+  static const String _kEnrollWebUrl =
+      'https://teamragnarokasd.github.io/dojomanager/';
+  static const String _kEnrollApkUrl =
+      'https://github.com/TeamRagnarokasd/dojomanager/releases/latest/download/app-release.apk';
+
   @override
   void initState() {
     super.initState();
@@ -47,6 +59,107 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
     _loadAsdDeadlinesBadgeAndNotify();
     _loadUpcomingCompetitionBadge();
     _loadEmailPalestraCard();
+    _loadEnrollLinkCard();
+  }
+
+  Future<void> _loadEnrollLinkCard() async {
+    try {
+      final role = await AuthService.instance.getUserRole();
+      final visible = role == 'admin' || role == 'principal_admin';
+      if (mounted) setState(() => _showEnrollLinkCard = visible);
+    } catch (_) {
+      // Non critico: la card resta nascosta.
+    }
+  }
+
+  String get _enrollMessage =>
+      'Ciao! Per iscriverti al Team Ragnarok usa l\'app.\n\n'
+      'iPhone (aprilo con Safari, poi Condividi e "Aggiungi alla schermata Home"):\n'
+      '$_kEnrollWebUrl\n\n'
+      'Android (scarica e installa l\'APK):\n'
+      '$_kEnrollApkUrl\n\n'
+      'Quando l\'app è aperta, tocca "Registrati" e compila i dati.';
+
+  Future<void> _copyEnrollText(String text, String label) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$label copiato')),
+    );
+  }
+
+  void _showEnrollLinkSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          4.w,
+          2.h,
+          4.w,
+          MediaQuery.of(sheetContext).viewPadding.bottom + 2.h,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Link per i nuovi iscritti',
+                style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(height: 1.h),
+              Text(
+                'Manda questo messaggio a chi deve iscriversi: contiene il link per iPhone e quello per Android (sempre l\'ultima versione).',
+                style: Theme.of(sheetContext).textTheme.bodySmall,
+              ),
+              SizedBox(height: 2.h),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => Share.share(_enrollMessage),
+                  icon: const Icon(Icons.share),
+                  label: const Text('Condividi il messaggio'),
+                ),
+              ),
+              SizedBox(height: 1.h),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _copyEnrollText(_enrollMessage, 'Messaggio'),
+                  icon: const Icon(Icons.copy),
+                  label: const Text('Copia il messaggio'),
+                ),
+              ),
+              SizedBox(height: 2.h),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('iPhone / app web'),
+                subtitle: Text(_kEnrollWebUrl),
+                trailing: IconButton(
+                  icon: const Icon(Icons.copy),
+                  tooltip: 'Copia link',
+                  onPressed: () => _copyEnrollText(_kEnrollWebUrl, 'Link'),
+                ),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Android (APK)'),
+                subtitle: Text(_kEnrollApkUrl),
+                trailing: IconButton(
+                  icon: const Icon(Icons.copy),
+                  tooltip: 'Copia link',
+                  onPressed: () => _copyEnrollText(_kEnrollApkUrl, 'Link'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _loadEmailPalestraCard() async {
@@ -287,6 +400,21 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
           'notificationCount':
               _emailPalestraUnreadCount > 0 ? _emailPalestraUnreadCount : null,
         },
+      // NEW: Link iscrizione — apre un foglio con i link da mandare ai nuovi
+      // iscritti (solo admin/principal_admin, vedi _loadEnrollLinkCard).
+      if (_showEnrollLinkCard)
+        {
+          'title': 'Link iscrizione',
+          'subtitle': 'Link da mandare ai nuovi iscritti',
+          'icon': Icons.link,
+          'color': Colors.green,
+          'description':
+              'Copia o condividi il link per iPhone e Android, sempre aggiornato all\'ultima versione',
+          'status': 'Riservato',
+          'badgeColor': Colors.green,
+          'category': 'admin',
+          'onTap': _showEnrollLinkSheet,
+        },
     ];
 
     return Container(
@@ -434,6 +562,13 @@ class _ManagementCardsWidgetState extends State<ManagementCardsWidget>
       child: InkWell(
         onTap: () {
           HapticFeedback.mediumImpact();
+
+          // Card senza pagina dedicata (es. "Link iscrizione"): azione diretta.
+          final customTap = option['onTap'] as VoidCallback?;
+          if (customTap != null) {
+            customTap();
+            return;
+          }
 
           // Enhanced loading feedback
           ScaffoldMessenger.of(context).showSnackBar(
