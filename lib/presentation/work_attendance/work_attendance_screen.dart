@@ -491,6 +491,11 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
           start: period.start,
           end: period.end,
         );
+        final lessonsByDay = await _service.getConfirmedLessonLabelsByDay(
+          userId: instructorId,
+          start: period.start,
+          end: period.end,
+        );
         final settings = _settings ?? await _service.getSettings();
         WorkPresenceSummary? yearSummaryForCheck;
         if (period.isFullYear) {
@@ -507,6 +512,7 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
             : await buildWorkKmPdf(
                 presenceDays: presenceDays,
                 tripsByDay: tripsByDay,
+                lessonsByDay: lessonsByDay,
                 settings: settings,
                 period: period,
                 instructorName: instructorName,
