@@ -288,6 +288,19 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
     }
   }
 
+  Future<void> _toggleExtraTrip(WorkPresenceEntry presence) async {
+    try {
+      await _service.setExtraTrip(presence.id, !presence.extraTrip);
+      if (!mounted) return;
+      await _refreshAll();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore nel salvataggio del viaggio: $e')),
+      );
+    }
+  }
+
   Future<void> _confirmDeletePresence(WorkPresenceEntry presence) async {
     final dayFormat = DateFormat('dd/MM/yyyy', 'it_IT');
     final confirmed = await showDialog<bool>(
@@ -473,6 +486,16 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
           start: period.start,
           end: period.end,
         );
+        final tripsByDay = await _service.getConfirmedTripsByDay(
+          userId: instructorId,
+          start: period.start,
+          end: period.end,
+        );
+        final lessonsByDay = await _service.getConfirmedLessonLabelsByDay(
+          userId: instructorId,
+          start: period.start,
+          end: period.end,
+        );
         final settings = _settings ?? await _service.getSettings();
         WorkPresenceSummary? yearSummaryForCheck;
         if (period.isFullYear) {
@@ -488,6 +511,8 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
               )
             : await buildWorkKmPdf(
                 presenceDays: presenceDays,
+                tripsByDay: tripsByDay,
+                lessonsByDay: lessonsByDay,
                 settings: settings,
                 period: period,
                 instructorName: instructorName,
@@ -857,7 +882,7 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
             ),
             SizedBox(height: 1.5.h),
             Text(
-              '${summary.days} giorni, ${NumberFormat('#,##0.#', 'it_IT').format(summary.kmTotal)} km totali',
+              '${summary.days} giorni${summary.trips != summary.days ? ', ${summary.trips} viaggi' : ''}, ${NumberFormat('#,##0.#', 'it_IT').format(summary.kmTotal)} km totali',
             ),
             Text('Tariffa: ${_formatEuro(summary.kmRate)}/km'),
             SizedBox(height: 1.h),
@@ -961,15 +986,32 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
                 final subtitleParts = <String>[
                   if (presence.reason != null) workPresenceReasonLabel(presence.reason!),
                   presence.source == 'manual' ? 'manuale' : 'da calendario',
+                  if (presence.extraTrip) '2° viaggio',
                 ];
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(dayFormat.format(presence.presenceDate)),
                   subtitle: Text(subtitleParts.join(' · ')),
                   trailing: _isPrincipalAdmin
-                      ? IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 20),
-                          onPressed: () => _confirmDeletePresence(presence),
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: presence.extraTrip
+                                  ? 'Togli il 2° viaggio'
+                                  : 'Segna 2° viaggio (sei tornato a casa e rientrato)',
+                              icon: Icon(
+                                Icons.directions_car,
+                                size: 20,
+                                color: presence.extraTrip ? Colors.green : null,
+                              ),
+                              onPressed: () => _toggleExtraTrip(presence),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 20),
+                              onPressed: () => _confirmDeletePresence(presence),
+                            ),
+                          ],
                         )
                       : null,
                 );

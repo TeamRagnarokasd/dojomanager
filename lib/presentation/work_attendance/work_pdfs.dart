@@ -509,6 +509,8 @@ Future<pw.Document> buildWorkMealVoucherPdf({
 /// prospetto (log only, list unchanged).
 Future<pw.Document> buildWorkKmPdf({
   required List<DateTime> presenceDays,
+  Map<DateTime, int> tripsByDay = const {},
+  Map<DateTime, List<String>> lessonsByDay = const {},
   required WorkSettings settings,
   required WorkPdfPeriod period,
   required String instructorName,
@@ -520,8 +522,10 @@ Future<pw.Document> buildWorkKmPdf({
   final dayFormat = DateFormat('dd/MM/yyyy', 'it_IT');
 
   final perDayAmount = double.parse((settings.kmRoundTrip * settings.kmRate).toStringAsFixed(2));
-  final totalKm = presenceDays.length * settings.kmRoundTrip;
-  final totalAmount = presenceDays.length * perDayAmount;
+  int tripsOf(DateTime day) => tripsByDay[day] ?? 1;
+  final totalTrips = presenceDays.fold<int>(0, (sum, day) => sum + tripsOf(day));
+  final totalKm = totalTrips * settings.kmRoundTrip;
+  final totalAmount = totalTrips * perDayAmount;
 
   if (yearSummaryForCheck != null &&
       (presenceDays.length != yearSummaryForCheck.days ||
@@ -581,10 +585,14 @@ Future<pw.Document> buildWorkKmPdf({
               pw.TableRow(
                 children: [
                   _cell(dayFormat.format(day)),
-                  _cell(routeLabel),
-                  _cell(NumberFormat('#,##0.##', 'it_IT').format(settings.kmRoundTrip),
+                  _cell([
+                    tripsOf(day) > 1 ? '$routeLabel (2 viaggi)' : routeLabel,
+                    if ((lessonsByDay[day] ?? const <String>[]).isNotEmpty)
+                      'Motivo: lezioni - ${lessonsByDay[day]!.join(', ')}',
+                  ].join('\n')),
+                  _cell(NumberFormat('#,##0.##', 'it_IT').format(tripsOf(day) * settings.kmRoundTrip),
                       align: pw.TextAlign.right),
-                  _cell(_formatAmountForPdf(perDayAmount), align: pw.TextAlign.right),
+                  _cell(_formatAmountForPdf(tripsOf(day) * perDayAmount), align: pw.TextAlign.right),
                 ],
               ),
           ],
@@ -616,7 +624,9 @@ Future<pw.Document> buildWorkKmPdf({
           ),
         ),
         _noteBlock(
-          'Importo calcolato sulle tabelle nazionali ACI vigenti per il veicolo indicato.',
+          'Importo calcolato sulle tabelle nazionali ACI vigenti per il veicolo indicato. '
+          'Spostamenti effettuati per lezioni assegnate dall\'ASD e autorizzati dal legale '
+          'rappresentante, come previsto dal contratto di collaborazione.',
         ),
         _signatureBlock(),
       ],

@@ -198,6 +198,7 @@ class WorkPresenceSummary {
   const WorkPresenceSummary({
     required this.year,
     required this.days,
+    required this.trips,
     required this.voucherValue,
     required this.voucherTotal,
     required this.kmRoundTrip,
@@ -208,6 +209,9 @@ class WorkPresenceSummary {
 
   final int year;
   final int days;
+
+  /// Andata/ritorno totali: 1 per giorno, 2 nei giorni con "2° viaggio".
+  final int trips;
   final double voucherValue;
   final double voucherTotal;
   final double kmRoundTrip;
@@ -221,6 +225,7 @@ class WorkPresenceSummary {
     return WorkPresenceSummary(
       year: asInt('year'),
       days: asInt('days'),
+      trips: map['trips'] == null ? asInt('days') : asInt('trips'),
       voucherValue: asDouble('voucher_value'),
       voucherTotal: asDouble('voucher_total'),
       kmRoundTrip: asDouble('km_round_trip'),
@@ -241,10 +246,15 @@ class WorkPresenceEntry {
     this.reason,
     this.notes,
     this.scheduleInstanceId,
+    this.extraTrip = false,
   });
 
   final String id;
   final DateTime presenceDate;
+
+  /// Il giorno ha richiesto un secondo andata e ritorno (es. tornato a casa
+  /// tra due lezioni).
+  final bool extraTrip;
 
   /// 'confirmed' | 'declined'.
   final String status;
@@ -263,6 +273,7 @@ class WorkPresenceEntry {
         reason: map['reason'] as String?,
         notes: map['notes'] as String?,
         scheduleInstanceId: map['schedule_instance_id'] as String?,
+        extraTrip: map['extra_trip'] == true,
       );
 }
 
@@ -496,6 +507,11 @@ class WorkAttendanceService {
         .toList();
   }
 
+  /// Principal admin only (RLS). Segna/toglie il "2° viaggio" su una presenza.
+  Future<void> setExtraTrip(String id, bool value) async {
+    await _client.from(_presencesTable).update({'extra_trip': value}).eq('id', id);
+  }
+
   /// Principal admin only (RLS).
   Future<void> deletePresence(String id) async {
     await _client.from(_presencesTable).delete().eq('id', id);
@@ -523,6 +539,95 @@ class WorkAttendanceService {
         .eq('id', userId)
         .single();
     return row['full_name'] as String? ?? '';
+  }
+
+  /// Per ogni giorno con presenza confermata in [start]..[end], quanti
+  /// andata e ritorno (1, oppure 2 se almeno una presenza ha extra_trip).
+  Future<Map<DateTime, int>> getConfirmedTripsByDay({
+    required String userId,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final rows = await _client
+        .from(_presencesTable)
+        .select('presence_date, extra_trip')
+        .eq('user_id', userId)
+        .eq('status', 'confirmed')
+        .gte('presence_date', _dateStr(start))
+        .lte('presence_date', _dateStr(end));
+    final result = <DateTime, int>{};
+    for (final row in rows as List) {
+      final map = row as Map<String, dynamic>;
+      final day = DateTime.parse(map['presence_date'] as String);
+      final current = result[day] ?? 1;
+      result[day] = (map['extra_trip'] == true) ? 2 : current;
+    }
+    return result;
+  }
+
+  /// Per ogni giorno con presenza confermata in [start]..[end], le lezioni
+  /// tenute ("MMA 19:00-20:30"), prese da `schedule_instances`; le presenze
+  /// manuali usano il motivo. Solo per il "motivo della trasferta" del
+  /// prospetto rimborso km.
+  Future<Map<DateTime, List<String>>> getConfirmedLessonLabelsByDay({
+    required String userId,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final rows = await _client
+        .from(_presencesTable)
+        .select('presence_date, reason, schedule_instance_id')
+        .eq('user_id', userId)
+        .eq('status', 'confirmed')
+        .gte('presence_date', _dateStr(start))
+        .lte('presence_date', _dateStr(end));
+    final ids = <String>[
+      for (final row in rows as List)
+        if ((row as Map<String, dynamic>)['schedule_instance_id'] != null)
+          row['schedule_instance_id'] as String,
+    ];
+    final lessonById = <String, Map<String, dynamic>>{};
+    if (ids.isNotEmpty) {
+      final lessons = await _client
+          .from('schedule_instances')
+          .select('id, discipline, start_time, end_time')
+          .inFilter('id', ids);
+      for (final l in lessons as List) {
+        final m = l as Map<String, dynamic>;
+        lessonById[m['id'] as String] = m;
+      }
+    }
+    String hhmm(String? t) => (t == null || t.length < 5) ? '' : t.substring(0, 5);
+    String disc(String? d) {
+      final text = (d ?? '').replaceAll('_', ' ').trim();
+      if (text.isEmpty) return 'Lezione';
+      return text.length <= 3 ? text.toUpperCase() : text[0].toUpperCase() + text.substring(1);
+    }
+
+    final byDay = <DateTime, List<(String, String)>>{};
+    for (final row in rows) {
+      final map = row as Map<String, dynamic>;
+      final day = DateTime.parse(map['presence_date'] as String);
+      final lesson = lessonById[map['schedule_instance_id']];
+      String sortKey;
+      String label;
+      if (lesson != null) {
+        final from = hhmm(lesson['start_time'] as String?);
+        final to = hhmm(lesson['end_time'] as String?);
+        sortKey = from;
+        label = '${disc(lesson['discipline'] as String?)}'
+            '${from.isEmpty ? '' : ' $from${to.isEmpty ? '' : '-$to'}'}';
+      } else {
+        sortKey = '99:99';
+        final reason = map['reason'] as String?;
+        label = reason == null ? 'Attività' : workPresenceReasonLabel(reason);
+      }
+      byDay.putIfAbsent(day, () => []).add((sortKey, label));
+    }
+    return {
+      for (final e in byDay.entries)
+        e.key: (e.value..sort((a, b) => a.$1.compareTo(b.$1))).map((r) => r.$2).toList(),
+    };
   }
 
   /// Distinct dates with a confirmed presence for [userId] within
