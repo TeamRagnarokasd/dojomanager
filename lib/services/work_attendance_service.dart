@@ -507,6 +507,69 @@ class WorkAttendanceService {
         .toList();
   }
 
+  /// True se, nello stesso giorno di [lesson], c'è già un'altra lezione
+  /// confermata con uno stacco di almeno [minGap] dalla sua (prima o dopo) e
+  /// il giorno non ha già un "2° viaggio" segnato: è il caso in cui chiedere
+  /// "sei tornato a casa tra le due lezioni?". Mai lancia: in dubbio, false.
+  Future<bool> shouldAskExtraTrip(
+    WorkPendingLesson lesson, {
+    Duration minGap = const Duration(minutes: 30),
+  }) async {
+    try {
+      int? mins(String? t) {
+        if (t == null || t.length < 5) return null;
+        final h = int.tryParse(t.substring(0, 2));
+        final m = int.tryParse(t.substring(3, 5));
+        return (h == null || m == null) ? null : h * 60 + m;
+      }
+
+      final start = mins(lesson.startTime);
+      final end = mins(lesson.endTime) ?? (start == null ? null : start + 60);
+      if (start == null || end == null) return false;
+
+      final rows = await _client
+          .from(_presencesTable)
+          .select('extra_trip, schedule_instance_id')
+          .eq('status', 'confirmed')
+          .eq('presence_date', _dateStr(lesson.classDate));
+      final others = (rows as List)
+          .map((r) => r as Map<String, dynamic>)
+          .where((r) => r['schedule_instance_id'] != lesson.id)
+          .toList();
+      if (others.isEmpty) return false;
+      if (others.any((r) => r['extra_trip'] == true)) return false;
+
+      final ids = others
+          .map((r) => r['schedule_instance_id'] as String?)
+          .whereType<String>()
+          .toList();
+      if (ids.isEmpty) return false;
+      final lessons = await _client
+          .from('schedule_instances')
+          .select('start_time, end_time')
+          .inFilter('id', ids);
+      for (final l in lessons as List) {
+        final m = l as Map<String, dynamic>;
+        final os = mins(m['start_time'] as String?);
+        final oe = mins(m['end_time'] as String?) ?? (os == null ? null : os + 60);
+        if (os == null || oe == null) continue;
+        final gap = os >= end ? os - end : (start >= oe ? start - oe : 0);
+        if (gap >= minGap.inMinutes) return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Principal admin only (RLS). "2° viaggio" sulla presenza di una lezione.
+  Future<void> setExtraTripForLesson(String scheduleInstanceId, bool value) async {
+    await _client
+        .from(_presencesTable)
+        .update({'extra_trip': value})
+        .eq('schedule_instance_id', scheduleInstanceId);
+  }
+
   /// Principal admin only (RLS). Segna/toglie il "2° viaggio" su una presenza.
   Future<void> setExtraTrip(String id, bool value) async {
     await _client.from(_presencesTable).update({'extra_trip': value}).eq('id', id);
