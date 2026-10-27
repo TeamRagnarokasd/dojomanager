@@ -201,6 +201,32 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
     try {
       if (confirmed) {
         await _service.confirmLesson(lesson);
+        if (await _service.shouldAskExtraTrip(lesson)) {
+          if (!mounted) return;
+          final secondTrip = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Secondo viaggio?'),
+              content: const Text(
+                'Oggi hai più lezioni con uno stacco in mezzo. Sei tornato a casa '
+                'tra una lezione e l\'altra e sei rientrato in palestra?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('No, sono rimasto'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Sì, 2 viaggi'),
+                ),
+              ],
+            ),
+          );
+          if (secondTrip == true) {
+            await _service.setExtraTripForLesson(lesson.id, true);
+          }
+        }
       } else {
         await _service.declineLesson(lesson);
       }
