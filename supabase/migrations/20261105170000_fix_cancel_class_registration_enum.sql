@@ -34,8 +34,8 @@ BEGIN
         (registration_record.class_date::TEXT || ' ' || registration_record.start_time::TEXT)::TIMESTAMP
         AT TIME ZONE 'Europe/Rome'
     );
-    IF NOW() >= (class_datetime - INTERVAL '30 minutes') THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Cannot cancel less than 30 minutes before the class starts');
+    IF NOW() >= (class_datetime - INTERVAL '1 hour') THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Cannot cancel less than 1 hour before the class starts');
     END IF;
     UPDATE public.class_registrations
     SET

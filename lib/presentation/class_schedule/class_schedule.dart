@@ -478,8 +478,8 @@ class _ClassScheduleState extends State<ClassSchedule>
       } else {
         if (mounted) {
           final err = (result['error'] ?? '').toString();
-          final msg = err.contains('less than 30 minutes')
-              ? 'Non è possibile disdire a meno di 30 minuti dall\'inizio della lezione.'
+          final msg = err.contains('less than 1 hour')
+              ? 'Non è possibile disdire a meno di 1 ora dall\'inizio della lezione.'
               : err.contains('Registration not found')
                   ? 'Prenotazione non trovata (forse già cancellata). Aggiorna la pagina.'
                   : 'class_schedule.cancellation_failed'.tr();
