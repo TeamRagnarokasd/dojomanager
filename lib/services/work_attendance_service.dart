@@ -236,6 +236,39 @@ class WorkPresenceSummary {
   }
 }
 
+/// Buoni pasto e rimborso km di UN mese (da `work_presence_monthly`): stessa
+/// regola del riepilogo annuale, raggruppata per mese.
+class WorkMonthPresence {
+  const WorkMonthPresence({
+    required this.month,
+    required this.days,
+    required this.trips,
+    required this.voucherTotal,
+    required this.kmTotal,
+    required this.kmAmount,
+  });
+
+  final int month;
+  final int days;
+  final int trips;
+  final double voucherTotal;
+  final double kmTotal;
+  final double kmAmount;
+
+  factory WorkMonthPresence.fromMap(Map<String, dynamic> map) {
+    double asDouble(String key) => (map[key] as num?)?.toDouble() ?? 0;
+    int asInt(String key) => (map[key] as num?)?.toInt() ?? 0;
+    return WorkMonthPresence(
+      month: asInt('month'),
+      days: asInt('days'),
+      trips: asInt('trips'),
+      voucherTotal: asDouble('voucher_total'),
+      kmTotal: asDouble('km_total'),
+      kmAmount: asDouble('km_amount'),
+    );
+  }
+}
+
 /// One row of `instructor_presences`, for the recorded-presences list.
 class WorkPresenceEntry {
   const WorkPresenceEntry({
@@ -403,6 +436,15 @@ class WorkAttendanceService {
   Future<WorkPresenceSummary> getPresenceSummary(int year) async {
     final result = await _client.rpc('work_presence_summary', params: {'p_year': year});
     return WorkPresenceSummary.fromMap(result as Map<String, dynamic>);
+  }
+
+  /// Mese per mese dell'anno: solo i mesi con almeno una presenza.
+  Future<List<WorkMonthPresence>> getPresenceMonthly(int year) async {
+    final result = await _client.rpc('work_presence_monthly', params: {'p_year': year});
+    final list = (result as List?) ?? const [];
+    return list
+        .map((e) => WorkMonthPresence.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
   /// schedule_instances for the current user, not cancelled, from the
