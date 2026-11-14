@@ -9,6 +9,7 @@ import '../../core/app_export.dart';
 import '../../services/auth_service.dart';
 import '../../services/child_profile_service.dart';
 import '../../services/competitions_service.dart';
+import '../../widgets/black_friday_announcement.dart';
 import '../../widgets/compliance_banner_widget.dart';
 import '../../widgets/main_navigation_wrapper.dart';
 import '../user_profile/widgets/team_certifications_widget.dart';
@@ -122,6 +123,9 @@ class _DashboardHomeState extends State<DashboardHome>
           _errorMessage = null;
         });
         print('✅ Dashboard initialized successfully');
+        if (!_redirectedToAdminDashboard) {
+          maybeShowBlackFridayAnnouncement(context);
+        }
       }
     } catch (error) {
       print('⚠️ Error loading user data: $error');

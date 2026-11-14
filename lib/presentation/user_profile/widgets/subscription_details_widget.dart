@@ -136,7 +136,13 @@ class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
       for (final sub in userSubs) {
         final planId = sub['custom_plan_id'] as String?;
         if (planId != null) {
-          subByPlanId[planId] = sub;
+          final prev = subByPlanId[planId];
+          final prevExp = DateTime.tryParse(prev?['expires_at']?.toString() ?? '');
+          final newExp = DateTime.tryParse(sub['expires_at']?.toString() ?? '');
+          if (prev == null ||
+              (newExp != null && (prevExp == null || newExp.isAfter(prevExp)))) {
+            subByPlanId[planId] = sub;
+          }
         }
       }
 
@@ -217,11 +223,26 @@ class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
           }
         }
 
+        // Scaduto = data di scadenza passata. Nel profilo si tiene solo ciò
+        // che è attivo più il mese precedente: gli scaduti da oltre ~35
+        // giorni non si mostrano (restano nello storico pagamenti).
+        final expiryDate = DateTime.tryParse(computedExpiry ?? '');
+        final isExpired =
+            planType != 'annual' &&
+            expiryDate != null &&
+            expiryDate.isBefore(DateTime.now());
+        if (isExpired &&
+            expiryDate!.isBefore(
+              DateTime.now().subtract(const Duration(days: 35)),
+            )) {
+          continue;
+        }
+
         subscriptions.add({
           'id': payment['id'],
           'user_subscription_id': userSub?['id'],
           'custom_plan_id': customPlanId,
-          'is_active': true,
+          'is_active': !isExpired,
           'confirmed_at': payment['confirmed_at'],
           'created_at': payment['created_at'],
           'expires_at': computedExpiry,
@@ -230,6 +251,7 @@ class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
           'amount': planAmount ?? payment['amount'],
           'payment_method': payment['payment_method'],
           'plan_name': planName,
+          'duration_months': durationMonths,
           'plan_type': planType,
           'plan_price': planAmount ?? payment['amount'],
           'source': 'payment_confirmation',
@@ -573,14 +595,26 @@ class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
                       vertical: 0.5.h,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.green.withAlpha(51),
+                      color: ((subscription['is_active'] as bool? ?? true)
+                              ? Colors.green
+                              : Colors.orange)
+                          .withAlpha(51),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green.withAlpha(128)),
+                      border: Border.all(
+                        color: ((subscription['is_active'] as bool? ?? true)
+                                ? Colors.green
+                                : Colors.orange)
+                            .withAlpha(128),
+                      ),
                     ),
                     child: Text(
-                      'common.active'.tr(),
+                      (subscription['is_active'] as bool? ?? true)
+                          ? 'common.active'.tr()
+                          : 'Scaduto',
                       style: GoogleFonts.inter(
-                        color: Colors.green,
+                        color: (subscription['is_active'] as bool? ?? true)
+                            ? Colors.green
+                            : Colors.orange,
                         fontSize: ProfileTypography.caption,
                         fontWeight: FontWeight.w600,
                       ),
@@ -616,7 +650,10 @@ class _SubscriptionDetailsWidgetState extends State<SubscriptionDetailsWidget> {
                 Expanded(
                   child: _buildPlanDetail(
                     'payment.price'.tr(),
-                    '€$planPrice/${_formatPlanType(planType)}',
+                    ((subscription['duration_months'] as int? ?? 1) >= 3 &&
+                            planType == 'monthly')
+                        ? '€$planPrice/${subscription['duration_months']} mesi'
+                        : '€$planPrice/${_formatPlanType(planType)}',
                   ),
                 ),
               // For annual plans: show expiry date (purchase date shown below)

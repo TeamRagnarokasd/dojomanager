@@ -15,6 +15,7 @@ import '../../services/payment_service.dart';
 import '../../services/app_update_service.dart';
 import '../../services/paid_intents_service.dart';
 import '../../services/pending_purchases_service.dart';
+import '../../widgets/black_friday_offer.dart';
 import '../../widgets/payment_build_blocked_dialog.dart';
 import '../../widgets/payment_confirm_dialog.dart';
 import '../../widgets/payment_not_started_dialog.dart';
@@ -129,6 +130,7 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
           .select('*')
           .eq('is_active', true)
           .eq('is_convenzione', true)
+          .filter('promo_of', 'is', null)
           .order('created_at', ascending: false);
 
       final plans = List<Map<String, dynamic>>.from(response);
@@ -214,7 +216,25 @@ class _PianiConvenzioneScreenState extends State<PianiConvenzioneScreen> {
       _showAnnualRegistrationRequiredDialog();
       return;
     }
-    _startSumUpPayment(plan);
+    var chosenPlan = plan;
+    final bf = await offerBlackFriday(
+      context,
+      planId: plan['id']?.toString(),
+      planName: plan['title'] as String? ?? plan['name'] as String? ?? '',
+      monthlyPrice: (plan['price'] as num?)?.toDouble() ?? 0.0,
+    );
+    if (!mounted || bf.cancelled) return;
+    final promo = bf.promo;
+    if (promo != null) {
+      chosenPlan = {
+        ...plan,
+        'id': promo['id'],
+        'title': promo['name'],
+        'name': promo['name'],
+        'price': (promo['amount'] as num).toDouble(),
+      };
+    }
+    _startSumUpPayment(chosenPlan);
   }
 
   /// Opens a payment redirect page created via 'sumup/create-payment'. On
