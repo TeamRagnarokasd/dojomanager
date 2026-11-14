@@ -140,7 +140,10 @@ class _ComplianceBannerWidgetState extends State<ComplianceBannerWidget>
       rows.add(_buildRow(
         color: _colorForDaysLeft(minorDocs['days_left'] as int?),
         message: _messageFor('minor_docs', minorDocs),
-        onUpload: () => Navigator.pushNamed(context, AppRoutes.userProfile),
+        onUpload: () async {
+          await Navigator.pushNamed(context, AppRoutes.userProfile);
+          if (mounted) _load();
+        },
       ));
     }
 
@@ -150,8 +153,10 @@ class _ComplianceBannerWidgetState extends State<ComplianceBannerWidget>
       rows.add(_buildRow(
         color: _colorForDaysLeft(medicalCert['days_left'] as int?),
         message: _messageFor('medical_cert', medicalCert),
-        onUpload: () =>
-            Navigator.pushNamed(context, AppRoutes.medicalCertificateUpload),
+        onUpload: () async {
+          await Navigator.pushNamed(context, AppRoutes.medicalCertificateUpload);
+          if (mounted) _load();
+        },
       ));
     }
 

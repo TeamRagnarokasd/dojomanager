@@ -477,8 +477,14 @@ class _ClassScheduleState extends State<ClassSchedule>
         }
       } else {
         if (mounted) {
+          final err = (result['error'] ?? '').toString();
+          final msg = err.contains('less than 1 hour')
+              ? 'Non è possibile disdire a meno di 1 ora dall\'inizio della lezione.'
+              : err.contains('Registration not found')
+                  ? 'Prenotazione non trovata (forse già cancellata). Aggiorna la pagina.'
+                  : 'class_schedule.cancellation_failed'.tr();
           Fluttertoast.showToast(
-            msg: 'class_schedule.cancellation_failed'.tr(),
+            msg: msg,
             toastLength: Toast.LENGTH_LONG,
             gravity: ToastGravity.BOTTOM,
             backgroundColor: theme.colorScheme.error,

@@ -10,6 +10,7 @@ import '../../services/asd_documents_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/work_attendance_service.dart';
 import '../asd_documents_archive/widgets/asd_category_documents_screen.dart';
+import 'widgets/work_monthly_screen.dart';
 import 'widgets/work_pdf_preview_screen.dart';
 import 'widgets/work_settings_screen.dart';
 import 'work_pdfs.dart';
@@ -57,6 +58,13 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
   WorkCompensationSummary? _compensation;
   WorkPresenceSummary? _presenceSummary;
   WorkSettings? _settings;
+
+  /// Mese in corso e mese precedente (dati reali di oggi, indipendenti
+  /// dall'anno scelto): null finché non caricati o se il caricamento fallisce
+  /// (le card mostrano solo i totali dell'anno, come prima).
+  bool _monthsLoaded = false;
+  WorkMonthPresence? _monthCurrent;
+  WorkMonthPresence? _monthPrevious;
 
   bool _isLoadingPendingLessons = true;
   List<WorkPendingLesson> _pendingLessons = [];
@@ -154,6 +162,79 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
         _isLoadingSummary = false;
       });
     }
+    await _loadMonthCards();
+  }
+
+  /// Importo del mese in corso e del mese precedente per le card buoni pasto
+  /// e rimborso km. Un errore qui non rompe nulla: le card restano com'erano.
+  Future<void> _loadMonthCards() async {
+    try {
+      final now = DateTime.now();
+      final prevYear = now.month == 1 ? now.year - 1 : now.year;
+      final prevMonth = now.month == 1 ? 12 : now.month - 1;
+      final thisYearList = await _service.getPresenceMonthly(now.year);
+      final prevYearList =
+          prevYear == now.year ? thisYearList : await _service.getPresenceMonthly(prevYear);
+      WorkMonthPresence? find(List<WorkMonthPresence> list, int month) {
+        for (final m in list) {
+          if (m.month == month) return m;
+        }
+        return null;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _monthCurrent = find(thisYearList, now.month);
+        _monthPrevious = find(prevYearList, prevMonth);
+        _monthsLoaded = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _monthsLoaded = false);
+    }
+  }
+
+  void _openMonthly(WorkMonthlyKind kind) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => WorkMonthlyScreen(
+          kind: kind,
+          initialYear: _selectedYear,
+          onGeneratePdf: _generateAndPreviewPdf,
+        ),
+      ),
+    );
+  }
+
+  /// Righe "mese in corso / mese precedente" comuni alle due card.
+  List<Widget> _monthLines({
+    required double Function(WorkMonthPresence) amountOf,
+    required String Function(WorkMonthPresence) detailOf,
+  }) {
+    if (!_monthsLoaded) return const [];
+    final now = DateTime.now();
+    final prevMonth = now.month == 1 ? 12 : now.month - 1;
+    final cur = _monthCurrent;
+    final prev = _monthPrevious;
+    return [
+      Text(
+        '${_kMonthNames[now.month - 1]} (in corso)',
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+      Text(
+        _formatEuro(cur == null ? 0 : amountOf(cur)),
+        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 22),
+      ),
+      if (cur != null) Text(detailOf(cur)),
+      SizedBox(height: 1.h),
+      Text(
+        '${_kMonthNames[prevMonth - 1]}: ${_formatEuro(prev == null ? 0 : amountOf(prev))}',
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+      if (prev != null) Text(detailOf(prev)),
+      SizedBox(height: 1.h),
+    ];
   }
 
   Future<void> _loadPendingLessons() async {
@@ -851,7 +932,10 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
 
   Widget _buildMealVoucherCard(WorkPresenceSummary summary) {
     return Card(
-      child: Padding(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _openMonthly(WorkMonthlyKind.mealVoucher),
+        child: Padding(
         padding: EdgeInsets.all(4.w),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -860,15 +944,22 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
               children: [
                 const Icon(Icons.restaurant_outlined),
                 SizedBox(width: 2.w),
-                const Text('Buoni pasto', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                const Expanded(
+                  child: Text('Buoni pasto', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                ),
+                const Icon(Icons.chevron_right),
               ],
             ),
             SizedBox(height: 1.5.h),
-            Text('${summary.days} giorni con presenza'),
+            ..._monthLines(
+              amountOf: (m) => m.voucherTotal,
+              detailOf: (m) => '${m.days} ${m.days == 1 ? 'giorno' : 'giorni'} con presenza',
+            ),
             Text('Valore buono: ${_formatEuro(summary.voucherValue)}'),
+            Text('Anno ${summary.year}: ${summary.days} giorni'),
             SizedBox(height: 1.h),
             Text(
-              'Totale: ${_formatEuro(summary.voucherTotal)}',
+              'Totale anno: ${_formatEuro(summary.voucherTotal)}',
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
             ),
             if (_buoniPastoCategory != null) ...[
@@ -888,13 +979,17 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
           ],
         ),
       ),
+      ),
     );
   }
 
   Widget _buildKmCard(WorkPresenceSummary summary) {
     final settings = _settings;
     return Card(
-      child: Padding(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _openMonthly(WorkMonthlyKind.km),
+        child: Padding(
         padding: EdgeInsets.all(4.w),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -903,17 +998,25 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
               children: [
                 const Icon(Icons.directions_car_outlined),
                 SizedBox(width: 2.w),
-                const Text('Rimborso km', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                const Expanded(
+                  child: Text('Rimborso km', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                ),
+                const Icon(Icons.chevron_right),
               ],
             ),
             SizedBox(height: 1.5.h),
+            ..._monthLines(
+              amountOf: (m) => m.kmAmount,
+              detailOf: (m) =>
+                  '${m.days} ${m.days == 1 ? 'giorno' : 'giorni'}${m.trips != m.days ? ', ${m.trips} viaggi' : ''}, ${NumberFormat('#,##0.#', 'it_IT').format(m.kmTotal)} km',
+            ),
             Text(
-              '${summary.days} giorni${summary.trips != summary.days ? ', ${summary.trips} viaggi' : ''}, ${NumberFormat('#,##0.#', 'it_IT').format(summary.kmTotal)} km totali',
+              'Anno ${summary.year}: ${summary.days} giorni${summary.trips != summary.days ? ', ${summary.trips} viaggi' : ''}, ${NumberFormat('#,##0.#', 'it_IT').format(summary.kmTotal)} km',
             ),
             Text('Tariffa: ${_formatEuro(summary.kmRate)}/km'),
             SizedBox(height: 1.h),
             Text(
-              'Importo: ${_formatEuro(summary.kmAmount)}',
+              'Totale anno: ${_formatEuro(summary.kmAmount)}',
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
             ),
             if (settings?.vehicle != null && settings!.vehicle!.trim().isNotEmpty) ...[
@@ -935,6 +1038,7 @@ class _WorkAttendanceScreenState extends State<WorkAttendanceScreen> {
             ],
           ],
         ),
+      ),
       ),
     );
   }
