@@ -104,6 +104,7 @@ class _SubscriptionSelectionState extends State<SubscriptionSelection>
           .from('custom_subscription_plans')
           .select('*')
           .eq('is_active', true)
+          .filter('promo_of', 'is', null)
           .order('created_at', ascending: false);
 
       if (!mounted) return;

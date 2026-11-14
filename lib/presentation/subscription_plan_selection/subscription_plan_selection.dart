@@ -18,6 +18,7 @@ import '../../services/pending_purchases_processor.dart';
 import '../../services/pending_purchases_service.dart';
 import '../../services/realtime_notification_service.dart';
 import '../../services/subscription_service.dart';
+import '../../widgets/black_friday_offer.dart';
 import '../../widgets/payment_build_blocked_dialog.dart';
 import '../../widgets/payment_confirm_dialog.dart';
 import '../../widgets/payment_not_started_dialog.dart';
@@ -227,7 +228,9 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
     if (!mounted) return;
     setState(() => _isLoadingSatispayPlans = true);
     try {
-      final plans = await SubscriptionService.getAllPlansForSatispay();
+      final plans = (await SubscriptionService.getAllPlansForSatispay())
+          .where((p) => p['promo_of'] == null)
+          .toList();
       if (!mounted) return;
       setState(() {
         _satispayPlans = plans;
@@ -827,6 +830,7 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
           .select('*')
           .eq('is_active', true)
           .eq('is_convenzione', false)
+          .filter('promo_of', 'is', null)
           .order('created_at', ascending: false);
 
       final plans = List<Map<String, dynamic>>.from(response);
@@ -1926,7 +1930,28 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
           _selectedPlanId = int.tryParse(plan['id'].toString());
         });
       }
-      _startSumUpPayment(plan, planTitle);
+      var chosenPlan = plan;
+      var chosenTitle = planTitle;
+      if (plan['isStandardFromDb'] != true) {
+        final bf = await offerBlackFriday(
+          context,
+          planId: plan['id']?.toString(),
+          planName: planTitle,
+          monthlyPrice: (plan['price'] as num?)?.toDouble() ?? 0.0,
+        );
+        if (!mounted || bf.cancelled) return;
+        final promo = bf.promo;
+        if (promo != null) {
+          chosenTitle = promo['name'] as String? ?? planTitle;
+          chosenPlan = {
+            ...plan,
+            'id': promo['id'],
+            'title': chosenTitle,
+            'price': (promo['amount'] as num).toDouble(),
+          };
+        }
+      }
+      _startSumUpPayment(chosenPlan, chosenTitle);
     } catch (error) {
       print('ERROR _handlePlanSelection: $error');
       if (mounted) {
@@ -2182,7 +2207,25 @@ class _SubscriptionPlanSelectionState extends State<SubscriptionPlanSelection>
       _showSatispayAnnualRegistrationRequiredDialog();
       return;
     }
-    _launchSatispayForPlan(rawPlan);
+    var chosenPlan = rawPlan;
+    final bf = await offerBlackFriday(
+      context,
+      planId: rawPlan['id'] as String?,
+      planName: rawPlan['name'] as String? ?? '',
+      monthlyPrice: (rawPlan['price'] as num?)?.toDouble() ?? 0.0,
+    );
+    if (!mounted || bf.cancelled) return;
+    final promo = bf.promo;
+    if (promo != null) {
+      chosenPlan = {
+        ...rawPlan,
+        'id': promo['id'],
+        'name': promo['name'],
+        'price': (promo['amount'] as num).toDouble(),
+        'duration_months': (promo['duration_months'] as num?)?.toInt() ?? 3,
+      };
+    }
+    _launchSatispayForPlan(chosenPlan);
   }
 
   /// 🆕 SATISPAY MODE — mirrors _showAnnualRegistrationRequiredDialog

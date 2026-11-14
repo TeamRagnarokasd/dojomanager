@@ -40,7 +40,7 @@ class SubscriptionService {
       final customResponse = await _supabase
           .from('custom_subscription_plans')
           .select(
-            'id, name, amount, is_unlimited, entry_count, duration_months, is_convenzione',
+            'id, name, amount, is_unlimited, entry_count, duration_months, is_convenzione, promo_of',
           )
           .eq('is_active', true)
           .order('amount');
@@ -55,6 +55,7 @@ class SubscriptionService {
           'entry_count': (row['entry_count'] as num?)?.toInt(),
           'duration_months': (row['duration_months'] as num?)?.toInt() ?? 1,
           'is_convenzione': row['is_convenzione'] as bool? ?? false,
+          'promo_of': row['promo_of'],
         });
       }
 
@@ -75,6 +76,7 @@ class SubscriptionService {
           .from('custom_subscription_plans')
           .select('*')
           .eq('is_active', true)
+          .filter('promo_of', 'is', null)
           .order('amount');
 
       return List<Map<String, dynamic>>.from(response);
