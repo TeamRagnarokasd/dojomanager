@@ -483,9 +483,25 @@ class WorkAttendanceService {
         .whereType<String>()
         .toSet();
 
+    // Le lezioni vanno confermate solo DOPO l'ultima giornata gia' risposta:
+    // se il palinsesto viene rifatto, le lezioni passate (nuovi id) non devono
+    // ricomparire come "da confermare".
+    final lastRows = await _client
+        .from(_presencesTable)
+        .select('presence_date')
+        .eq('user_id', userId)
+        .order('presence_date', ascending: false)
+        .limit(1);
+    final lastAnswered = (lastRows as List).isEmpty
+        ? null
+        : (lastRows.first as Map<String, dynamic>)['presence_date'] as String?;
+
     return (lessonRows as List)
         .cast<Map<String, dynamic>>()
         .where((row) => row['is_cancelled'] != true)
+        .where((row) =>
+            lastAnswered == null ||
+            (row['class_date'] as String).compareTo(lastAnswered) > 0)
         .map(WorkPendingLesson.fromMap)
         .where((lesson) => !existingIds.contains(lesson.id))
         .toList();
