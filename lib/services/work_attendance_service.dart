@@ -465,47 +465,59 @@ class WorkAttendanceService {
     final firstValidFrom = (periodRows.first as Map<String, dynamic>)['valid_from'] as String;
     final today = _dateStr(DateTime.now());
 
+    // Lezioni precedenti a questa data (palinsesto rifatto il 12/11/2026):
+    // niente conferme richieste, le presenze di prima sono gia' sistemate.
+    final fromDate = firstValidFrom.compareTo(_pendingFromDate) > 0
+        ? firstValidFrom
+        : _pendingFromDate;
+
     final lessonRows = await _client
         .from('schedule_instances')
         .select('id, class_date, start_time, end_time, discipline, is_cancelled')
         .eq('instructor_id', userId)
-        .gte('class_date', firstValidFrom)
+        .gte('class_date', fromDate)
         .lte('class_date', today)
-        .order('class_date', ascending: true);
+        .order('class_date', ascending: true)
+        .order('start_time', ascending: true);
 
-    final existingRows = await _client
+    final presenceRows = await _client
         .from(_presencesTable)
-        .select('schedule_instance_id')
+        .select('schedule_instance_id, presence_date')
         .eq('user_id', userId)
-        .not('schedule_instance_id', 'is', null);
-    final existingIds = (existingRows as List)
-        .map((row) => (row as Map<String, dynamic>)['schedule_instance_id'] as String?)
-        .whereType<String>()
-        .toSet();
+        .gte('presence_date', fromDate);
+    final existingIds = <String>{};
+    // Presenze rimaste senza collegamento alla lezione (succede se il
+    // palinsesto viene rifatto): contano comunque come risposta di quel
+    // giorno, una per lezione, cosi' non vengono richieste di nuovo.
+    final unlinkedByDate = <String, int>{};
+    for (final row in (presenceRows as List).cast<Map<String, dynamic>>()) {
+      final id = row['schedule_instance_id'] as String?;
+      if (id != null) {
+        existingIds.add(id);
+      } else {
+        final d = row['presence_date'] as String;
+        unlinkedByDate[d] = (unlinkedByDate[d] ?? 0) + 1;
+      }
+    }
 
-    // Le lezioni vanno confermate solo DOPO l'ultima giornata gia' risposta:
-    // se il palinsesto viene rifatto, le lezioni passate (nuovi id) non devono
-    // ricomparire come "da confermare".
-    final lastRows = await _client
-        .from(_presencesTable)
-        .select('presence_date')
-        .eq('user_id', userId)
-        .order('presence_date', ascending: false)
-        .limit(1);
-    final lastAnswered = (lastRows as List).isEmpty
-        ? null
-        : (lastRows.first as Map<String, dynamic>)['presence_date'] as String?;
-
-    return (lessonRows as List)
-        .cast<Map<String, dynamic>>()
-        .where((row) => row['is_cancelled'] != true)
-        .where((row) =>
-            lastAnswered == null ||
-            (row['class_date'] as String).compareTo(lastAnswered) > 0)
-        .map(WorkPendingLesson.fromMap)
-        .where((lesson) => !existingIds.contains(lesson.id))
-        .toList();
+    final pending = <WorkPendingLesson>[];
+    for (final row in (lessonRows as List).cast<Map<String, dynamic>>()) {
+      if (row['is_cancelled'] == true) continue;
+      final lesson = WorkPendingLesson.fromMap(row);
+      if (existingIds.contains(lesson.id)) continue;
+      final d = row['class_date'] as String;
+      final left = unlinkedByDate[d] ?? 0;
+      if (left > 0) {
+        unlinkedByDate[d] = left - 1;
+        continue;
+      }
+      pending.add(lesson);
+    }
+    return pending;
   }
+
+  /// Prima data da cui si chiedono le conferme delle lezioni.
+  static const String _pendingFromDate = '2026-11-12';
 
   /// Principal admin only (RLS). Duplicates (same unique schedule_instance_id
   /// already answered) are ignored.
